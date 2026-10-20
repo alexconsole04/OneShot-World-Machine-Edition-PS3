@@ -44,12 +44,16 @@ static const u32 LABEL_BUFFER_STATUS_OFFSET = 0x42;
 static const u32 LABEL_VB_FENCE = 0x50;           // 0x50..0x52
 static const u32 BUFFER_IDLE = 0, BUFFER_BUSY = 1;
 
+// All-float, 16-byte aligned attributes (48-byte stride): the most
+// conventional layout for the RSX vertex fetcher (and RPCS3's emulation of
+// it). The earlier packed 36-byte layout with a UB4 colour produced
+// corrupted sprites under RPCS3.
 struct Vertex {
 	float x, y, u, v;
-	uint8_t r, g, b, a;
+	float r, g, b, a;
 	float tr, tg, tb, hue;
 };
-static_assert(sizeof(Vertex) == 36, "vertex layout");
+static_assert(sizeof(Vertex) == 48, "vertex layout");
 
 // ---------------------------------------------------------------- state
 static u32 display_width, display_height, color_pitch, depth_pitch;
@@ -70,7 +74,7 @@ static Vertex *vb[VB_COUNT];
 // handles most robustly (QUADS need on-the-fly conversion).
 static const u32 MAX_QUADS = VB_BYTES / (4 * sizeof(Vertex));
 static u32 ib_offset;
-static bool g_full_sync = false, g_texel_coords = false;
+static bool g_full_sync = false, g_texel_coords = true;   // texel coords: NR broke NPOT textures
 static int g_draw_mode = 2;   // quads, <=256 vertices per draw (best in RPCS3 testing so far)
 static u32 vb_offset[VB_COUNT];
 static u32 vb_fence_value[VB_COUNT];
@@ -243,8 +247,8 @@ static void bind_vertex_arrays(int i) {
 	u32 base = vb_offset[i];
 	cellGcmSetVertexDataArray(ctx, attr_pos, 0, sizeof(Vertex), 2, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 0);
 	cellGcmSetVertexDataArray(ctx, attr_uv, 0, sizeof(Vertex), 2, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 8);
-	cellGcmSetVertexDataArray(ctx, attr_col, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_UB, CELL_GCM_LOCATION_LOCAL, base + 16);
-	cellGcmSetVertexDataArray(ctx, attr_tone, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 20);
+	cellGcmSetVertexDataArray(ctx, attr_col, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 16);
+	cellGcmSetVertexDataArray(ctx, attr_tone, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 32);
 }
 
 static void bind_texture(const Texture *t) {
@@ -498,8 +502,8 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	float tp = 1.0f - dy * syn, bt = 1.0f - (dy + dh) * syn;
 	float iu = g_texel_coords ? 1.0f : 1.0f / t->w, iv = g_texel_coords ? 1.0f : 1.0f / t->h;
 	float u0 = sx * iu, u1 = (sx + sw) * iu, v0 = sy * iv, v1 = (sy + sh) * iv;
-	auto c8 = [](float f) { return (uint8_t)(f <= 0 ? 0 : f >= 1 ? 255 : (int)(f * 255.0f + 0.5f)); };
-	uint8_t cr = c8(s.r), cg = c8(s.g), cb = c8(s.b), ca = c8(s.a);
+	auto cl = [](float f) { return f <= 0.0f ? 0.0f : (f >= 1.0f ? 1.0f : f); };
+	float cr = cl(s.r), cg = cl(s.g), cb = cl(s.b), ca = cl(s.a);
 	float tr = s.tone_r / 255.0f, tg = s.tone_g / 255.0f, tb = s.tone_b / 255.0f;
 	float hue = s.hue * (3.14159265f / 180.0f);
 	Vertex *v = vb[vb_cur] + vb_used;
