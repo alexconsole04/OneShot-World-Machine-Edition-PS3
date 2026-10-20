@@ -40,6 +40,7 @@ public:
 	Vec2 GetPos() const { return pos; }
 	Vec2 GetOldPos() const { return oldPos; }
 	void SetPos(Vec2 p) { pos = p; }
+	void SetPosTile(Vec2 t) { pos = Vec2(t.x * 16 * 256 + 2048, t.y * 16 * 256 + 2048); oldPos = pos; moving = false; moveTarget = pos; vel = Vec2(); }
 	Vec2 GetVel() const { return vel; }
 	void SetVel(Vec2 v) { vel = v; }
 	Rect GetCollisionRect() const { return collisionRect; }

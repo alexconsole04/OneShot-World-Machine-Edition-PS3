@@ -826,3 +826,22 @@ void TileMap::Draw() {
 		if (lm) gm::blit(lm, Vec2((320 - (int)lm->w) / 2 - (int)(shakeOffset / 2.0f), 0), bulb);
 	}
 }
+
+Vec2 TileMap::FindOpenTileNear(int cx, int cy) const {
+	auto base = heightsToLayers.find(0);
+	auto has_floor = [&](int x, int y) {
+		if (base == heightsToLayers.end()) return false;
+		for (auto &l : base->second)
+			if (l->GetTileId(x, y) != 0) return true;
+		return false;
+	};
+	for (int r = 0; r < std::max(mapSize.x, mapSize.y); r++)
+		for (int dy = -r; dy <= r; dy++)
+			for (int dx = -r; dx <= r; dx++) {
+				if (std::max(iabs(dx), iabs(dy)) != r) continue;
+				int x = cx + dx, y = cy + dy;
+				if (x < 0 || y < 0 || x >= mapSize.x || y >= mapSize.y) continue;
+				if (!IsTileSolid(x, y) && has_floor(x, y)) return Vec2(x, y);
+			}
+	return Vec2(cx, cy);
+}

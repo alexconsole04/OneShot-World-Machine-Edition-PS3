@@ -77,6 +77,9 @@ public:
 	int GetMapID() const { return currentMapId; }
 	Vec2 GetCamPos() const { return camPos; }
 	int EntityCount() const { return (int)entities.size(); }
+	// Debug helper: nearest non-solid tile that has floor drawn on it.
+	Vec2 FindOpenTileNear(int x, int y) const;
+	Vec2 GetMapSize() const { return mapSize; }
 
 private:
 	struct MapLine;

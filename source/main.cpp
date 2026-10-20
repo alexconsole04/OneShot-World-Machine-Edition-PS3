@@ -105,7 +105,12 @@ int main(int argc, const char **argv) {
 				if (next > 400) next = 1;
 				if (map_exists(next)) break;
 			}
-			if (map.LoadMap(next, 0, 0, Direction::Down)) mapId = next;
+			if (map.LoadMap(next, 0, 0, Direction::Down)) {
+				mapId = next;
+				Vec2 ms = map.GetMapSize();
+				map.GetPlayer()->SetPosTile(map.FindOpenTileNear(ms.x / 2, ms.y / 2));
+				map.Update();
+			}
 		}
 
 		uint64_t t0 = sys::time_us();
