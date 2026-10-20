@@ -70,7 +70,7 @@ static Vertex *vb[VB_COUNT];
 // handles most robustly (QUADS need on-the-fly conversion).
 static const u32 MAX_QUADS = VB_BYTES / (4 * sizeof(Vertex));
 static u32 ib_offset;
-static int g_draw_mode = 0;
+static int g_draw_mode = 2;   // quads, <=256 vertices per draw (best in RPCS3 testing so far)
 static u32 vb_offset[VB_COUNT];
 static u32 vb_fence_value[VB_COUNT];
 static u32 frame_counter;
@@ -84,6 +84,9 @@ static Blend cur_blend;
 
 static Stats st, cur;
 static bool overflow_warned;
+static uint8_t *staging;          // IO-mapped main memory for texture uploads
+static u32 staging_offset, staging_size;
+static u32 finish_ref = 0x100;
 static bool tex_cache_dirty = true;   // set when the PPU uploads texture data
 
 // ---------------------------------------------------------------- RSX local memory allocator
@@ -91,21 +94,27 @@ struct Block { u32 off, size; bool free; };
 static std::vector<Block> heap;
 static uintptr_t heap_base;
 static u32 heap_total, heap_used;
+static u32 heap_cursor;
 
 static void heap_init(uintptr_t base, u32 size) {
-	heap_base = base; heap_total = size; heap_used = 0;
+	heap_base = base; heap_total = size; heap_used = 0; heap_cursor = 0;
 	heap.clear();
 	heap.push_back({ 0, size, true });
 }
 
-static void *heap_alloc(u32 size, u32 align) {
-	size = (size + 127) & ~127u;
+// Next-fit: keep allocating forward through VRAM and only wrap around to
+// recycle freed blocks once the end is reached. Freed texture memory is
+// therefore not reused until ~200 MB of later uploads have gone by, and
+// textures never share a 4 KB page with each other.
+
+static void *heap_alloc_from(u32 size, u32 align, u32 min_off) {
 	for (size_t i = 0; i < heap.size(); i++) {
 		Block b = heap[i];
-		if (!b.free) continue;
-		u32 start = (b.off + align - 1) & ~(align - 1);
+		if (!b.free || b.off + b.size <= min_off) continue;
+		u32 base = b.off < min_off ? min_off : b.off;
+		u32 start = (base + align - 1) & ~(align - 1);
+		if (b.off + b.size < start + size) continue;
 		u32 pad = start - b.off;
-		if (b.size < pad + size) continue;
 		std::vector<Block> repl;
 		if (pad) repl.push_back({ b.off, pad, true });
 		repl.push_back({ start, size, false });
@@ -113,9 +122,18 @@ static void *heap_alloc(u32 size, u32 align) {
 		heap.erase(heap.begin() + i);
 		heap.insert(heap.begin() + i, repl.begin(), repl.end());
 		heap_used += size;
+		heap_cursor = start + size;
 		return (void *)(heap_base + start);
 	}
 	return nullptr;
+}
+
+static void *heap_alloc(u32 size, u32 align) {
+	if (align < 4096) align = 4096;
+	size = (size + 4095) & ~4095u;
+	void *p = heap_alloc_from(size, align, heap_cursor);
+	if (!p) p = heap_alloc_from(size, align, 0);   // wrap around
+	return p;
 }
 
 static void heap_free(void *p) {
@@ -289,6 +307,11 @@ static void flush_batch() {
 bool init() {
 	void *host_addr = memalign(1024 * 1024, HOST_SIZE);
 	if (cellGcmInit(CB_SIZE, HOST_SIZE, host_addr) != 0) { sys::log("gfx: cellGcmInit failed\n"); return false; }
+	// The command buffer occupies the first CB_SIZE bytes of the IO area;
+	// the rest is the staging buffer the RSX copies textures from.
+	staging = (uint8_t *)host_addr + CB_SIZE;
+	staging_size = HOST_SIZE - CB_SIZE;
+	cellGcmAddressToOffset(staging, &staging_offset);
 
 	videoState state;
 	videoConfiguration vcfg;
@@ -379,7 +402,6 @@ bool init() {
 }
 
 void shutdown() {
-	static u32 finish_ref = 0x1000;
 	cellGcmFinish(ctx, ++finish_ref);
 	u32 last = *(volatile u32 *)cellGcmGetLabelAddress(LABEL_PREPARED_BUFFER_OFFSET) >> 8;
 	while (g_buffer_on_display != last) usleep(1000);
@@ -399,10 +421,21 @@ Texture *create_texture(uint32_t w, uint32_t h, const uint32_t *argb) {
 		delete t;
 		return nullptr;
 	}
-	uint8_t *dst = (uint8_t *)t->mem;
-	for (uint32_t y = 0; y < h; y++)               // big-endian u32 = A,R,G,B bytes
-		memcpy(dst + y * t->pitch, argb + y * w, w * 4);
 	cellGcmAddressToOffset(t->mem, &t->gpu_offset);
+	// Upload with the RSX's copy engine (main memory -> VRAM) rather than
+	// PPU stores into VRAM: faster on hardware, and RPCS3 sees a GPU-side
+	// write, so stale cached copies of recycled memory get invalidated.
+	const u32 row = w * 4;
+	const u32 rows_per_chunk = staging_size / t->pitch;
+	for (u32 y0 = 0; y0 < h; y0 += rows_per_chunk) {
+		u32 n = h - y0 < rows_per_chunk ? h - y0 : rows_per_chunk;
+		for (u32 y = 0; y < n; y++)                  // big-endian u32 = A,R,G,B bytes
+			memcpy(staging + y * t->pitch, argb + (y0 + y) * w, row);
+		__asm__ volatile("sync" ::: "memory");
+		cellGcmSetTransferData(ctx, CELL_GCM_TRANSFER_MAIN_TO_LOCAL, t->gpu_offset + y0 * t->pitch, t->pitch,
+		                       staging_offset, t->pitch, row, n);
+		cellGcmFinish(ctx, ++finish_ref);           // staging is reused: wait for the copy
+	}
 	tex_cache_dirty = true;
 	return t;
 }
