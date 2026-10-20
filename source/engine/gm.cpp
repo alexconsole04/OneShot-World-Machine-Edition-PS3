@@ -6,6 +6,8 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <algorithm>
+#include <vector>
 
 namespace gm {
 
@@ -63,6 +65,20 @@ Vec2 texture_size(const char *name, CacheType cache) {
 }
 
 bool texture_exists(const char *name, CacheType cache) { return texture(name, cache) != nullptr; }
+
+int cache_list(CacheType cache, const char **names, const gfx::Texture **texs, int max) {
+	std::vector<std::pair<const std::string *, gfx::Texture *>> v;
+	for (auto &kv : caches[cache]) v.push_back({ &kv.first, kv.second });
+	std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return *a.first < *b.first; });
+	int n = 0;
+	for (auto &e : v) {
+		if (n >= max) break;
+		names[n] = e.first->c_str();
+		texs[n] = e.second;
+		n++;
+	}
+	return n;
+}
 
 void clear_cache(CacheType cache) {
 	for (auto &kv : caches[cache]) gfx::destroy_texture(kv.second);

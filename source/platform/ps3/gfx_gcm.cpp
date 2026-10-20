@@ -28,6 +28,7 @@
 
 #include "sprite_vp_vpo.h"
 #include "sprite_fp_fpo.h"
+#include "plain_fp_fpo.h"
 
 namespace gfx {
 
@@ -63,7 +64,9 @@ static CellGcmContextData *ctx;
 static volatile u32 g_buffer_on_display, g_buffer_flipped, g_on_flip;
 static u32 g_frame_index;
 
-static CGprogram vpo, fpo;
+static CGprogram vpo, fpo, fpo_plain;
+static u32 fp_plain_offset;
+static bool g_plain_fp;
 static void *vp_ucode;
 static u32 fp_offset;
 static int attr_pos, attr_uv, attr_col, attr_tone;
@@ -240,7 +243,8 @@ static void set_draw_env() {
 	blend_set = false;
 	apply_blend(Blend::Normal);
 	cellGcmSetVertexProgram(ctx, vpo, vp_ucode);
-	cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
+	if (g_plain_fp) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
+	else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
 }
 
 static void bind_vertex_arrays(int i) {
@@ -376,6 +380,15 @@ bool init() {
 	void *fp_ucode = bump_alloc(fpsize, 64);
 	memcpy(fp_ucode, fp_blob, fpsize);
 	cellGcmAddressToOffset(fp_ucode, &fp_offset);
+	{
+		fpo_plain = (CGprogram)plain_fp_fpo;
+		cellGcmCgInitProgram(fpo_plain);
+		void *blob; u32 sz = 0;
+		cellGcmCgGetUCode(fpo_plain, &blob, &sz);
+		void *uc = bump_alloc(sz, 64);
+		memcpy(uc, blob, sz);
+		cellGcmAddressToOffset(uc, &fp_plain_offset);
+	}
 	auto attr = [](const char *name, int fallback) {
 		CGparameter p = cellGcmCgGetNamedParameter(vpo, name);
 		return p ? (int)cellGcmCgGetParameterResource(vpo, p) - CG_ATTR0 : fallback;
@@ -562,6 +575,13 @@ const char *draw_mode_name() {
 	return n[g_draw_mode];
 }
 
+void set_plain_shader(bool on) {
+	flush_batch();
+	g_plain_fp = on;
+	if (on) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
+	else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
+}
+bool plain_shader() { return g_plain_fp; }
 void set_full_sync(bool on) { g_full_sync = on; }
 bool full_sync() { return g_full_sync; }
 void set_texel_coords(bool on) { flush_batch(); g_texel_coords = on; }

@@ -119,6 +119,8 @@ void set_draw_mode(int) {}
 int draw_mode() { return 0; }
 const char *draw_mode_name() { return "software"; }
 
+void set_plain_shader(bool) {}
+bool plain_shader() { return false; }
 void set_full_sync(bool) {}
 bool full_sync() { return false; }
 void set_texel_coords(bool) {}

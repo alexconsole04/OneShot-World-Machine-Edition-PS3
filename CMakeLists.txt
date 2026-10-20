@@ -27,6 +27,7 @@ target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysmodule r
 
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_vp.vcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_fp.fcg)
+ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/plain_fp.fcg)
 
 ps3_add_self(oneshot-ps3)
 ps3_add_pkg(oneshot-ps3

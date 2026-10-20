@@ -1,0 +1,9 @@
+// plain_fp.fcg - diagnostic minimal fragment program: texture * colour only.
+void main(
+	float2 in_texcoord    : TEXCOORD0,
+	float4 in_color       : TEXCOORD1,
+	uniform sampler2D tex : TEXUNIT0,
+	out float4 out_color  : COLOR)
+{
+	out_color = tex2D(tex, in_texcoord) * in_color;
+}

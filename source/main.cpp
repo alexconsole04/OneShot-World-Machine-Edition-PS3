@@ -89,6 +89,8 @@ int main(int argc, const char **argv) {
 	}
 
 	bool show_overlay = getenv("OSPS3_OVERLAY") != nullptr;
+	bool tex_view = getenv("OSPS3_TEXVIEW") != nullptr;
+	int tex_view_idx = getenv("OSPS3_TEXVIEW") ? atoi(getenv("OSPS3_TEXVIEW")) : 0;
 	uint64_t last = sys::time_us();
 	float frame_ms = 16.7f, update_ms = 0, draw_ms = 0, wait_ms = 0;
 	int frame = 0;
@@ -100,6 +102,10 @@ int main(int argc, const char **argv) {
 		if (input::pressed(input::BTN_MASHTEXT)) gfx::set_full_sync(!gfx::full_sync());   // L2
 		if (input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
 		if (input::pressed(input::BTN_L3)) map.debugLayers = (map.debugLayers + 1) % 4;
+		if (input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
+		if (input::pressed(input::BTN_INVENTORY)) tex_view = !tex_view;                         // Triangle
+		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
+		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
 		if (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1)) {
 			int dir = input::pressed(input::BTN_R1) ? 1 : -1;
 			int next = mapId;
@@ -123,11 +129,40 @@ int main(int argc, const char **argv) {
 
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
 		uint64_t tb = sys::time_us();
-		gm::clip_to_window();
-		map.Draw();
-		gm::clip_off();
+		if (!tex_view) {
+			gm::clip_to_window();
+			map.Draw();
+			gm::clip_off();
+		} else {
+			// Texture viewer: raw texture over a magenta/grey checkerboard so
+			// transparent texels are obvious. Integer scale, centred.
+			const char *names[256];
+			const gfx::Texture *texs[256];
+			int n = gm::cache_list(gm::Game, names, texs, 256);
+			if (n > 0) {
+				int i = ((tex_view_idx % n) + n) % n;
+				const gfx::Texture *t = texs[i];
+				int sw = gfx::screen_w(), sh = gfx::screen_h() - 60;
+				int sc = 1;
+				while ((int)t->w * (sc + 1) <= sw && (int)t->h * (sc + 1) <= sh) sc++;
+				float w = (float)(t->w * sc), h = (float)(t->h * sc);
+				if (h > sh) { h = (float)sh; w = h * t->w / t->h; }   // very tall sheets: squash to fit
+				float x0 = (sw - w) * 0.5f, y0 = 60.0f;
+				gfx::Shade a, b;
+				a.r = 1; a.g = 0; a.b = 1; b.r = b.g = b.b = 0.5f;
+				for (float cy = y0; cy < y0 + h; cy += 16)
+					for (float cx = x0; cx < x0 + w; cx += 16) {
+						bool odd = (((int)((cx - x0) / 16) + (int)((cy - y0) / 16)) & 1) != 0;
+						gm::blit_screen(gm::white(), cx, cy, 16, 16, Rect(0, 0, 1, 1), odd ? a : b);
+					}
+				gfx::Shade s;
+				gm::blit_screen(t, x0, y0, w, h, Rect(0, 0, (int)t->w, (int)t->h), s);
+				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   Triangle: close",
+				              i + 1, n, names[i], t->w, t->h);
+			}
+		}
 		uint64_t t2 = sys::time_us();
-		if (show_overlay) {
+		if (show_overlay && !tex_view) {
 			gfx::Stats st = gfx::last_stats();
 			Vec2 pp = map.GetPlayer()->GetPixelPos();
 			overlay::text(16, 16, 2, 0xffffff, "map %d  frame %.2f ms (%.1f fps)", mapId, frame_ms, 1000.0f / frame_ms);
@@ -140,7 +175,8 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 166, 2, 0xff90ff, "L2 full sync: %s   R3 texcoords: %s   L3 layers: %s",
 			              gfx::full_sync() ? "ON" : "off", gfx::texel_coords() ? "texel" : "normalized",
 			              layer_names[map.debugLayers]);
-			overlay::text(16, 196, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
+			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   Triangle: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
+			overlay::text(16, 226, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
 		}
 		gfx::end_frame();
 

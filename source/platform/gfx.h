@@ -63,6 +63,9 @@ Stats last_stats();
 void set_draw_mode(int mode);
 int draw_mode();
 const char *draw_mode_name();
+// Debug: minimal fragment program (texture * colour) instead of the HueShader port.
+void set_plain_shader(bool on);
+bool plain_shader();
 // Debug: wait for the RSX to finish every frame (no CPU/GPU overlap).
 void set_full_sync(bool on);
 bool full_sync();

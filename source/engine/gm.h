@@ -20,6 +20,8 @@ const gfx::Texture *texture(const char *name, CacheType cache = Game);
 Vec2 texture_size(const char *name, CacheType cache = Game);
 bool texture_exists(const char *name, CacheType cache = Game);
 void clear_cache(CacheType cache);
+// Debug: names/textures currently in a cache group (sorted by name).
+int cache_list(CacheType cache, const char **names, const gfx::Texture **texs, int max);
 
 // MainBlit(texture, pixelPos, srcRect, alpha, hue, blend, scale, tone, r, g, b).
 // pixelPos is multiplied by scale (the C# overloads do the same) and lands in
