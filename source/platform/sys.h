@@ -18,6 +18,12 @@ const char *data_dir();
 bool read_file(const char *rel, uint8_t **data, size_t *size);
 bool file_exists(const char *rel);
 
+// Case-insensitive lookup of root/rel; out = the real full path.
+}
+#include <string>
+namespace sys {
+bool resolve_case(const char *root, const char *rel, std::string &out);
+
 // The console's / OS's user name (OneShot addresses the player by it).
 const char *user_name();
 // Local wall-clock time (DateTime.Now): fills hour/min/sec and day of year (1..366).

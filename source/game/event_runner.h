@@ -3,6 +3,7 @@
 #pragma once
 #include "event_data.h"
 #include "message_box.h"
+#include "name_input.h"
 #include <memory>
 #include <string>
 
@@ -23,6 +24,7 @@ public:
 
 	bool KeepAlive = true;
 	std::string PasswordInput;
+	void OpenNameInput();
 
 private:
 	const EventCommand &cmd(int i) const { return (*commands)[i]; }
@@ -72,6 +74,7 @@ private:
 	Entity *triggeringEntity;
 	std::unique_ptr<IMessageBox> messageBox;
 	std::unique_ptr<EventRunner> innerRunner;
+	std::unique_ptr<NameInputMenu> nameInput;
 	bool waitForMapTransition = false;
 	bool waitForModalWindow = false;
 	TextBox::Style currentStyle = TextBox::Style::GoldBorder;

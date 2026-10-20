@@ -129,6 +129,9 @@ void set_texel_coords(bool) {}
 bool texel_coords() { return false; }
 
 Stats last_stats() { return st; }
+static bool vbm = true;
+void set_vertex_main_memory(bool on) { vbm = on; }
+bool vertex_main_memory() { return vbm; }
 
 static Texture *cap_tex;
 

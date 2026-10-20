@@ -78,6 +78,10 @@ bool texel_coords();
 // (reused between calls; valid until the next capture). Alpha reads as 1.
 const Texture *capture_screen(int x, int y, int w, int h);
 
+// Debug: vertex buffers in main (IO) memory (true, default) or RSX local memory.
+void set_vertex_main_memory(bool on);
+bool vertex_main_memory();
+
 // Host only: write the last presented frame to a PNG (no-op on PS3).
 bool screenshot(const char *path);
 

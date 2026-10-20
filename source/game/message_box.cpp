@@ -1,19 +1,37 @@
 #include "message_box.h"
 #include "game_state.h"
-#include "../engine/gm.h"
-#include "../engine/overlay.h"
-#include "../engine/ui.h"
+#include "player.h"
+#include "tilemap.h"
 #include "../engine/audio.h"
+#include "../engine/gm.h"
+#include "../engine/ui.h"
+#include "../engine/util.h"
 #include "../platform/input.h"
+#include "../platform/sys.h"
 #include <stdlib.h>
 #include <string.h>
 
-static bool ok_pressed() { return input::pressed(input::BTN_OK); }
-static bool cancel_pressed() { return input::pressed(input::BTN_CANCEL); }
 static bool mashing() { return input::held(input::BTN_MASHTEXT); }
 
-TextBox::TextBox(GameState *s, Style sty, Area ar, Kind k) : state(s), style(sty), area(ar), kind(k) {
-	Open();
+unsigned TextBox::TextColor(int code) {
+	switch (code) {
+	case 1: return 0xff4040;
+	case 2: return 0x00e000;
+	case 3: return 0xffff00;
+	case 4: return 0x4040ff;
+	case 5: return 0xff40ff;
+	case 6: return 0x40ffff;
+	case 7: return 0x808080;
+	default: return 0xffffff;
+	}
+}
+
+TextBox::TextBox(TileMap *m, Style sty, Area ar, Kind k) : map(m), state(m->State()), style(sty), area(ar), kind(k) {
+	boxY = area == Area::Down ? 168 : (area == Area::Middle ? 80 : 8);
+	if (kind == Kind::Doc || kind == Kind::Tutorial) { boxX = 24; boxY = 16; boxW = 272; boxH = 208; }
+	st = State::Opening;
+	transitionTimer = 0;
+	totalTransitionTime = 6;
 }
 
 void TextBox::Open() {
@@ -29,15 +47,19 @@ void TextBox::Close() {
 	if (!choices.empty()) {
 		choices.clear();
 		choiceCallback = nullptr;
+		choiceBeginsOnLine = 0;
 		choiceCursor = 0;
 	}
 }
 
 void TextBox::ClearText() {
-	text.clear();
-	portrait.clear();
+	lineWidth = 0;
+	inputText.clear();
 	inputNumberVar = -1;
+	lines.clear();
+	portrait.clear();
 	showChoicesFollows = false;
+	color = 0xffffff;
 }
 
 std::string TextBox::ReplaceVariableMarkup(const GameState *state, std::string t) {
@@ -56,24 +78,40 @@ static void replace_all(std::string &s, const char *from, const std::string &to)
 	while ((p = s.find(from, p)) != std::string::npos) { s.replace(p, n, to); p += to.size(); }
 }
 
+void TextBox::SetPortrait(const std::string &p) {
+	portrait = util::lower(p);
+	const std::string &sheet = map->GetPlayer()->GetNPCSheet();
+	if ((sheet == "niko_gasmask" || sheet == "niko_bulb_gasmask" || sheet == "en_gasmask" || sheet == "en_bulb_gasmask") &&
+	    util::starts_with(portrait, "niko"))
+		portrait = "niko_gasmask";
+	if (state->flag(160) && util::starts_with(portrait, "niko")) portrait.replace(0, 4, "en");
+}
+
+int TextBox::TextAreaWidth() const { return boxW - padX - padW - (portrait.empty() ? 0 : 48); }
+
 void TextBox::FeedText(const std::string &in, const std::string &playerName) {
 	std::string t = in;
 	replace_all(t, "\\\\", "\\");
 	replace_all(t, "\\n", "\n");
 	t = ReplaceVariableMarkup(state, t);
 	replace_all(t, "\\p", playerName);
-	if (text.empty()) {
+	// Button glyph tokens (the PC build draws key/pad icons here).
+	static const char *glyphs[][2] = { { "@OK", "(Cross)" }, { "@CANCEL", "(Circle)" }, { "@RUN", "(Square)" },
+		{ "@INVENTORY", "(Triangle)" }, { "@MAINMENU", "(START)" }, { "@MOVE", "(D-pad)" } };
+	for (auto &g : glyphs) replace_all(t, g[0], g[1]);
+	if (inputText.empty()) {
 		bool lead_nl = false;
 		if (!t.empty() && t[0] == '\n') { t = t.substr(1); lead_nl = true; }
 		if (!t.empty() && t[0] == '@') {
 			size_t sp = t.find(' ');
-			if (sp != std::string::npos) { portrait = t.substr(1, sp - 1); t = t.substr(sp + 1); }
-			else { portrait = t.substr(1); t.clear(); }
+			if (sp != std::string::npos) { SetPortrait(t.substr(1, sp - 1)); t = t.substr(sp + 1); }
+			else { SetPortrait(t.substr(1)); t.clear(); }
 		}
 		if (lead_nl) t = "\n" + t;
-		text = t;
+		inputText = t;
+		scrollSoundTimer = 4;
 	} else {
-		text += t;
+		inputText += t;
 	}
 }
 
@@ -82,11 +120,12 @@ void TextBox::SetChoices(const std::vector<std::string> &c, int cancelValue, std
 	choices = c;
 	cancelChoice = cancelValue;
 	choiceCallback = std::move(cb);
-	choiceCursor = 0;
-	for (auto &s : choices) {
-		replace_all(s, "\\p", playerName);
-		s = ReplaceVariableMarkup(state, s);
-	}
+	choiceBeginsOnLine = (int)lines.size();
+	std::string text;
+	for (size_t i = 0; i < c.size(); i++) text += (i ? "\n" : "") + c[i];
+	if (!lines.empty()) text = "\n" + text;
+	FeedText(text, playerName);
+	RollOutAllText();
 }
 
 void TextBox::InputNumberSetup(int var, int n) {
@@ -98,6 +137,81 @@ void TextBox::InputNumberSetup(int var, int n) {
 		int p = 1;
 		for (int k = 0; k < n - i - 1; k++) p *= 10;
 		digits[i] = v / p % 10;
+	}
+}
+
+void TextBox::RollOutAllText() {
+	int guard = 100000;
+	while (IsRollingText() && --guard) ProcessInputText(true);
+}
+
+void TextBox::addNewLine() {
+	lines.emplace_back();
+	lineWidth = 0;
+}
+
+void TextBox::addNewChar(char c) {
+	if (lines.empty()) lines.emplace_back();
+	lines.back().push_back({ c, color });
+	lineWidth += ui::text_width(std::string(1, c));
+}
+
+void TextBox::ProcessInputText(bool fastCycle) {
+	if (!fastCycle || (lines.empty() && choices.empty())) {
+		if (++scrollSoundTimer > 4) {
+			scrollSoundTimer = 0;
+			std::string snd = portrait == "af" ? "cat_2" : (!inputText.empty() && inputText[0] == '[') ? "text_robot" : "text";
+			audio::play_sound(snd.c_str(), 0.5f);
+		}
+	}
+	if (lines.empty()) lines.emplace_back();
+	scrollTimer += 1.0f;
+	while (scrollTimer >= 1.0f && !inputText.empty() && !forcedNod && textPauseTimer <= 0) {
+		char c = inputText[0];
+		scrollTimer -= 1.0f;
+		if (c == '\n') {
+			addNewLine();
+		} else if (c == '\\') {
+			inputText = inputText.substr(1);
+			if (inputText.empty()) break;
+			c = inputText[0];
+			switch (c) {
+			case '@': {
+				size_t sp = inputText.find(' ');
+				if (sp == std::string::npos) sp = inputText.size();
+				SetPortrait(inputText.substr(1, sp - 1));
+				inputText = inputText.substr(sp);   // the space is consumed below
+				if (inputText.empty()) inputText = " ";
+				break;
+			}
+			case 'n': addNewLine(); break;
+			case 'c':
+				if (inputText.size() >= 4) {
+					color = TextColor(inputText[2] - '0');
+					inputText = inputText.substr(3);
+				}
+				break;
+			case '>': forcedNod = true; break;
+			case '.': if (!mashing()) { textPauseTimer = 10; scrollSoundTimer = 0; } break;
+			case '|': if (!mashing()) { textPauseTimer = 40; scrollSoundTimer = 0; } break;
+			default: addNewChar(c); break;
+			}
+		} else {
+			bool add = true;
+			int maxw = TextAreaWidth() * 2;
+			if (c == ' ' && inputText.size() > 1) {
+				std::string rest = inputText.substr(1);
+				size_t e = rest.find_first_of(" \n");
+				std::string word = " " + rest.substr(0, e);
+				for (const char *esc : { "\\>", "\\.", "\\|" }) replace_all(word, esc, "");
+				if (ui::text_width(word) + lineWidth > maxw) { addNewLine(); add = false; }
+			}
+			if (add) {
+				if (ui::text_width(std::string(1, c)) + lineWidth > maxw) addNewLine();
+				addNewChar(c);
+			}
+		}
+		inputText = inputText.substr(1);
 	}
 }
 
@@ -119,126 +233,123 @@ void TextBox::Update() {
 		alpha = 1;
 		break;
 	case State::Opened:
-		// Text is shown whole (no letter-by-letter roll yet).
-		if (!choices.empty()) {
-			if (choices.size() > 1) {
-				if (input::pressed(input::BTN_UP)) { choiceCursor = (choiceCursor + (int)choices.size() - 1) % (int)choices.size(); audio::play_sound("menu_cursor"); }
-				else if (input::pressed(input::BTN_DOWN)) { choiceCursor = (choiceCursor + 1) % (int)choices.size(); audio::play_sound("menu_cursor"); }
-			}
-			if (cancelChoice > 0 && cancel_pressed()) {
-				audio::play_sound("menu_cancel");
-				auto cb = choiceCallback;
-				int v = cancelChoice - 1;
-				Close();
-				if (cb) cb(v);
-			} else if (ok_pressed()) {
-				audio::play_sound("menu_decision");
-				auto cb = choiceCallback;
-				int v = choiceCursor;
-				Close();
-				if (cb) cb(v);
-			}
+		if (++cursorAnimTimer >= 32) cursorAnimTimer = 0;
+		cursorAlpha = 0.5f + (float)abs(16 - cursorAnimTimer) / 32.0f;
+		if (textPauseTimer > 0 && --textPauseTimer > 0) break;
+		if (!inputText.empty() && !forcedNod) {
+			if (input::pressed(input::BTN_OK) || input::pressed(input::BTN_CANCEL) || mashing()) RollOutAllText();
+			else ProcessInputText();
 			break;
 		}
-		if (inputNumberVar >= 0) {
-			int n = (int)digits.size();
-			if (n > 1) {
-				if (input::pressed(input::BTN_LEFT)) digitCursor = (digitCursor + n - 1) % n;
-				else if (input::pressed(input::BTN_RIGHT)) digitCursor = (digitCursor + 1) % n;
-			}
-			if (input::pressed(input::BTN_UP)) digits[digitCursor] = (digits[digitCursor] + 1) % 10;
-			else if (input::pressed(input::BTN_DOWN)) digits[digitCursor] = (digits[digitCursor] + 9) % 10;
-			if (ok_pressed()) {
-				int v = 0;
-				for (int d : digits) v = v * 10 + d;
-				state->set_var(inputNumberVar, v);
-				audio::play_sound("menu_decision");
-				Close();
-			}
-			break;
+		if (!choices.empty()) { HandleChoiceInput(); break; }
+		if (inputNumberVar >= 0) { HandleNumberInput(); break; }
+		if (input::pressed(input::BTN_OK) || input::pressed(input::BTN_CANCEL) || mashing() || showChoicesFollows) {
+			if (!forcedNod) Close();
+			else forcedNod = false;
 		}
-		if (ok_pressed() || cancel_pressed() || mashing() || showChoicesFollows) Close();
+		if (++nodTimer >= 8) { nodTimer = 0; nodIndex = (nodIndex + 1) % 4; }
 		break;
 	case State::Closed:
 		break;
 	}
 }
 
-// Strip message escape codes (\. \| \> \< \! \^ \c[n] \i[...] ...) for the
-// placeholder renderer.
-static std::string plain(const std::string &s) {
-	std::string o;
-	for (size_t i = 0; i < s.size(); i++) {
-		if (s[i] == '\\' && i + 1 < s.size()) {
-			i++;
-			if (i + 1 < s.size() && s[i + 1] == '[') {
-				size_t e = s.find(']', i);
-				if (e != std::string::npos) i = e;
-			}
-			continue;
-		}
-		o += s[i];
+void TextBox::HandleChoiceInput() {
+	using namespace input;
+	if (choices.size() > 1) {
+		bool up = pressed(BTN_UP) || (auto_trigger(BTN_UP, 20, 4) && !held(BTN_DOWN));
+		bool down = pressed(BTN_DOWN) || (auto_trigger(BTN_DOWN, 20, 4) && !held(BTN_UP));
+		if (up) { choiceCursor = (choiceCursor + (int)choices.size() - 1) % (int)choices.size(); audio::play_sound("menu_cursor"); }
+		else if (down) { choiceCursor = (choiceCursor + 1) % (int)choices.size(); audio::play_sound("menu_cursor"); }
 	}
-	return o;
+	if (cancelChoice > 0 && pressed(BTN_CANCEL)) {
+		audio::play_sound("menu_cancel");
+		auto cb = choiceCallback;
+		int v = cancelChoice - 1;
+		if (cb) cb(v);
+		Close();
+	} else if (pressed(BTN_OK)) {
+		audio::play_sound("menu_decision");
+		auto cb = choiceCallback;
+		int v = choiceCursor;
+		if (cb) cb(v);
+		Close();
+	}
 }
 
-// Greedy word wrap by measured width (window px).
-static std::vector<std::string> wrap(const std::string &s, int maxw) {
-	std::vector<std::string> out;
-	std::string line, word;
-	auto flush_word = [&]() {
-		if (word.empty()) return;
-		std::string cand = line.empty() ? word : line + " " + word;
-		if (!line.empty() && ui::text_width(cand) > maxw) { out.push_back(line); line = word; }
-		else line = cand;
-		word.clear();
-	};
-	for (char ch : s) {
-		if (ch == ' ') flush_word();
-		else if (ch == '\n') { flush_word(); out.push_back(line); line.clear(); }
-		else word += ch;
+void TextBox::HandleNumberInput() {
+	using namespace input;
+	int n = (int)digits.size();
+	bool right = pressed(BTN_RIGHT) || (auto_trigger(BTN_RIGHT, 20, 4) && !held(BTN_LEFT));
+	bool left = pressed(BTN_LEFT) || (auto_trigger(BTN_LEFT, 20, 4) && !held(BTN_RIGHT));
+	bool up = pressed(BTN_UP) || (auto_trigger(BTN_UP, 20, 4) && !held(BTN_DOWN));
+	bool down = pressed(BTN_DOWN) || (auto_trigger(BTN_DOWN, 20, 4) && !held(BTN_UP));
+	if (n > 1) {
+		if (left) { digitCursor = (digitCursor + n - 1) % n; audio::play_sound("menu_cursor"); }
+		else if (right) { digitCursor = (digitCursor + 1) % n; audio::play_sound("menu_cursor"); }
 	}
-	flush_word();
-	out.push_back(line);
-	return out;
+	if (up) { digits[digitCursor] = (digits[digitCursor] + 1) % 10; audio::play_sound("menu_cursor"); }
+	else if (down) { digits[digitCursor] = (digits[digitCursor] + 9) % 10; audio::play_sound("menu_cursor"); }
+	if (pressed(BTN_OK)) {
+		audio::play_sound("menu_decision");
+		int v = 0;
+		for (int d : digits) v = v * 10 + d;
+		state->set_var(inputNumberVar, v);
+		Close();
+	}
 }
 
 void TextBox::Draw() {
 	if (st == State::Closed) return;
-	int y = area == Area::Down ? 168 : (area == Area::Middle ? 80 : 8);
-	Rect box(8, y, 304, 64);
-	if (kind == Kind::Doc || kind == Kind::Tutorial) box = Rect(24, 24, 272, 192);
-	if (style == Style::GoldBorder || kind != Kind::Text) {
+	Rect box(boxX, boxY, boxW, boxH);
+	bool framed = style == Style::GoldBorder || kind != Kind::Text;
+	if (framed) {
 		gm::color_box(Rect(box.x + 4, box.y + 4, box.w - 8, box.h - 8), 24, 12, 30, (uint8_t)(210 * alpha));
 		ui::window_border(box, gfx::Blend::Normal, alpha);
 	}
-	bool hasPortrait = !portrait.empty() && kind == Kind::Text;
-	if (hasPortrait) {
+	if (!portrait.empty() && kind == Kind::Text) {
 		const gfx::Texture *fp = gm::texture(("facepics/" + portrait).c_str());
 		if (fp) gm::blit(fp, Vec2(box.x + box.w - 48 - 8, box.y + 8), alpha);
 	}
-	int tx = (box.x + 12) * 2, ty = (box.y + 8) * 2;
-	int maxw = (box.w - 24 - (hasPortrait ? 48 : 0)) * 2;
-	unsigned col = kind == Kind::Ed ? 0xc0e0ff : 0xffffff;
-	std::vector<std::string> lines = wrap(plain(text), maxw);
-	if (lines.size() == 1 && lines[0].empty()) lines.clear();
-	for (auto &l : lines) { ui::text(tx, ty, l, col, alpha); ty += 24; }
-	for (size_t i = 0; i < choices.size(); i++) {
-		bool sel = (int)i == choiceCursor;
-		if (sel) {
-			const gfx::Texture *cc = gm::texture(hasPortrait ? "ui/choice_cursor_w_facepic" : "ui/choice_cursor");
-			if (cc) gm::blit(cc, Vec2(tx - 4, ty), alpha, 0, gfx::Blend::Normal, 1);
-			else ui::text(tx - 14, ty, ">", 0xffff80, alpha);
-		}
-		ui::text(tx, ty, plain(choices[i]), sel ? 0xffff80 : 0xffffff, alpha);
-		ty += 24;
-	}
-	if (inputNumberVar >= 0) {
-		int x = tx;
+	int tx = (box.x + padX) * 2, ty = (box.y + padY) * 2;
+	// Number input: cursor + digits on the line after the text.
+	if (inputNumberVar >= 0 && !IsRollingText()) {
+		int cw = ui::text_width("0") + 10;
+		int y = ty + (int)lines.size() * 24 + 4;
 		for (size_t i = 0; i < digits.size(); i++) {
-			std::string d(1, (char)('0' + digits[i]));
-			ui::text(x, ty, (int)i == digitCursor ? "[" + d + "]" : " " + d + " ", (int)i == digitCursor ? 0xffff80 : 0xffffff, alpha);
-			x += ui::text_width("[0] ");
+			unsigned col = 0xffffff;
+			if (state->flag(179)) {
+				static const int map4[4] = { 4, 2, 1, 3 };
+				col = TextColor(map4[i % 4]);
+			}
+			int x = tx + (int)i * cw;
+			if ((int)i == digitCursor) gm::color_box(Rect(x / 2 - 1, y / 2 - 1, cw / 2, 11), 255, 255, 255, (uint8_t)(cursorAlpha * alpha * 90));
+			ui::text(x + 2, y, std::string(1, (char)('0' + digits[i])), col, alpha);
 		}
+	}
+	if (!choices.empty() && !IsRollingText()) {
+		int y = ty + (choiceBeginsOnLine + choiceCursor) * 24 - 2;
+		const gfx::Texture *cc = gm::texture(portrait.empty() ? "ui/choice_cursor" : "ui/choice_cursor_w_facepic");
+		if (cc) gm::blit(cc, Vec2(tx - 4, y), cursorAlpha * alpha, 0, gfx::Blend::Normal, 1);
+		else gm::color_box(Rect(tx / 2 - 2, y / 2, TextAreaWidth() + 4, 12), 255, 255, 255, (uint8_t)(cursorAlpha * alpha * 60));
+	}
+	// Text, in runs of one colour.
+	for (size_t l = 0; l < lines.size(); l++) {
+		int x = tx;
+		const auto &ln = lines[l];
+		size_t i = 0;
+		while (i < ln.size()) {
+			std::string run;
+			unsigned col = ln[i].rgb;
+			while (i < ln.size() && ln[i].rgb == col) run += ln[i++].c;
+			x += ui::text(x, ty + (int)l * 24, run, col, alpha);
+		}
+	}
+	if (!IsRollingText() && choices.empty() && inputNumberVar < 0 && (inputText.empty() || forcedNod) && st != State::Closing) {
+		static const int nod[4] = { 0, 1, 2, 1 };
+		const gfx::Texture *ar = gm::texture("ui/item_box_arrows");
+		if (ar)
+			gm::blit(ar, Vec2((box.x + box.w / 2) * 2 - 8, (box.y + box.h) * 2 - 13 + nod[nodIndex]), Rect(0, 8, 16, 8),
+			         alpha, 0, gfx::Blend::Normal, 1);
 	}
 }

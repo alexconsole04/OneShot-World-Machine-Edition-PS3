@@ -130,7 +130,7 @@ int main(int argc, const char **argv) {
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
 		bool dbg = show_overlay || tex_view;
 		if (dbg && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
-		if (dbg && input::pressed(input::BTN_MASHTEXT)) gfx::set_full_sync(!gfx::full_sync());   // L2
+		if (dbg && input::pressed(input::BTN_MASHTEXT)) gfx::set_vertex_main_memory(!gfx::vertex_main_memory());   // L2
 		if (dbg && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
 		if (dbg && input::pressed(input::BTN_L3)) map.debugLayers = (map.debugLayers + 1) % 4;
 		if (dbg && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
@@ -223,8 +223,8 @@ int main(int argc, const char **argv) {
 			              st.tex_bytes_total / 1048576.0f, pp.x, pp.y);
 			overlay::text(16, 136, 2, 0xff90ff, "rsx draw mode: %s  (R2 to cycle)", gfx::draw_mode_name());
 			static const char *layer_names[] = { "all", "no entities", "no upper layers", "base layers only" };
-			overlay::text(16, 166, 2, 0xff90ff, "L2 full sync: %s   R3 texcoords: %s   L3 layers: %s",
-			              gfx::full_sync() ? "ON" : "off", gfx::texel_coords() ? "texel" : "normalized",
+			overlay::text(16, 166, 2, 0xff90ff, "L2 vertices: %s   R3 texcoords: %s   L3 layers: %s",
+			              gfx::vertex_main_memory() ? "main mem" : "local mem", gfx::texel_coords() ? "texel" : "normalized",
 			              layer_names[map.debugLayers]);
 			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   L1+R1: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
 			overlay::text(16, 226, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");

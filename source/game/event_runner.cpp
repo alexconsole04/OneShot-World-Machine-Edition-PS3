@@ -129,6 +129,11 @@ void EventRunner::Update() {
 		waitTimer--;
 		return;
 	}
+	if (nameInput) {
+		nameInput->Update();
+		if (nameInput->IsOpen()) return;
+		nameInput.reset();
+	}
 	if (buttonInputVarId > 0) {
 		using namespace input;
 		if (!pressed(BTN_OK) && !pressed(BTN_CANCEL) && !pressed(BTN_DOWN) && !pressed(BTN_LEFT) &&
@@ -256,14 +261,22 @@ void EventRunner::Update() {
 
 void EventRunner::Draw() {
 	if (messageBox) messageBox->Draw();
+	if (nameInput) nameInput->Draw();
 	if (innerRunner) innerRunner->Draw();
+}
+
+void EventRunner::OpenNameInput() {
+	if (getenv("OSPS3_TRACE")) sys::log("event %d: name input\n", triggeringEventId);
+	PasswordInput.clear();
+	nameInput.reset(new NameInputMenu(this, state));
+	nameInput->Open();
 }
 
 void EventRunner::ensureTextBox() {
 	TextBox *tb = textBox();
 	if (!messageBox || !tb || tb->GetKind() != TextBox::Kind::Text || tb->CurrentStyle() != currentStyle ||
 	    tb->CurrentArea() != currentArea) {
-		messageBox.reset(new TextBox(state, currentStyle, currentArea));
+		messageBox.reset(new TextBox(map, currentStyle, currentArea));
 	} else {
 		messageBox->Open();
 		messageBox->ClearText();
@@ -281,7 +294,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 	if (text.empty()) return false;
 	// LanguageManager.GetMapLocString: English text is used as-is.
 	std::string low = util::lower(text);
-	auto newBox = [&](TextBox::Kind k) { messageBox.reset(new TextBox(state, currentStyle, currentArea, k)); };
+	auto newBox = [&](TextBox::Kind k) { messageBox.reset(new TextBox(map, currentStyle, currentArea, k)); };
 	if (util::starts_with(low, "@ed ")) {
 		text = text.substr(4);
 		newBox(TextBox::Kind::Ed);
@@ -350,7 +363,7 @@ bool EventRunner::commandShowChoices(const EventCommand &c) {
 	TextBox *tb = textBox();
 	if (!messageBox || !tb || tb->GetKind() != TextBox::Kind::Text || tb->CurrentStyle() != currentStyle ||
 	    tb->CurrentArea() != currentArea) {
-		messageBox.reset(new TextBox(state, currentStyle, currentArea));
+		messageBox.reset(new TextBox(map, currentStyle, currentArea));
 	} else {
 		messageBox->Open();
 		if (list.size() >= 4 || commandIndex < 2 || cmd(commandIndex - 2).code != ShowText ||

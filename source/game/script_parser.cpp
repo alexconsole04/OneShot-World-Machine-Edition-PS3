@@ -242,11 +242,7 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	t["Script.tmp_s1 = Script.py >= 14"] = flag_if([](Ctx &c) { return c.ptile().y >= 14; });
 	t["Script.tmp_s1 = Script.px > \nScript.eve_x(\"silver\")"] = flag_if([](Ctx &c) { return c.ptile().x > c.etile(63).x; });
 	t["Script.tmp_s1 = Script.px < \nScript.eve_x(\"silver\")"] = flag_if([](Ctx &c) { return c.ptile().x < c.etile(63).x; });
-	t["enter_name"] = [](Ctx &) {
-		// NameInputMenu is not ported: keep the console's user name.
-		note("name entry (not ported)", "enter_name");
-		return false;
-	};
+	t["enter_name"] = [](Ctx &c) { c.caller->OpenNameInput(); return true; };
 	t["Graphics.smooth = true"] = none;
 	t["Graphics.smooth = false"] = none;
 	t["blue_ambient\nbg 'blue_mine'\n$game_temp.footstep_sfx = \n['step_gravel']"] = [](Ctx &c) {

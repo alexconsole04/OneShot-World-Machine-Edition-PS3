@@ -71,7 +71,13 @@ static void *vp_ucode;
 static u32 fp_offset;
 static int attr_pos, attr_uv, attr_col, attr_tone;
 
-static Vertex *vb[VB_COUNT];
+static Vertex *vb[VB_COUNT];                 // active set (points into one of the two below)
+static Vertex *vb_main_mem[VB_COUNT], *vb_local_mem[VB_COUNT];
+static u32 vb_main_off[VB_COUNT], vb_local_off[VB_COUNT];
+// Vertices in main (IO-mapped) memory by default: the usual home for
+// per-frame dynamic geometry on PS3, and RPCS3 re-reads it on every draw
+// instead of trusting a cached copy of RSX local memory written by the PPU.
+static bool g_vb_main = true, g_vb_main_pending = true;
 // Static index buffer: quad q -> triangles (4q,4q+1,4q+2) (4q,4q+2,4q+3).
 // Indexed triangle lists are the path PS3 games use most, and the one RPCS3
 // handles most robustly (QUADS need on-the-fly conversion).
@@ -249,10 +255,11 @@ static void set_draw_env() {
 
 static void bind_vertex_arrays(int i) {
 	u32 base = vb_offset[i];
-	cellGcmSetVertexDataArray(ctx, attr_pos, 0, sizeof(Vertex), 2, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 0);
-	cellGcmSetVertexDataArray(ctx, attr_uv, 0, sizeof(Vertex), 2, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 8);
-	cellGcmSetVertexDataArray(ctx, attr_col, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 16);
-	cellGcmSetVertexDataArray(ctx, attr_tone, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, base + 32);
+	u8 loc = g_vb_main ? CELL_GCM_LOCATION_MAIN : CELL_GCM_LOCATION_LOCAL;
+	cellGcmSetVertexDataArray(ctx, attr_pos, 0, sizeof(Vertex), 2, CELL_GCM_VERTEX_F, loc, base + 0);
+	cellGcmSetVertexDataArray(ctx, attr_uv, 0, sizeof(Vertex), 2, CELL_GCM_VERTEX_F, loc, base + 8);
+	cellGcmSetVertexDataArray(ctx, attr_col, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, loc, base + 16);
+	cellGcmSetVertexDataArray(ctx, attr_tone, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, loc, base + 32);
 }
 
 static void bind_texture(const Texture *t) {
@@ -321,7 +328,11 @@ bool init() {
 	// The command buffer occupies the first CB_SIZE bytes of the IO area;
 	// the rest is the staging buffer the RSX copies textures from.
 	staging = (uint8_t *)host_addr + CB_SIZE;
-	staging_size = HOST_SIZE - CB_SIZE;
+	staging_size = HOST_SIZE - CB_SIZE - VB_COUNT * VB_BYTES;
+	for (int i = 0; i < VB_COUNT; i++) {
+		vb_main_mem[i] = (Vertex *)(staging + staging_size + (u32)i * VB_BYTES);
+		cellGcmAddressToOffset(vb_main_mem[i], &vb_main_off[i]);
+	}
 	cellGcmAddressToOffset(staging, &staging_offset);
 
 	videoState state;
@@ -356,8 +367,10 @@ bool init() {
 	cellGcmAddressToOffset(bump_alloc(depth_pitch * display_height, 64), &depth_offset);
 
 	for (int i = 0; i < VB_COUNT; i++) {
-		vb[i] = (Vertex *)bump_alloc(VB_BYTES, 128);
-		cellGcmAddressToOffset(vb[i], &vb_offset[i]);
+		vb_local_mem[i] = (Vertex *)bump_alloc(VB_BYTES, 128);
+		cellGcmAddressToOffset(vb_local_mem[i], &vb_local_off[i]);
+		vb[i] = g_vb_main ? vb_main_mem[i] : vb_local_mem[i];
+		vb_offset[i] = g_vb_main ? vb_main_off[i] : vb_local_off[i];
 		vb_fence_value[i] = 0;
 		*(volatile u32 *)cellGcmGetLabelAddress(LABEL_VB_FENCE + i) = 0;
 	}
@@ -488,6 +501,15 @@ void begin_frame(uint32_t clear_argb) {
 	vb_cur = (vb_cur + 1) % VB_COUNT;
 	volatile u32 *fence = (volatile u32 *)cellGcmGetLabelAddress(LABEL_VB_FENCE + vb_cur);
 	while (*fence < vb_fence_value[vb_cur]) usleep(100);
+	if (g_vb_main_pending != g_vb_main) {
+		// Switching memory: drain the RSX so no queued frame still reads the old set.
+		cellGcmFinish(ctx, ++finish_ref);
+		g_vb_main = g_vb_main_pending;
+		for (int i = 0; i < VB_COUNT; i++) {
+			vb[i] = g_vb_main ? vb_main_mem[i] : vb_local_mem[i];
+			vb_offset[i] = g_vb_main ? vb_main_off[i] : vb_local_off[i];
+		}
+	}
 	if (vb_fence_value[vb_cur] > frames_completed) frames_completed = vb_fence_value[vb_cur];
 	release_pending();
 	vb_used = 0;
@@ -622,3 +644,8 @@ Stats last_stats() { return st; }
 bool screenshot(const char *) { return false; }
 
 } // namespace gfx
+
+namespace gfx {
+void set_vertex_main_memory(bool on) { g_vb_main_pending = on; }
+bool vertex_main_memory() { return g_vb_main_pending; }
+}

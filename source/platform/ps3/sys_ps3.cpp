@@ -1,5 +1,6 @@
 // sys_ps3.cpp - PS3 implementation of sys.h.
 #include "../sys.h"
+#include <string>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,6 +67,10 @@ bool read_file(const char *rel, uint8_t **data, size_t *size) {
 	char p[1024];
 	snprintf(p, sizeof(p), "%s/%s", g_dir, rel);
 	FILE *f = fopen(p, "rb");
+	if (!f) {
+		std::string real;
+		if (resolve_case(g_dir, rel, real)) f = fopen(real.c_str(), "rb");
+	}
 	if (!f) return false;
 	fseek(f, 0, SEEK_END);
 	long n = ftell(f);
@@ -80,12 +85,9 @@ bool read_file(const char *rel, uint8_t **data, size_t *size) {
 }
 
 bool file_exists(const char *rel) {
-	char p[1024];
-	snprintf(p, sizeof(p), "%s/%s", g_dir, rel);
-	FILE *f = fopen(p, "rb");
-	if (!f) return false;
-	fclose(f);
-	return true;
+	// Directory listings are cached, so repeated checks cost no file-system calls.
+	std::string real;
+	return resolve_case(g_dir, rel, real);
 }
 
 const char *user_name() {

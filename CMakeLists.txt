@@ -24,7 +24,9 @@ add_executable(oneshot-ps3
     source/game/menus.cpp
     source/game/modal.cpp
     source/game/panorama.cpp
+    source/game/name_input.cpp
     source/platform/input_common.cpp
+    source/platform/fs_case.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/sys_ps3.cpp
     source/platform/ps3/input_ps3.cpp
