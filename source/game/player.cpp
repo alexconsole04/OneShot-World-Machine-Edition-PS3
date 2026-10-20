@@ -63,20 +63,25 @@ void Player::Update() {
 				// C#: num = -MoveStickPos.Y / 100 (XNA stick Y is up-positive);
 				// our stick_y is already down-positive, so num = sy / 100.
 				float num = (float)sy / 100.0f, num2 = (float)sx / 100.0f;
+				// PS3 port: a small margin before turning between the horizontal and
+				// vertical facings, so stick noise near 45 degrees doesn't flip Niko's
+				// sprite every frame. Movement itself is unchanged.
+				const float FACE_MARGIN = 0.08f;
+				bool facingH = direction == Direction::Left || direction == Direction::Right;
 				if (num < 0.0f && !lockDown) {
-					if (fabsf(num) > fabsf(num2)) direction = Direction::Up;
+					if (fabsf(num) > fabsf(num2) + (facingH ? FACE_MARGIN : 0.0f)) direction = Direction::Up;
 					if (!onlyLR) vel.y = (int)((run ? 512.0f : 256.0f) * num);
 				} else if (num > 0.0f) {
-					if (fabsf(num) > fabsf(num2)) direction = Direction::Down;
+					if (fabsf(num) > fabsf(num2) + (facingH ? FACE_MARGIN : 0.0f)) direction = Direction::Down;
 					if (!onlyLR) vel.y = (int)((run ? 512.0f : 256.0f) * num);
 				} else {
 					vel.y = 0;
 				}
 				if (num2 < 0.0f && !lockDown) {
-					if (fabsf(num2) > fabsf(num)) direction = Direction::Left;
+					if (fabsf(num2) > fabsf(num) + (facingH ? 0.0f : FACE_MARGIN)) direction = Direction::Left;
 					vel.x = (int)((run ? 512.0f : 256.0f) * num2);
 				} else if (num2 > 0.0f && !lockDown) {
-					if (fabsf(num2) > fabsf(num)) direction = Direction::Right;
+					if (fabsf(num2) > fabsf(num) + (facingH ? 0.0f : FACE_MARGIN)) direction = Direction::Right;
 					vel.x = (int)((run ? 512.0f : 256.0f) * num2);
 				} else {
 					vel.x = 0;

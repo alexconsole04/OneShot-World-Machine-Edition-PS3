@@ -90,7 +90,7 @@ int main(int argc, const char **argv) {
 
 	bool show_overlay = getenv("OSPS3_OVERLAY") != nullptr;
 	uint64_t last = sys::time_us();
-	float frame_ms = 16.7f, update_ms = 0, draw_ms = 0;
+	float frame_ms = 16.7f, update_ms = 0, draw_ms = 0, wait_ms = 0;
 	int frame = 0;
 
 	while (!input::quit_requested()) {
@@ -117,14 +117,15 @@ int main(int argc, const char **argv) {
 		map.Update();
 		uint64_t t1 = sys::time_us();
 
-		gfx::begin_frame(0xff000000);
+		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
+		uint64_t tb = sys::time_us();
 		map.Draw();
 		uint64_t t2 = sys::time_us();
 		if (show_overlay) {
 			gfx::Stats st = gfx::last_stats();
 			Vec2 pp = map.GetPlayer()->GetPixelPos();
 			overlay::text(16, 16, 2, 0xffffff, "map %d  frame %.2f ms (%.1f fps)", mapId, frame_ms, 1000.0f / frame_ms);
-			overlay::text(16, 46, 2, 0xc0ffc0, "update %.2f ms  draw build %.2f ms", update_ms, draw_ms);
+			overlay::text(16, 46, 2, 0xc0ffc0, "cpu: update %.2f ms  draw %.2f ms  (idle/vsync %.2f ms)", update_ms, draw_ms, wait_ms);
 			overlay::text(16, 76, 2, 0xc0e0ff, "draw calls %d  sprites %d  entities %d", st.draw_calls, st.quads, map.EntityCount());
 			overlay::text(16, 106, 2, 0xffe0a0, "vram tex %.1f / %.1f MB  niko px %d,%d", st.tex_bytes_used / 1048576.0f,
 			              st.tex_bytes_total / 1048576.0f, pp.x, pp.y);
@@ -135,7 +136,8 @@ int main(int argc, const char **argv) {
 		uint64_t now = sys::time_us();
 		frame_ms = frame_ms * 0.9f + ((now - last) / 1000.0f) * 0.1f;
 		update_ms = update_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
-		draw_ms = draw_ms * 0.9f + ((t2 - t1) / 1000.0f) * 0.1f;
+		draw_ms = draw_ms * 0.9f + ((t2 - tb) / 1000.0f) * 0.1f;
+		wait_ms = wait_ms * 0.9f + ((tb - t1) / 1000.0f) * 0.1f;
 		last = now;
 		frame++;
 		for (auto &s : shots)

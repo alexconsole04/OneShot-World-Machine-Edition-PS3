@@ -1,6 +1,7 @@
 // input_ps3.cpp - DualShock 3 via libio pad.
 #include "../input.h"
 #include <string.h>
+#include <math.h>
 #include <io/pad.h>
 #include <cell/sysutil.h>
 
@@ -19,16 +20,25 @@ void init() {
 	cellSysutilRegisterCallback(0, on_sysutil, nullptr);
 }
 
-// Map raw 0..255 stick to -100..100 with a radial-ish dead zone,
-// matching the game's MoveStickPos scale.
-static int axis(int raw) {
-	int v = raw - 128;
-	const int dead = 24;
-	if (v > -dead && v < dead) return 0;
-	int s = v > 0 ? 1 : -1;
-	int m = (v * s - dead) * 100 / (127 - dead);
-	if (m > 100) m = 100;
-	return s * m;
+// Raw pad state persists between reads: ioPadGetData() reports len == 0
+// when nothing changed since the last call, which is most frames while a
+// stick is held still. (Treating that as "centred" made Niko stutter.)
+struct RawPad { bool valid = false; padData d; };
+static RawPad raw[MAX_PADS];
+
+// Left stick -> -100..100 with a radial dead zone. The DS3 reports a square
+// range (full diagonal reads ~141%), so the vector is clamped to the unit
+// circle: equal speed in all directions, no diagonal boost.
+static void stick(const padData &d, int &ox, int &oy) {
+	float x = ((int)d.ANA_L_H - 128) / 127.0f;
+	float y = ((int)d.ANA_L_V - 128) / 127.0f;
+	float mag = sqrtf(x * x + y * y);
+	const float dead = 0.20f;
+	if (mag < dead) { ox = oy = 0; return; }
+	float scaled = (mag - dead) / (1.0f - dead);
+	if (scaled > 1.0f) scaled = 1.0f;
+	ox = (int)(x / mag * scaled * 100.0f);
+	oy = (int)(y / mag * scaled * 100.0f);
 }
 
 void update() {
@@ -39,11 +49,15 @@ void update() {
 	padInfo info;
 	ioPadGetInfo(&info);
 	for (int i = 0; i < MAX_PADS; i++) {
-		if (!info.status[i]) continue;
+		if (!info.status[i]) { raw[i].valid = false; continue; }
 		padData pd;
 		memset(&pd, 0, sizeof(pd));
 		ioPadGetData(i, &pd);
-		if (pd.len == 0) { cur |= prev; continue; }   // no new data: keep state
+		if (pd.len > 0) { raw[i].d = pd; raw[i].valid = true; }
+	}
+	for (int i = 0; i < MAX_PADS; i++) {
+		if (!raw[i].valid) continue;
+		const padData &pd = raw[i].d;
 		if (pd.BTN_DOWN) cur |= BTN_DOWN;
 		if (pd.BTN_LEFT) cur |= BTN_LEFT;
 		if (pd.BTN_RIGHT) cur |= BTN_RIGHT;
@@ -57,8 +71,7 @@ void update() {
 		if (pd.BTN_SELECT) cur |= BTN_SELECT;
 		if (pd.BTN_L1) cur |= BTN_L1;
 		if (pd.BTN_R1) cur |= BTN_R1;
-		int x = axis(pd.ANA_L_H), y = axis(pd.ANA_L_V);
-		if (x || y) { sx = x; sy = y; }
+		stick(pd, sx, sy);
 		break;   // first connected pad drives the game
 	}
 }
