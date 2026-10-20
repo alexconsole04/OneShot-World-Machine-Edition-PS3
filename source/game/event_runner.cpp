@@ -7,6 +7,7 @@
 #include "game_state.h"
 #include "pictures.h"
 #include "script_parser.h"
+#include "modal.h"
 #include "../engine/audio.h"
 #include "../engine/util.h"
 #include "../platform/input.h"
@@ -100,11 +101,14 @@ void EventRunner::skipToIndent(int indent) {
 
 void EventRunner::Update() {
 	if (waitForModalWindow) {
-		// Modal windows (EdText dialogs) are not ported; treat as answered "No".
+		if (modal::is_open()) return;
 		waitForModalWindow = false;
 		const EventCommand &c = cmd(commandIndex);
 		commandIndex++;
-		if (c.code == ConditionalBranch) conditionalBranchNavigation(c, false);
+		if (c.code == ConditionalBranch) {
+			modal::Response r = modal::last_response();
+			conditionalBranchNavigation(c, r == modal::Response::OK || r == modal::Response::Yes);
+		}
 	}
 	if (waitForMapTransition) {
 		if (map->IsChangingMap()) return;
@@ -501,8 +505,13 @@ bool EventRunner::commandScript(const EventCommand &c) {
 		text += "\n" + cmd(commandIndex).param(0);
 		commandIndex++;
 	}
-	return script::HandleScript(map, text, this, triggeringEventPageNumber);
-	// (Modal windows opened by scripts: not ported yet.)
+	bool r = script::HandleScript(map, text, this, triggeringEventPageNumber);
+	if (modal::is_open()) {
+		commandIndex--;
+		waitForModalWindow = true;
+		return true;
+	}
+	return r;
 }
 
 bool EventRunner::commandShowPicture(const EventCommand &c, bool move) {

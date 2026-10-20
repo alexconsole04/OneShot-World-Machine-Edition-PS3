@@ -58,6 +58,8 @@ public:
 	void SetNPCSheet(const std::string &sheet, int hue = 0);
 	const std::string &GetNPCSheet() const { return npcSheet; }
 	int GetCurrentPageNumber() const { return currentPageIndex; }
+	int GetFrameIndex() const { return frameIndex; }
+	void SetFrameIndex(int f) { frameIndex = f; }
 	const CommandListPtr &GetList() const { return list; }
 	Rect GetButtonPressRect() const;
 

@@ -38,6 +38,10 @@ void blit(const gfx::Texture *t, Vec2 pixelPos, float alpha = 1.0f, int hue = 0,
 void blit_scaled(const gfx::Texture *t, Vec2 windowPos, Rect src, float xScale, float yScale,
                  float alpha = 1.0f, int hue = 0, gfx::Blend blend = gfx::Blend::Normal,
                  GameTone tone = GameTone(), float red = 1.0f, float green = 1.0f, float blue = 1.0f);
+// FillScreen: tile src across the 320x240 game screen starting at pos
+// (in units of `scale`), as GraphicsManager.FillScreen.
+void fill_screen(const gfx::Texture *t, Vec2 pos, Rect src, float alpha = 1.0f, gfx::Blend blend = gfx::Blend::Normal,
+                 GameTone tone = GameTone(), int hue = 0, int scale = 2);
 // ColorBoxBlit(rect, colour, blend, scale): solid box, rect in game pixels.
 void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha,
                gfx::Blend blend = gfx::Blend::Normal, int scale = 2);

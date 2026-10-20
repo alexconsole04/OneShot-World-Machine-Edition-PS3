@@ -114,6 +114,13 @@ void blit_scaled(const gfx::Texture *t, Vec2 p, Rect src, float xs, float ys, fl
 	gfx::draw(t, OX + p.x * S, OY + p.y * S, w * S, h * S, src.x, src.y, src.w, src.h, s, blend);
 }
 
+void fill_screen(const gfx::Texture *t, Vec2 pos, Rect src, float alpha, gfx::Blend blend, GameTone tone, int hue, int scale) {
+	if (!t || src.w <= 0 || src.h <= 0) return;
+	for (int i = pos.x; i < 640 / scale; i += src.w)
+		for (int j = pos.y; j < 480 / scale; j += src.h)
+			blit(t, Vec2(i, j), src, alpha, hue, blend, scale, tone);
+}
+
 void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, gfx::Blend blend, int scale) {
 	if (r.w <= 0 || r.h <= 0) return;
 	gfx::Shade s;

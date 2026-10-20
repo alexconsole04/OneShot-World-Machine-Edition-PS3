@@ -60,4 +60,17 @@ bool file_exists(const char *rel) {
 	return true;
 }
 
+const char *user_name() {
+	const char *u = getenv("OSPS3_USER");
+	if (!u) u = getenv("USER");
+	return u && *u ? u : "Player";
+}
+
+void local_time(int *h, int *m, int *s, int *yday) {
+	time_t t = time(nullptr);
+	struct tm lt;
+	localtime_r(&t, &lt);
+	*h = lt.tm_hour; *m = lt.tm_min; *s = lt.tm_sec; *yday = lt.tm_yday + 1;
+}
+
 } // namespace sys

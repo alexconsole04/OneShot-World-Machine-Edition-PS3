@@ -4,6 +4,7 @@
 #include "../platform/gfx.h"
 #include "event_data.h"
 #include "entity.h"
+#include "panorama.h"
 #include <list>
 #include <map>
 #include <memory>
@@ -101,6 +102,16 @@ public:
 	bool AreAnyEntitiesInForcedRoutes() const;
 	void SpawnFollowers();   // FollowerManager.SpawnAllFollowers (followers not ported yet)
 	void HashedEntityCollision(Entity *e, Entity *ignoredEntity = nullptr, bool isTestCollisionEntity = false);
+	// ---- ScriptParser helpers
+	void SetCamPos(Vec2 c) { camPos = c; }
+	void EnableWrapping() { Wrapping = true; }
+	void SetBackground(const std::string &bg) { background = bg; }
+	void MovePlayerRelative(int x, int y);
+	float GetPlayerXTile() const;
+	float GetPlayerYTile() const;
+	void PixelPuzzleReset();
+	bool PixelPuzzleCheck(const uint8_t *solution, Vec2 start, Vec2 size) const;
+	bool RamPuzzleCheck() const;
 	int CommonEventCount() const { return (int)commonEvents.size(); }
 	int ParallelRunnerCount() const { return (int)parallelEventRunners.size(); }
 	bool Wrapping = false;
@@ -164,4 +175,7 @@ private:
 	// Entities removed from the map (erased events, previous map) stay alive
 	// while an event runner may still point at them (C#'s GC did this).
 	std::vector<std::unique_ptr<Entity>> retired;
+	std::string background;
+	std::unique_ptr<Panorama> panorama;
+	std::unique_ptr<Fog> fog;   // 'bg' script: a panorama drawn instead of the base layers
 };

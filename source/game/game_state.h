@@ -13,6 +13,15 @@ struct GameState {
 	std::vector<bool> inventory = std::vector<bool>(81, false);   // ItemManager.currentInventory
 	std::vector<int> followers;      // FollowerManager party (FollowerType ids)
 	std::string player_name = "Player";
+	// FastTravelManager
+	struct TravelLocation { int zone = 0, mapId = 0; int x = 0, y = 0; int direction = 2; };
+	std::vector<TravelLocation> travel_locations;
+	bool travel_enabled = true;
+	std::string journal_page;
+	int plight_timer_start = 0;          // minutes, local clock
+	bool window_maximized = false;       // "$console" / Graphics.fullscreen
+	long long play_frames = 0;           // GameSaveManager.PlayTimeFrameCount
+	long long bruteforce_start = -1;     // PlightBruteForceStartFrame (-1 = unset)
 
 	bool has_item(int id) const { return id >= 0 && id < (int)inventory.size() && inventory[id]; }
 	void add_item(int id) { if (id >= 0 && id < (int)inventory.size()) inventory[id] = true; }

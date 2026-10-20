@@ -17,6 +17,7 @@
 #include "game/player.h"
 #include "game/pictures.h"
 #include "game/menus.h"
+#include "game/modal.h"
 #include "engine/audio.h"
 
 #include <stdio.h>
@@ -70,6 +71,7 @@ int main(int argc, const char **argv) {
 	}
 
 	GameState state;
+	state.player_name = sys::user_name();
 	TileMap map(&state);
 	if (!map.LoadGlobalData()) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
 	MenuManager menus(&map, &state);
@@ -156,6 +158,8 @@ int main(int argc, const char **argv) {
 		uint64_t t0 = sys::time_us();
 		if (!tex_view) {
 			// OneshotWindow.GameLogic order.
+			modal::update();
+			state.play_frames++;
 			menus.Update();
 			menus.itemMenu.UpdateSelectedItemIcon();
 			map.Update();
@@ -179,6 +183,7 @@ int main(int argc, const char **argv) {
 			map.DrawEventRunners();
 			map.DrawMapTransition();
 			gm::clip_off();
+			modal::draw();
 		} else {
 			// Texture viewer: raw texture over a magenta/grey checkerboard so
 			// transparent texels are obvious. Integer scale, centred.

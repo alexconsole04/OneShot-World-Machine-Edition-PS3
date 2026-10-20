@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/systime.h>
+#include <cell/sysmodule.h>
+#include <cell/sysutil_userinfo.h>
+#include <cell/rtc.h>
+#include <sysutil/sysutil_common.h>
 
 #define TITLE_ID "OSWM00001"
 
@@ -82,6 +86,34 @@ bool file_exists(const char *rel) {
 	if (!f) return false;
 	fclose(f);
 	return true;
+}
+
+const char *user_name() {
+	static char name[64];
+	static bool tried;
+	if (!tried) {
+		tried = true;
+		if (cellSysmoduleLoadModule(CELL_SYSMODULE_SYSUTIL_USERINFO) == 0) {
+			CellUserInfoUserStat st;
+			memset(&st, 0, sizeof(st));
+			if (cellUserInfoGetStat(CELL_SYSUTIL_USERID_CURRENT, &st) == 0) {
+				snprintf(name, sizeof(name), "%.63s", st.name);
+				log("user name: %s\n", name);
+			}
+		}
+		if (!name[0]) strcpy(name, "Player");
+	}
+	return name;
+}
+
+void local_time(int *h, int *m, int *s, int *yday) {
+	CellRtcDateTime t;
+	memset(&t, 0, sizeof(t));
+	cellRtcGetCurrentClockLocalTime(&t);
+	*h = t.hour; *m = t.minute; *s = t.second;
+	int d = t.day;
+	for (int mo = 1; mo < t.month; mo++) d += cellRtcGetDaysInMonth(t.year, mo);
+	*yday = d;
 }
 
 } // namespace sys

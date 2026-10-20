@@ -22,6 +22,8 @@ add_executable(oneshot-ps3
     source/game/pictures.cpp
     source/game/script_parser.cpp
     source/game/menus.cpp
+    source/game/modal.cpp
+    source/game/panorama.cpp
     source/platform/input_common.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/sys_ps3.cpp
@@ -32,7 +34,7 @@ target_include_directories(oneshot-ps3 PRIVATE source third_party)
 target_compile_features(oneshot-ps3 PRIVATE cxx_std_17 c_std_11)
 target_compile_options(oneshot-ps3 PRIVATE -O2 -Wall
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti>)
-target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysmodule rt lv2 m stdc++)
+target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysutil_userinfo_stub rtc_stub sysmodule rt lv2 m stdc++)
 
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_vp.vcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_fp.fcg)

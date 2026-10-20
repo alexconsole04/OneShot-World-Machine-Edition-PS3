@@ -341,6 +341,9 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	scrollDistanceRemaining = 0;
 	scrollSpeed = 0;
 	scrollDirection = Direction::None;
+	background.clear();
+	panorama.reset();
+	fog.reset();
 	if (hadMap) gm::clear_cache(gm::Game);   // ChangeMap clears the Game cache
 	entityIDcounter = 0;
 	currentMapId = mapId;
@@ -405,7 +408,7 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 		}
 	}
 	if (tilesets.empty()) { sys::log("map %d: no tilesets\n", mapId); return false; }
-	if (!curInfo->panorama_name.empty()) sys::log("map %d: panorama '%s' (not drawn yet)\n", mapId, curInfo->panorama_name.c_str());
+	SetPanorama(curInfo->panorama_name);
 
 	const int W = mapSize.x, H = mapSize.y;
 	counterTiles.assign(W * H, false);
@@ -828,6 +831,8 @@ void TileMap::Update() {
 	UpdateCamera();
 	UpdateCommonEvents();
 	for (TileSet &ts : tilesets) ts.Update();
+	if (panorama) panorama->Update();
+	if (fog) fog->Update();
 }
 
 // ---------------------------------------------------------------- entities
@@ -845,6 +850,45 @@ void TileMap::RemoveEntity(Entity *e) {
 	if (!e->NeverHash) RemoveEntityFromHash(e);
 	retired.push_back(std::move(*it));
 	entities.erase(it);
+}
+
+void TileMap::MovePlayerRelative(int x, int y) {
+	Vec2 p = player->GetPos();
+	p.x += x * tileSize.x * 256;
+	p.y += y * tileSize.y * 256;
+	player->SetPos(p);
+	UpdateCamera();
+}
+
+float TileMap::GetPlayerXTile() const { return (float)player->GetPixelPos().x / (float)tileSize.x - 0.5f; }
+float TileMap::GetPlayerYTile() const { return (float)player->GetPixelPos().y / (float)tileSize.y - 0.5f; }
+
+void TileMap::PixelPuzzleReset() {
+	for (auto &e : entities)
+		if (e->GetName().compare(0, 6, "pixel ") == 0) state->set_self_switch(e->GetID(), "A", false);
+}
+
+bool TileMap::PixelPuzzleCheck(const uint8_t *solution, Vec2 start, Vec2 size) const {
+	for (auto &e : entities) {
+		if (e->GetName().compare(0, 6, "pixel ") != 0) continue;
+		Vec2 t = e->GetCurrentTile();
+		Vec2 v(t.x - start.x, t.y - start.y);
+		if (v.x >= 0 && v.x < size.x && v.y >= 0 && v.y < size.y)
+			if ((solution[v.x + v.y * size.x] != 0) != state->self_switch(e->GetID(), "A")) return false;
+	}
+	return true;
+}
+
+bool TileMap::RamPuzzleCheck() const {
+	static const Vec2 ok[5] = { Vec2(80, 59), Vec2(79, 63), Vec2(80, 65), Vec2(83, 59), Vec2(85, 61) };
+	for (auto &e : entities) {
+		if (e->GetName().compare(0, 8, "sokoram ") != 0) continue;
+		Vec2 t = e->GetCurrentTile();
+		bool found = false;
+		for (auto &p : ok) if (p == t) { found = true; break; }
+		if (!found) return false;
+	}
+	return true;
 }
 
 bool TileMap::AreAnyEntitiesInForcedRoutes() const {
@@ -1066,11 +1110,15 @@ void TileMap::ScreenShake(int power, int speed, int duration, bool) {
 }
 
 void TileMap::SetPanorama(const std::string &name) {
-	if (!name.empty()) sys::log("panorama '%s' requested (panoramas not drawn yet)\n", name.c_str());
+	if (name.empty()) return;
+	std::string t = "panoramas/" + name;
+	panorama.reset(new Panorama(t, gm::texture_size(t.c_str())));
 }
 
-void TileMap::SetFog(const std::string &name, int, float, gfx::Blend, int, int) {
-	if (!name.empty()) sys::log("fog '%s' requested (fogs not drawn yet)\n", name.c_str());
+void TileMap::SetFog(const std::string &name, int hue, float opacity, gfx::Blend blend, int sx, int sy) {
+	if (name.empty()) return;
+	std::string t = "fogs/" + name;
+	fog.reset(new Fog(t, gm::texture_size(t.c_str()), hue, opacity, blend, sx, sy));
 }
 
 Vec2 TileMap::GetMaxCamPos() const {
@@ -1100,6 +1148,13 @@ void TileMap::UpdateCamera() {
 void TileMap::DrawEntity(Entity *e, GameTone tone) {
 	if (debugLayers == 1 || debugLayers == 3) return;
 	e->Draw(camPos, tone);
+	if (Wrapping) {
+		Vec2 a = camPos, b = camPos;
+		a.x -= mapSize.x * tileSize.x;
+		b.x += mapSize.x * tileSize.x;
+		e->Draw(a, tone);
+		e->Draw(b, tone);
+	}
 }
 
 void TileMap::Draw() {
@@ -1121,14 +1176,20 @@ void TileMap::Draw() {
 	Vec2 zero(x, y);
 	auto node = entitiesByHeight.begin();
 
-	auto base = heightsToLayers.find(0);
-	if (base != heightsToLayers.end())
-		for (auto &l : base->second) l->Draw(tilesets, camPos, tileSize, Wrapping, tone);
+	if (panorama) panorama->Draw(camPos, player->GetPixelPos(), mapSize, tileSize, tone);
+	if (!background.empty()) {
+		gm::blit(gm::texture(("panoramas/" + background).c_str()), Vec2(-camPos.x, -camPos.y), 1.0f, 0,
+		         gfx::Blend::Normal, 2, tone);
+	} else {
+		auto base = heightsToLayers.find(0);
+		if (base != heightsToLayers.end())
+			for (auto &l : base->second) l->Draw(tilesets, camPos, tileSize, Wrapping, tone);
+	}
 
 	for (int i = n3; i <= n5 + 6; i++) {
 		int row = i;
 		if (row < 0) row += mapSize.y; else if (row >= mapSize.y) row -= mapSize.y;
-		for (int j = 1; j < 6 && j <= i - n3; j++) {
+		for (int j = 1; j < 6 && j <= i - n3 && background.empty(); j++) {
 			if (i - j > n5) continue;
 			if (debugLayers >= 2) break;
 			auto hv = heightsToLayers.find(j);
@@ -1152,6 +1213,7 @@ void TileMap::Draw() {
 		}
 	}
 	while (node != entitiesByHeight.end()) { DrawEntity(*node, tone); ++node; }
+	if (fog) fog->Draw(camPos, tone);
 
 	if (bulb > 0.0f) {
 		const gfx::Texture *lm = gm::texture("lightmaps/bulb");
