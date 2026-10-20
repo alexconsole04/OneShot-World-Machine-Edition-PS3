@@ -104,6 +104,7 @@ public:
 	int CommonEventCount() const { return (int)commonEvents.size(); }
 	int ParallelRunnerCount() const { return (int)parallelEventRunners.size(); }
 	bool Wrapping = false;
+	class MenuManager *menus = nullptr;   // set by main; Player checks IsMenuOpen
 	int debugLayers = 0;   // 0 all, 1 no entities, 2 no height layers, 3 base layers only
 	int GetMapID() const { return currentMapId; }
 	Vec2 GetCamPos() const { return camPos; }

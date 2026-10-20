@@ -2,6 +2,7 @@
 // Not yet ported: the roomba (flag 79) branch, footprints and footstep sounds.
 #include "player.h"
 #include "tilemap.h"
+#include "menus.h"
 #include "game_state.h"
 #include "../platform/input.h"
 #include <math.h>
@@ -34,7 +35,7 @@ void Player::MapChanged(int eId, float xPixel, float yPixel) {
 }
 
 bool Player::PlayerHasControl() const {
-	return !map->IsInScript() && !map->IsMapTransitioning();   // + !menu open (menus: later)
+	return !map->IsInScript() && !map->IsMapTransitioning() && !(map->menus && map->menus->IsMenuOpen());
 }
 
 void Player::NormalizeWalkRunSpeed(bool run) {

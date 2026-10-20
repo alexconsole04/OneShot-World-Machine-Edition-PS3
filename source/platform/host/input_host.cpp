@@ -34,6 +34,8 @@ void init() {
 			case 'x': b |= BTN_OK; break;
 			case 'o': b |= BTN_CANCEL; break;
 			case 's': b |= BTN_RUN; break;
+			case 'i': b |= BTN_INVENTORY; break;   // Triangle
+			case 'm': b |= BTN_MAINMENU; break;    // Start
 			case '.': break;
 			}
 			s++;
@@ -49,8 +51,9 @@ void init() {
 
 void update() {
 	prev = cur;
-	if (step_i >= steps.size()) { done = true; cur = 0; return; }
+	if (step_i >= steps.size()) { done = true; cur = 0; tick_hold_counters(cur); return; }
 	cur = steps[step_i].buttons;
+	tick_hold_counters(cur);
 	if (--step_left <= 0) {
 		step_i++;
 		if (step_i < steps.size()) step_left = steps[step_i].frames;

@@ -24,6 +24,13 @@ bool pressed(uint32_t b);      // went down this frame
 // Already dead-zoned; 0,0 when centred.
 int stick_x();
 int stick_y();
-bool quit_requested();         // PS button > Quit Game, or host script end
+bool quit_requested();
+// Frames a single button has been held (0 when up). InputManager.holdTime.
+int held_frames(uint32_t b);
+// InputManager.HoldAutoTriggerInput: true every `interval` frames once held
+// for `first` frames.
+bool auto_trigger(uint32_t b, int first, int interval);
+// Backends call this at the end of update() with the new button state.
+void tick_hold_counters(uint32_t cur);         // PS button > Quit Game, or host script end
 
 } // namespace input

@@ -4,7 +4,7 @@
 //                  Cross = OK / interact,  Circle = cancel,
 //                  SELECT = toggle debug overlay. While the overlay is shown:
 //                  L1 / R1 = previous / next map, R2/L2/R3/L3 = renderer
-//                  diagnostics, Circle = plain shader, Triangle = texture viewer.
+//                  diagnostics, Circle = plain shader, L1+R1 = texture viewer.
 // Host build: env OSPS3_DATA (data dir), OSPS3_MAP, OSPS3_SPAWN="x,y",
 //             OSPS3_INPUT (scripted buttons), OSPS3_SHOTS="frame:file.png,...".
 #include "platform/gfx.h"
@@ -16,6 +16,7 @@
 #include "game/tilemap.h"
 #include "game/player.h"
 #include "game/pictures.h"
+#include "game/menus.h"
 #include "engine/audio.h"
 
 #include <stdio.h>
@@ -71,6 +72,9 @@ int main(int argc, const char **argv) {
 	GameState state;
 	TileMap map(&state);
 	if (!map.LoadGlobalData()) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
+	MenuManager menus(&map, &state);
+	menus.itemMenu.LoadData();
+	map.menus = &menus;
 
 	int mapId = NEW_GAME_MAP;
 	float sx = NEW_GAME_X, sy = NEW_GAME_Y;
@@ -87,6 +91,8 @@ int main(int argc, const char **argv) {
 			while (*p && *p != ',') p++;
 			if (*p) p++;
 		}
+	if (const char *it = getenv("OSPS3_ITEMS"))  // host testing: "3,4"
+		for (const char *p = it; *p; ) { state.add_item(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
 	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
 	if (!map.LoadMap(mapId, sx, sy, Direction::Down)) { fatal_screen("Could not load the start map."); return 0; }
 	// The player starts without a sprite; the intro's "change party member"
@@ -126,10 +132,11 @@ int main(int argc, const char **argv) {
 		if (dbg && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
 		if (dbg && input::pressed(input::BTN_L3)) map.debugLayers = (map.debugLayers + 1) % 4;
 		if (dbg && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
-		if (dbg && input::pressed(input::BTN_INVENTORY)) tex_view = !tex_view;                         // Triangle
+		if (dbg && input::pressed(input::BTN_R1) && input::held(input::BTN_L1)) tex_view = !tex_view;  // L1+R1
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
 		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
-		if (dbg && (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1))) {
+		if (dbg && !(input::held(input::BTN_L1) && input::held(input::BTN_R1)) &&
+		    (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1))) {
 			int dir = input::pressed(input::BTN_R1) ? 1 : -1;
 			int next = mapId;
 			for (int tries = 0; tries < 400; tries++) {
@@ -149,6 +156,8 @@ int main(int argc, const char **argv) {
 		uint64_t t0 = sys::time_us();
 		if (!tex_view) {
 			// OneshotWindow.GameLogic order.
+			menus.Update();
+			menus.itemMenu.UpdateSelectedItemIcon();
 			map.Update();
 			map.EventRunnerUpdate();
 			pictures().Update();
@@ -163,6 +172,8 @@ int main(int argc, const char **argv) {
 			// OneshotWindow.PreDraw order.
 			gm::clip_to_window();
 			map.Draw();
+			menus.itemMenu.DrawSelectedItemIcon();
+			menus.Draw();
 			pictures().Draw();
 			flash().Draw();
 			map.DrawEventRunners();
@@ -192,7 +203,7 @@ int main(int argc, const char **argv) {
 					}
 				gfx::Shade s;
 				gm::blit_screen(t, x0, y0, w, h, Rect(0, 0, (int)t->w, (int)t->h), s);
-				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   Triangle: close",
+				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   L1+R1: close",
 				              i + 1, n, names[i], t->w, t->h);
 			}
 		}
@@ -210,7 +221,7 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 166, 2, 0xff90ff, "L2 full sync: %s   R3 texcoords: %s   L3 layers: %s",
 			              gfx::full_sync() ? "ON" : "off", gfx::texel_coords() ? "texel" : "normalized",
 			              layer_names[map.debugLayers]);
-			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   Triangle: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
+			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   L1+R1: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
 			overlay::text(16, 226, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),

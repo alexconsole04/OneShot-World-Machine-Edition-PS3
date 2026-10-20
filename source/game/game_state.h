@@ -10,13 +10,13 @@ struct GameState {
 	// key: mapId * 100000 + eventId, then per-letter bitmask A..D
 	std::unordered_map<long long, int> self_switches;
 	int map_id = 0;
-	std::vector<int> items;          // ItemManager inventory, in pickup order
+	std::vector<bool> inventory = std::vector<bool>(81, false);   // ItemManager.currentInventory
 	std::vector<int> followers;      // FollowerManager party (FollowerType ids)
 	std::string player_name = "Player";
 
-	bool has_item(int id) const { for (int i : items) if (i == id) return true; return false; }
-	void add_item(int id) { if (!has_item(id)) items.push_back(id); }
-	void remove_item(int id) { for (size_t i = 0; i < items.size(); i++) if (items[i] == id) { items.erase(items.begin() + i); return; } }
+	bool has_item(int id) const { return id >= 0 && id < (int)inventory.size() && inventory[id]; }
+	void add_item(int id) { if (id >= 0 && id < (int)inventory.size()) inventory[id] = true; }
+	void remove_item(int id) { if (id >= 0 && id < (int)inventory.size()) inventory[id] = false; }
 	bool has_follower(int f) const { for (int i : followers) if (i == f) return true; return false; }
 
 	bool flag(int id) const { return id >= 0 && id < (int)flags.size() && flags[id]; }

@@ -77,6 +77,7 @@ void update() {
 		stick(pd, sx, sy);
 		break;   // first connected pad drives the game
 	}
+	tick_hold_counters(cur);
 }
 
 bool held(uint32_t b) { return (cur & b) != 0; }

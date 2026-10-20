@@ -2,6 +2,7 @@
 #include "game_state.h"
 #include "../engine/gm.h"
 #include "../engine/overlay.h"
+#include "../engine/ui.h"
 #include "../engine/audio.h"
 #include "../platform/input.h"
 #include <stdlib.h>
@@ -181,69 +182,63 @@ static std::string plain(const std::string &s) {
 	return o;
 }
 
-// Greedy word wrap to `cols` characters.
-static std::string wrap(const std::string &s, int cols) {
-	std::string out, line, word;
+// Greedy word wrap by measured width (window px).
+static std::vector<std::string> wrap(const std::string &s, int maxw) {
+	std::vector<std::string> out;
+	std::string line, word;
 	auto flush_word = [&]() {
 		if (word.empty()) return;
-		if (!line.empty() && (int)(line.size() + 1 + word.size()) > cols) { out += line + "\n"; line.clear(); }
-		line += (line.empty() ? "" : " ") + word;
+		std::string cand = line.empty() ? word : line + " " + word;
+		if (!line.empty() && ui::text_width(cand) > maxw) { out.push_back(line); line = word; }
+		else line = cand;
 		word.clear();
 	};
-	for (char c : s) {
-		if (c == ' ') flush_word();
-		else if (c == '\n') { flush_word(); out += line + "\n"; line.clear(); }
-		else word += c;
+	for (char ch : s) {
+		if (ch == ' ') flush_word();
+		else if (ch == '\n') { flush_word(); out.push_back(line); line.clear(); }
+		else word += ch;
 	}
 	flush_word();
-	out += line;
+	out.push_back(line);
 	return out;
 }
 
 void TextBox::Draw() {
 	if (st == State::Closed) return;
-	// Game-pixel box (320x240 space).
-	Rect box(8, 168, 304, 64);
-	if (area == Area::Up) box.y = 8;
-	else if (area == Area::Middle) box.y = 88;
+	int y = area == Area::Down ? 168 : (area == Area::Middle ? 80 : 8);
+	Rect box(8, y, 304, 64);
 	if (kind == Kind::Doc || kind == Kind::Tutorial) box = Rect(24, 24, 272, 192);
-	uint8_t a = (uint8_t)(alpha * 235);
 	if (style == Style::GoldBorder || kind != Kind::Text) {
-		uint8_t ba = (uint8_t)(alpha * 255);
-		gm::color_box(Rect(box.x - 1, box.y - 1, box.w + 2, 1), 200, 160, 60, ba);
-		gm::color_box(Rect(box.x - 1, box.y + box.h, box.w + 2, 1), 200, 160, 60, ba);
-		gm::color_box(Rect(box.x - 1, box.y, 1, box.h), 200, 160, 60, ba);
-		gm::color_box(Rect(box.x + box.w, box.y, 1, box.h), 200, 160, 60, ba);
-		gm::color_box(box, 20, 14, 30, a);
+		gm::color_box(Rect(box.x + 4, box.y + 4, box.w - 8, box.h - 8), 24, 12, 30, (uint8_t)(210 * alpha));
+		ui::window_border(box, gfx::Blend::Normal, alpha);
 	}
-	if (alpha < 1.0f) return;
-	float S = gm::window_scale();
-	Vec2 o = gm::window_origin();
-	float x = o.x + (box.x * 2 + 12) * S, y = o.y + (box.y * 2 + 10) * S;
-	float ts = 2.0f * S;   // stb_easy_font is ~6px/char
-	if (!portrait.empty()) {
-		overlay::text_plain(x, y, S * 1.5f, 0xffd070, ("[" + portrait + "]").c_str());
-		y += 12 * S * 1.5f;
+	bool hasPortrait = !portrait.empty() && kind == Kind::Text;
+	if (hasPortrait) {
+		const gfx::Texture *fp = gm::texture(("facepics/" + portrait).c_str());
+		if (fp) gm::blit(fp, Vec2(box.x + box.w - 48 - 8, box.y + 8), alpha);
 	}
-	int cols = (int)((box.w * 2 - 24) / (6.0f * 2.0f));
-	std::string body = wrap(plain(text), cols);
+	int tx = (box.x + 12) * 2, ty = (box.y + 8) * 2;
+	int maxw = (box.w - 24 - (hasPortrait ? 48 : 0)) * 2;
 	unsigned col = kind == Kind::Ed ? 0xc0e0ff : 0xffffff;
-	overlay::text_plain(x, y, ts, col, body.c_str());
-	int lines = 1;
-	for (char c : body) lines += c == '\n';
-	y += lines * 10 * ts;
+	std::vector<std::string> lines = wrap(plain(text), maxw);
+	if (lines.size() == 1 && lines[0].empty()) lines.clear();
+	for (auto &l : lines) { ui::text(tx, ty, l, col, alpha); ty += 24; }
 	for (size_t i = 0; i < choices.size(); i++) {
-		std::string c = ((int)i == choiceCursor ? "> " : "  ") + plain(choices[i]);
-		overlay::text_plain(x, y, ts, (int)i == choiceCursor ? 0xffff80 : 0xc0c0c0, c.c_str());
-		y += 10 * ts;
+		bool sel = (int)i == choiceCursor;
+		if (sel) {
+			const gfx::Texture *cc = gm::texture(hasPortrait ? "ui/choice_cursor_w_facepic" : "ui/choice_cursor");
+			if (cc) gm::blit(cc, Vec2(tx - 4, ty), alpha, 0, gfx::Blend::Normal, 1);
+			else ui::text(tx - 14, ty, ">", 0xffff80, alpha);
+		}
+		ui::text(tx, ty, plain(choices[i]), sel ? 0xffff80 : 0xffffff, alpha);
+		ty += 24;
 	}
 	if (inputNumberVar >= 0) {
-		std::string d;
+		int x = tx;
 		for (size_t i = 0; i < digits.size(); i++) {
-			if ((int)i == digitCursor) d += "[";
-			d += (char)('0' + digits[i]);
-			if ((int)i == digitCursor) d += "]";
+			std::string d(1, (char)('0' + digits[i]));
+			ui::text(x, ty, (int)i == digitCursor ? "[" + d + "]" : " " + d + " ", (int)i == digitCursor ? 0xffff80 : 0xffffff, alpha);
+			x += ui::text_width("[0] ");
 		}
-		overlay::text_plain(x, y, ts, 0xffff80, d.c_str());
 	}
 }

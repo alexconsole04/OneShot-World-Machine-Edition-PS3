@@ -12,6 +12,7 @@ add_executable(oneshot-ps3
     source/engine/overlay.cpp
     source/engine/util.cpp
     source/engine/audio.cpp
+    source/engine/ui.cpp
     source/game/event_data.cpp
     source/game/entity.cpp
     source/game/player.cpp
@@ -20,6 +21,8 @@ add_executable(oneshot-ps3
     source/game/message_box.cpp
     source/game/pictures.cpp
     source/game/script_parser.cpp
+    source/game/menus.cpp
+    source/platform/input_common.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/sys_ps3.cpp
     source/platform/ps3/input_ps3.cpp
