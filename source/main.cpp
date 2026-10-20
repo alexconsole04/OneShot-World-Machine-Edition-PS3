@@ -215,6 +215,7 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
+			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)", state.var(55));
 		}
 		gfx::end_frame();
 
