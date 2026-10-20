@@ -74,6 +74,7 @@ public:
 	bool IsInScript() const { return false; }      // interpreter: next milestone
 	bool IsMapTransitioning() const { return false; }
 	bool Wrapping = false;
+	int debugLayers = 0;   // 0 all, 1 no entities, 2 no height layers, 3 base layers only
 	int GetMapID() const { return currentMapId; }
 	Vec2 GetCamPos() const { return camPos; }
 	int EntityCount() const { return (int)entities.size(); }

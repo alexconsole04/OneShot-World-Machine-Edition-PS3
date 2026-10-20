@@ -63,6 +63,12 @@ Stats last_stats();
 void set_draw_mode(int mode);
 int draw_mode();
 const char *draw_mode_name();
+// Debug: wait for the RSX to finish every frame (no CPU/GPU overlap).
+void set_full_sync(bool on);
+bool full_sync();
+// Debug: texture coordinates normalized (false) or in texels (true).
+void set_texel_coords(bool on);
+bool texel_coords();
 
 // Host only: write the last presented frame to a PNG (no-op on PS3).
 bool screenshot(const char *path);

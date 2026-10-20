@@ -70,6 +70,7 @@ static Vertex *vb[VB_COUNT];
 // handles most robustly (QUADS need on-the-fly conversion).
 static const u32 MAX_QUADS = VB_BYTES / (4 * sizeof(Vertex));
 static u32 ib_offset;
+static bool g_full_sync = false, g_texel_coords = false;
 static int g_draw_mode = 2;   // quads, <=256 vertices per draw (best in RPCS3 testing so far)
 static u32 vb_offset[VB_COUNT];
 static u32 vb_fence_value[VB_COUNT];
@@ -249,7 +250,7 @@ static void bind_vertex_arrays(int i) {
 static void bind_texture(const Texture *t) {
 	CellGcmTexture tx;
 	memset(&tx, 0, sizeof(tx));
-	tx.format = CELL_GCM_TEXTURE_A8R8G8B8 | CELL_GCM_TEXTURE_LN | CELL_GCM_TEXTURE_NR;
+	tx.format = CELL_GCM_TEXTURE_A8R8G8B8 | CELL_GCM_TEXTURE_LN | (g_texel_coords ? CELL_GCM_TEXTURE_UN : CELL_GCM_TEXTURE_NR);
 	tx.mipmap = 1;
 	tx.dimension = CELL_GCM_TEXTURE_DIMENSION_2;
 	tx.cubemap = CELL_GCM_FALSE;
@@ -495,7 +496,7 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	const float sxn = 2.0f / display_width, syn = 2.0f / display_height;
 	float l = dx * sxn - 1.0f, r = (dx + dw) * sxn - 1.0f;
 	float tp = 1.0f - dy * syn, bt = 1.0f - (dy + dh) * syn;
-	float iu = 1.0f / t->w, iv = 1.0f / t->h;
+	float iu = g_texel_coords ? 1.0f : 1.0f / t->w, iv = g_texel_coords ? 1.0f : 1.0f / t->h;
 	float u0 = sx * iu, u1 = (sx + sw) * iu, v0 = sy * iv, v1 = (sy + sh) * iv;
 	auto c8 = [](float f) { return (uint8_t)(f <= 0 ? 0 : f >= 1 ? 255 : (int)(f * 255.0f + 0.5f)); };
 	uint8_t cr = c8(s.r), cg = c8(s.g), cb = c8(s.b), ca = c8(s.a);
@@ -523,6 +524,7 @@ void end_frame() {
 	while (qid < 0) { usleep(1000); qid = cellGcmSetPrepareFlip(ctx, (u8)g_frame_index); }
 	cellGcmSetWriteBackEndLabel(ctx, LABEL_PREPARED_BUFFER_OFFSET, (g_frame_index << 8) | (u32)qid);
 	cellGcmFlush(ctx);
+	if (g_full_sync) cellGcmFinish(ctx, ++finish_ref);   // debug: no CPU/GPU overlap at all
 	while (ppu_too_fast()) usleep(1000);
 
 	set_draw_env();
@@ -555,6 +557,11 @@ const char *draw_mode_name() {
 	static const char *n[] = { "indexed tris", "quads", "quads <=64/draw" };
 	return n[g_draw_mode];
 }
+
+void set_full_sync(bool on) { g_full_sync = on; }
+bool full_sync() { return g_full_sync; }
+void set_texel_coords(bool on) { flush_batch(); g_texel_coords = on; }
+bool texel_coords() { return g_texel_coords; }
 
 Stats last_stats() { return st; }
 bool screenshot(const char *) { return false; }

@@ -86,6 +86,8 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 			shade::RGBA c = { ((p >> 16) & 255) / 255.0f, ((p >> 8) & 255) / 255.0f,
 			                  (p & 255) / 255.0f, (p >> 24) / 255.0f };
 			c = shade::apply(c, s.r, s.g, s.b, s.a, tr, tg, tb, hue);
+			if (getenv("OSPS3_NOBLEND")) { c.a = 1.0f; blend = Blend::Normal; }   // debug: emulate blending disabled
+			if (getenv("OSPS3_PARTIAL") && c.a > 0.0f) c.a = 1.0f;                  // debug: partial alpha -> opaque
 			if (c.a <= 0.0f) continue;
 			uint32_t &d = fb[y * W + x];
 			float dr = ((d >> 16) & 255) / 255.0f, dg = ((d >> 8) & 255) / 255.0f, db = (d & 255) / 255.0f;
@@ -116,6 +118,11 @@ void clip_off() { clip_x0 = 0; clip_y0 = 0; clip_x1 = W; clip_y1 = H; }
 void set_draw_mode(int) {}
 int draw_mode() { return 0; }
 const char *draw_mode_name() { return "software"; }
+
+void set_full_sync(bool) {}
+bool full_sync() { return false; }
+void set_texel_coords(bool) {}
+bool texel_coords() { return false; }
 
 Stats last_stats() { return st; }
 

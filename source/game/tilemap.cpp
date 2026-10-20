@@ -769,7 +769,10 @@ void TileMap::UpdateCamera() {
 }
 
 // ---------------------------------------------------------------- draw (TileMapManager.Draw)
-void TileMap::DrawEntity(Entity *e, GameTone tone) { e->Draw(camPos, tone); }
+void TileMap::DrawEntity(Entity *e, GameTone tone) {
+	if (debugLayers == 1 || debugLayers == 3) return;
+	e->Draw(camPos, tone);
+}
 
 void TileMap::Draw() {
 	float bulb = (float)bulbLightTimer / 120.0f;
@@ -799,6 +802,7 @@ void TileMap::Draw() {
 		if (row < 0) row += mapSize.y; else if (row >= mapSize.y) row -= mapSize.y;
 		for (int j = 1; j < 6 && j <= i - n3; j++) {
 			if (i - j > n5) continue;
+			if (debugLayers >= 2) break;
 			auto hv = heightsToLayers.find(j);
 			if (hv == heightsToLayers.end()) continue;
 			Vec2 dp = zero;
