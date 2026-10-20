@@ -463,6 +463,19 @@ void end_frame() {
 	st.tex_bytes_total = heap_total;
 }
 
+void set_clip(int x, int y, int w, int h) {
+	flush_batch();
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (w < 0) w = 0;
+	if (h < 0) h = 0;
+	rsxSetScissor(ctx, (u16)x, (u16)y, (u16)w, (u16)h);
+}
+void clip_off() {
+	flush_batch();
+	rsxSetScissor(ctx, 0, 0, display_width, display_height);
+}
+
 Stats last_stats() { return st; }
 bool screenshot(const char *) { return false; }
 

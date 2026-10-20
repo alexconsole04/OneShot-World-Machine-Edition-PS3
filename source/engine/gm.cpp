@@ -92,6 +92,11 @@ void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect
 	gfx::draw(t, x, y, w, h, src.x, src.y, src.w, src.h, s, blend);
 }
 
+void clip_to_window() {
+	gfx::set_clip((int)(OX + 0.5f), (int)(OY + 0.5f), (int)(640.0f * S + 0.5f), (int)(480.0f * S + 0.5f));
+}
+void clip_off() { gfx::clip_off(); }
+
 const gfx::Texture *white() { return white_tex; }
 float window_scale() { return S; }
 Vec2 window_origin() { return Vec2((int)OX, (int)OY); }

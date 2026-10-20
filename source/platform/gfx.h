@@ -46,6 +46,12 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
           int sx, int sy, int sw, int sh, const Shade &s, Blend blend);
 void end_frame();
 
+// Clip subsequent draws to a screen rect (hardware scissor on RSX).
+// clip_off() restores the full screen. Mirrors the PC version drawing the
+// game into a 640x480 window texture that clips at its edges.
+void set_clip(int x, int y, int w, int h);
+void clip_off();
+
 struct Stats {
 	int draw_calls;   // GPU draw calls issued last frame
 	int quads;        // sprites submitted last frame

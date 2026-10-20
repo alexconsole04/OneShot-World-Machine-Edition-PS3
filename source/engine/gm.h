@@ -36,6 +36,10 @@ void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect
                  const gfx::Shade &s, gfx::Blend blend = gfx::Blend::Normal);
 const gfx::Texture *white();   // 1x1 white texture for boxes/text
 
+// Clip drawing to the 640x480 OneShot window / back to full screen.
+void clip_to_window();
+void clip_off();
+
 float window_scale();          // TV pixels per window pixel (1.5 at 720p)
 Vec2 window_origin();          // TV position of the window's top-left
 

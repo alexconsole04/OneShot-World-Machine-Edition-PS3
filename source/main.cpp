@@ -119,7 +119,9 @@ int main(int argc, const char **argv) {
 
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
 		uint64_t tb = sys::time_us();
+		gm::clip_to_window();
 		map.Draw();
+		gm::clip_off();
 		uint64_t t2 = sys::time_us();
 		if (show_overlay) {
 			gfx::Stats st = gfx::last_stats();

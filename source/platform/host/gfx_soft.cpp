@@ -20,6 +20,7 @@ static std::vector<uint32_t> fb;     // 0x00RRGGBB
 static std::vector<uint32_t> shown;  // last completed frame
 static Stats st, cur;
 static uint32_t tex_used;
+static int clip_x0 = 0, clip_y0 = 0, clip_x1 = W, clip_y1 = H;
 
 bool init() {
 	fb.assign(W * H, 0);
@@ -47,6 +48,7 @@ void destroy_texture(Texture *t) {
 
 void begin_frame(uint32_t clear_argb) {
 	for (auto &p : fb) p = clear_argb & 0xffffff;
+	clip_off();
 	cur = Stats{};
 	cur.draw_calls = 0;
 }
@@ -65,10 +67,10 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	// Pixel centres inside [dx, dx+dw) x [dy, dy+dh), like the rasteriser.
 	int x0 = (int)ceilf(dx - 0.5f), x1 = (int)ceilf(dx + dw - 0.5f);
 	int y0 = (int)ceilf(dy - 0.5f), y1 = (int)ceilf(dy + dh - 0.5f);
-	if (x0 < 0) x0 = 0;
-	if (y0 < 0) y0 = 0;
-	if (x1 > W) x1 = W;
-	if (y1 > H) y1 = H;
+	if (x0 < clip_x0) x0 = clip_x0;
+	if (y0 < clip_y0) y0 = clip_y0;
+	if (x1 > clip_x1) x1 = clip_x1;
+	if (y1 > clip_y1) y1 = clip_y1;
 	const uint32_t *px = (const uint32_t *)t->mem;
 	const float hue = s.hue * (3.14159265f / 180.0f);
 	const float tr = s.tone_r / 255.0f, tg = s.tone_g / 255.0f, tb = s.tone_b / 255.0f;
@@ -104,6 +106,12 @@ void end_frame() {
 	st.tex_bytes_total = 0;
 	batch_tex = nullptr;
 }
+
+void set_clip(int x, int y, int w, int h) {
+	clip_x0 = x < 0 ? 0 : x; clip_y0 = y < 0 ? 0 : y;
+	clip_x1 = x + w > W ? W : x + w; clip_y1 = y + h > H ? H : y + h;
+}
+void clip_off() { clip_x0 = 0; clip_y0 = 0; clip_x1 = W; clip_y1 = H; }
 
 Stats last_stats() { return st; }
 
