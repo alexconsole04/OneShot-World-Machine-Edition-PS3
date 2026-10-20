@@ -1,0 +1,22 @@
+// sprite_fp.fcg - sprite fragment program. Must match source/platform/shade_math.h.
+void main(
+	float2 in_texcoord    : TEXCOORD0,
+	float4 in_color       : TEXCOORD1,
+	float4 in_tone        : TEXCOORD2,
+	float2 in_hue         : TEXCOORD3,
+	uniform sampler2D tex : TEXUNIT0,
+	out float4 out_color  : COLOR)
+{
+	float4 c = tex2D(tex, in_texcoord) * in_color;
+
+	// Hue rotation about the grey axis (identity when angle = 0: cos 1, sin 0).
+	float cs = in_hue.x, sn = in_hue.y;
+	float k = (1.0f - cs) / 3.0f;
+	float q = 0.57735026f * sn;
+	float3 rgb;
+	rgb.r = c.r * (cs + k) + c.g * (k - q) + c.b * (k + q);
+	rgb.g = c.r * (k + q) + c.g * (cs + k) + c.b * (k - q);
+	rgb.b = c.r * (k - q) + c.g * (k + q) + c.b * (cs + k);
+
+	out_color = float4(saturate(rgb + in_tone.rgb), c.a);
+}

@@ -1,0 +1,21 @@
+// sprite_vp.vcg - sprite vertex program.
+// Positions arrive already in NDC (CPU does the 2D transform). The hue
+// angle's cos/sin are computed here once per vertex so the fragment
+// program doesn't evaluate trig per pixel.
+void main(
+	float2 in_position      : POSITION,
+	float2 in_texcoord      : TEXCOORD0,
+	float4 in_color         : TEXCOORD1,   // RGBA8 normalised (UB attribute)
+	float4 in_tone          : TEXCOORD2,   // rgb tone (-1..1), w = hue (radians)
+	out float4 out_position : POSITION,
+	out float2 out_texcoord : TEXCOORD0,
+	out float4 out_color    : TEXCOORD1,
+	out float4 out_tone     : TEXCOORD2,
+	out float2 out_hue      : TEXCOORD3)
+{
+	out_position = float4(in_position.x, in_position.y, 0.0f, 1.0f);
+	out_texcoord = in_texcoord;
+	out_color    = in_color;
+	out_tone     = in_tone;
+	out_hue      = float2(cos(in_tone.w), sin(in_tone.w));
+}
