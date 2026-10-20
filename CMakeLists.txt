@@ -10,10 +10,16 @@ add_executable(oneshot-ps3
     source/engine/gm.cpp
     source/engine/xml.cpp
     source/engine/overlay.cpp
+    source/engine/util.cpp
+    source/engine/audio.cpp
     source/game/event_data.cpp
     source/game/entity.cpp
     source/game/player.cpp
     source/game/tilemap.cpp
+    source/game/event_runner.cpp
+    source/game/message_box.cpp
+    source/game/pictures.cpp
+    source/game/script_parser.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/sys_ps3.cpp
     source/platform/ps3/input_ps3.cpp

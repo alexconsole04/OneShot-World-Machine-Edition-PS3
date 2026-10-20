@@ -4,6 +4,8 @@
 #include "tilemap.h"
 #include "player.h"
 #include "game_state.h"
+#include "event_runner.h"
+#include "pictures.h"
 #include "../engine/gm.h"
 #include "../engine/xml.h"
 #include "../platform/sys.h"
@@ -268,7 +270,7 @@ struct TileMap::MapLine {
 
 // ======================================================================= TileMap
 TileMap::TileMap(GameState *s) : state(s) {}
-TileMap::~TileMap() = default;
+TileMap::~TileMap() = default;   // out of line: EventRunner is incomplete in the header
 
 static std::vector<uint8_t> json_bytes(const cJSON *arr) {
 	std::vector<uint8_t> v;
@@ -300,6 +302,13 @@ bool TileMap::LoadGlobalData() {
 	}
 	cJSON_Delete(root);
 	sys::log("loaded %d tileset infos\n", (int)tilesetInfos.size());
+	std::vector<CommonEvent> ces;
+	if (load_common_events("gamedata/oneshot_common_events.json", ces)) {
+		for (auto &ce : ces) commonEvents[ce.id] = std::move(ce);
+		sys::log("loaded %d common events\n", (int)commonEvents.size());
+	} else {
+		sys::log("WARNING: gamedata/oneshot_common_events.json missing - common events disabled\n");
+	}
 	return true;
 }
 
@@ -315,12 +324,23 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	entitiesById.clear();
 	mapLines.clear();
 	hashedMapLines.clear();
-	// Keep the player object across maps (C# reuses it); drop the rest.
+	// Keep the player object across maps (C# reuses it). The rest are retired,
+	// not deleted: this can run from inside an entity's Update or an event
+	// that still refers to its triggering entity.
+	wasMapChangedDuringUpdate = true;
 	std::unique_ptr<Entity> keepPlayer;
-	for (auto &e : entities)
+	for (auto &e : entities) {
 		if (e.get() == player) keepPlayer = std::move(e);
+		else retired.push_back(std::move(e));
+	}
 	entities.clear();
+	entitiesToKill.clear();
+	for (Entity *e : entitiesToSpawn) delete e;
+	entitiesToSpawn.clear();
 	eventFile.reset();
+	scrollDistanceRemaining = 0;
+	scrollSpeed = 0;
+	scrollDirection = Direction::None;
 	if (hadMap) gm::clear_cache(gm::Game);   // ChangeMap clears the Game cache
 	entityIDcounter = 0;
 	currentMapId = mapId;
@@ -462,6 +482,12 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	camFocusEntity = player;
 	AddEntity(keepPlayer.release());   // AddEntity takes ownership
 
+	for (auto &pr : parallelEventRunners)
+		if (pr.first < 10000) pr.second->KeepAlive = false;
+	SpawnFollowers();
+	for (size_t i = 0; i < entities.size(); i++)
+		if (entities[i]->eventTrigger == Entity::EventTrigger::ParallelProcess) entities[i]->Update();
+
 	UpdateCamera();
 	int nlayers = 0;
 	for (auto &kv : heightsToLayers) nlayers += (int)kv.second.size();
@@ -593,7 +619,7 @@ void TileMap::HashEntities() {
 	}
 }
 
-void TileMap::HashedEntityCollision(Entity *e) {
+void TileMap::HashedEntityCollision(Entity *e, Entity *ignored, bool isTest) {
 	Vec2 pos = e->GetPos();
 	int key = (pos.y / 256 / hashTileSize.y) * hashMapSize.x + (pos.x / 256 / hashTileSize.x);
 	struct EWD { Entity *e; int d; };
@@ -602,13 +628,13 @@ void TileMap::HashedEntityCollision(Entity *e) {
 	auto it = hashedEntities.find(key);
 	if (it != hashedEntities.end())
 		for (Entity *o : it->second)
-			if (o != e && !o->IgnoreNpcCollision() && o->Active() && n < 64) {
+			if (o != e && o != ignored && !o->IgnoreNpcCollision() && o->Active() && n < 64) {
 				Vec2 p2 = o->GetPos();
 				buf[n++] = { o, iabs(pos.x - p2.x) + iabs(pos.y - p2.y) };
 			}
 	std::stable_sort(buf, buf + n, [](const EWD &a, const EWD &b) { return a.d < b.d; });
 	for (int i = 0; i < n; i++) {
-		if (buf[i].e->IsPlayer() && e->GetVel().x == 0 && e->GetVel().y == 0)
+		if (buf[i].e->IsPlayer() && e->GetVel().x == 0 && e->GetVel().y == 0 && !isTest)
 			buf[i].e->EntityCollision(e);
 		else
 			e->EntityCollision(buf[i].e);
@@ -730,19 +756,321 @@ void TileMap::TileCollision(Rect tc, Entity *entity, int tileX, int tileY, bool 
 
 // ---------------------------------------------------------------- update / camera
 void TileMap::Update() {
+	wasMapChangedDuringUpdate = false;
+	if (shakeDuration > 0 || shakeOffset != 0.0f) {
+		float step = (float)(shakePower * shakeSpeed * shakeDirection) / 10.0f;
+		if (shakeDuration <= 0 && fabsf(shakeOffset) < fabsf(step)) shakeOffset = 0.0f;
+		else shakeOffset += step;
+		if (shakeOffset > (float)(shakePower * 2)) shakeDirection = -1;
+		else if (shakeOffset < (float)(-shakePower * 2)) shakeDirection = 1;
+		if (shakeDuration > 0) shakeDuration--;
+		else shakeDuration = 0;
+	}
+	if (state->has_item(1)) {   // lightbulb
+		if (++bulbLightTimer > 120) bulbLightTimer = 120;
+	} else if (--bulbLightTimer < 0) {
+		bulbLightTimer = 0;
+	}
+	if (screenToneShiftTotalTime > 0) {
+		screenToneShiftTimer++;
+		if (screenToneShiftTimer >= screenToneShiftTotalTime) {
+			screenToneShiftTimer = 0;
+			screenToneShiftTotalTime = 0;
+			screenTone = targetScreenTone;
+		} else {
+			float t = (float)screenToneShiftTimer / (float)screenToneShiftTotalTime;
+			screenTone = startScreenTone * (1.0f - t) + targetScreenTone * t;
+		}
+	}
+	if (scrollDistanceRemaining > 0) {
+		int step = 16 * (2 << scrollSpeed);
+		switch (scrollDirection) {
+		case Direction::Up: scrollOffset.y -= step; break;
+		case Direction::Down: scrollOffset.y += step; break;
+		case Direction::Left: scrollOffset.x -= step; break;
+		case Direction::Right: scrollOffset.x += step; break;
+		default: break;
+		}
+		scrollDistanceRemaining -= step;
+	}
+	if (totalChangeMapTime > 0) {
+		changeMapTimer++;
+		if (changeMapTimer >= totalChangeMapTime) {
+			changeMapTimer = 0;
+			totalChangeMapTime = 0;
+		}
+	}
 	HashEntities();
 	// Index loop: entities may be appended during updates.
 	for (size_t i = 0; i < entities.size(); i++) {
 		Entity *e = entities[i].get();
 		e->Update();
+		if (wasMapChangedDuringUpdate) break;   // an event changed the map
+		if (Wrapping) {
+			Vec2 p = e->GetPos();
+			int mw = mapSize.x * tileSize.x * 256, mh = mapSize.y * tileSize.y * 256;
+			if (p.x < 0) p.x += mw; else if (p.x > mw) p.x -= mw;
+			if (p.y < 0) p.y += mh; else if (p.y > mh) p.y -= mh;
+			e->SetPos(p);
+		}
 		if (e->Active()) {
 			if (!e->IgnoreMapCollision()) MapCollision(e);
 			if (!e->IgnoreNpcCollision()) HashedEntityCollision(e);
 		}
 		UpdateEntityHeight(e);
+		if (e->KillEntityAfterUpdate) entitiesToKill.push_back(e);
 	}
+	for (Entity *e : entitiesToKill) RemoveEntity(e);
+	entitiesToKill.clear();
+	std::vector<Entity *> spawn;
+	spawn.swap(entitiesToSpawn);
+	for (Entity *e : spawn) AddEntity(e);
 	UpdateCamera();
+	UpdateCommonEvents();
 	for (TileSet &ts : tilesets) ts.Update();
+}
+
+// ---------------------------------------------------------------- entities
+Entity *TileMap::GetEntityByID(int id) const {
+	auto it = entitiesById.find(id);
+	return it == entitiesById.end() ? nullptr : it->second;
+}
+
+void TileMap::RemoveEntity(Entity *e) {
+	auto it = std::find_if(entities.begin(), entities.end(), [e](const std::unique_ptr<Entity> &u) { return u.get() == e; });
+	if (it == entities.end()) return;
+	auto byId = entitiesById.find(e->GetID());
+	if (byId != entitiesById.end()) entitiesById.erase(byId);
+	entitiesByHeight.erase(e->sortedNode);
+	if (!e->NeverHash) RemoveEntityFromHash(e);
+	retired.push_back(std::move(*it));
+	entities.erase(it);
+}
+
+bool TileMap::AreAnyEntitiesInForcedRoutes() const {
+	if (player && player->IsInForcedRoute()) return true;
+	for (auto &e : entities)
+		if (e->IsInForcedRoute()) return true;
+	return false;
+}
+
+void TileMap::SpawnFollowers() {
+	static bool warned;
+	if (!state->followers.empty() && !warned) {
+		warned = true;
+		sys::log("followers in party but follower entities are not ported yet\n");
+	}
+}
+
+// ---------------------------------------------------------------- events
+bool TileMap::CheckIfStartScript(Entity *e, bool investigate, Entity **out) {
+	Entity *found = nullptr;
+	Vec2 pos = e->GetPos();
+	Rect cr = e->GetCollisionRect();
+	Rect bp = e->GetButtonPressRect();
+	Rect pointRect(pos.x - 1, pos.y - 1, 2, 2);
+	Vec2 bpCenter(bp.x + bp.w / 2, bp.y + bp.h / 2);
+	Rect bodyRect(pos.x + cr.x * 256, pos.y + cr.y * 256, cr.w * 256, cr.h * 256);
+	// C# collects candidates into a Dictionary keyed by id (insertion order).
+	std::vector<Entity *> cand;
+	Rect hr = GetEntityHashRect(e, pos);
+	for (int i = hr.x; i <= hr.x + hr.w; i++)
+		for (int j = hr.y; j <= hr.y + hr.h; j++) {
+			auto it = hashedEntities.find(j * hashMapSize.x + i);
+			if (it == hashedEntities.end()) continue;
+			for (Entity *o : it->second) {
+				bool dup = false;
+				for (Entity *c2 : cand) if (c2->GetID() == o->GetID()) { dup = true; break; }
+				if (!dup) cand.push_back(o);
+			}
+		}
+	int best = INT32_MAX;
+	for (Entity *o : cand) {
+		bool hit = false;
+		if (o->Active() && o->HasScript()) {
+			if (investigate && o->StartScriptOnPlayerAction()) {
+				if (o->TouchingRect(bp)) hit = true;
+				if (o->IgnoreNpcCollision() && o->TouchingRect(pointRect)) hit = true;
+			}
+			if (o->StartScriptOnPlayerTouch()) {
+				if (!o->IgnoreNpcCollision() && o->TouchingRect(bp) && !o->isTouchingPlayerAndTriggeredEvent) hit = true;
+				if (o->IgnoreNpcCollision() && o->TouchingRect(pointRect) && !o->isTouchingPlayerAndTriggeredEvent) hit = true;
+			}
+			if (o->StartScriptOnEventTouch() && o->TouchingRect(bodyRect) && !o->isTouchingPlayerAndTriggeredEvent) hit = true;
+		}
+		if (hit) {
+			Vec2 p2 = o->GetPos();
+			int d = iabs(p2.x - bpCenter.x) + iabs(p2.y - bpCenter.y);
+			if (!found || d < best) { found = o; best = d; }
+		}
+	}
+	if (found && (found->StartScriptOnPlayerTouch() || found->StartScriptOnEventTouch()))
+		found->isTouchingPlayerAndTriggeredEvent = true;
+	*out = found;
+	return found != nullptr;
+}
+
+void TileMap::StartEvent(Entity *e, bool parallel) {
+	if (parallel) {
+		for (auto &pr : parallelEventRunners)
+			if (pr.first == e->GetID()) { pr.second->KeepAlive = true; return; }
+		parallelEventRunners.emplace_back(e->GetID(),
+			std::unique_ptr<EventRunner>(new EventRunner(this, e->GetList(), e->GetID(), e->GetCurrentPageNumber(), e)));
+		parallelEventRunners.back().second->KeepAlive = true;
+		return;
+	}
+	if (mainEventRunner || IsMapTransitioning()) return;
+	mainEventRunner.reset(new EventRunner(this, e->GetList(), e->GetID(), e->GetCurrentPageNumber(), e));
+	mainEventRunner->Update();
+	if (!mainEventRunner || !mainEventRunner->IsFinished()) return;
+	mainEventRunner.reset();
+	if (state->var(4) == 0) return;
+	for (size_t i = 0; i < entities.size(); i++)
+		if (entities[i]->HandlesMapEventVar) { entities[i]->Update(); break; }
+}
+
+void TileMap::StartCommonEvent(int id, bool parallel) {
+	auto it = commonEvents.find(id);
+	if (it == commonEvents.end()) {
+		sys::log("No common event exists with id %d\n", id);
+		return;
+	}
+	if (parallel) {
+		int key = 10000 + id;
+		for (auto &pr : parallelEventRunners)
+			if (pr.first == key) { pr.second->KeepAlive = true; return; }
+		parallelEventRunners.emplace_back(key, std::unique_ptr<EventRunner>(new EventRunner(this, it->second.list, id, -1)));
+		parallelEventRunners.back().second->KeepAlive = true;
+	} else if (!mainEventRunner) {
+		mainEventRunner.reset(new EventRunner(this, it->second.list, id, -1));
+		queuedCommonEventId = -1;
+	} else {
+		queuedCommonEventId = id;
+	}
+}
+
+const CommonEvent *TileMap::GetCommonEvent(int id) const {
+	auto it = commonEvents.find(id);
+	if (it == commonEvents.end()) {
+		sys::log("No common event exists with id %d\n", id);
+		return nullptr;
+	}
+	return &it->second;
+}
+
+Entity *TileMap::GetNPCTriggeringEvent() const {
+	return mainEventRunner ? mainEventRunner->TriggeringEntity() : nullptr;
+}
+
+void TileMap::UpdateCommonEvents() {
+	for (auto &kv : commonEvents) {
+		const CommonEvent &ce = kv.second;
+		if (ce.trigger == 1) {
+			if (!IsInScript() && state->flag(ce.switch_id)) StartCommonEvent(ce.id);
+		} else if (ce.trigger == 2) {
+			if (state->flag(ce.switch_id)) StartCommonEvent(ce.id, true);
+		}
+	}
+}
+
+void TileMap::EventRunnerUpdate() {
+	if (mainEventRunner) {
+		mainEventRunner->Update();
+		if (mainEventRunner->IsFinished()) mainEventRunner.reset();
+	} else if (queuedCommonEventId > 0) {
+		StartCommonEvent(queuedCommonEventId);
+	}
+	std::vector<int> kill;
+	// Index loop: a runner may start new parallel events (e.g. after a transfer).
+	for (size_t i = 0; i < parallelEventRunners.size(); i++) {
+		EventRunner *r = parallelEventRunners[i].second.get();
+		if (r->KeepAlive) {
+			r->Update();
+			r->KeepAlive = false;
+			if (r->IsFinished()) kill.push_back(parallelEventRunners[i].first);
+		} else {
+			kill.push_back(parallelEventRunners[i].first);
+		}
+	}
+	for (int k : kill)
+		for (size_t i = 0; i < parallelEventRunners.size(); i++)
+			if (parallelEventRunners[i].first == k) { parallelEventRunners.erase(parallelEventRunners.begin() + i); break; }
+	ReleaseRetired();
+}
+
+void TileMap::ReleaseRetired() {
+	if (retired.empty()) return;
+	auto referenced = [&](Entity *e) {
+		if (!e) return false;
+		for (auto &r : retired) if (r.get() == e) return true;
+		return false;
+	};
+	if (mainEventRunner && referenced(mainEventRunner->TriggeringEntity())) return;
+	for (auto &pr : parallelEventRunners)
+		if (referenced(pr.second->TriggeringEntity())) return;
+	retired.clear();
+}
+
+void TileMap::DrawEventRunners() {
+	if (mainEventRunner) mainEventRunner->Draw();
+	for (auto &pr : parallelEventRunners) pr.second->Draw();
+}
+
+void TileMap::DrawMapTransition() {
+	if (totalChangeMapTime > 0) {
+		float alpha = (float)(totalChangeMapTime - changeMapTimer) / (float)totalChangeMapTime;
+		gm::draw_captured_window(alpha);
+	}
+}
+
+void TileMap::ChangeMap(int mapId, float x, float y, float time, Direction dir) {
+	Direction prev = player->GetDirection();
+	changeMapTimer = 0;
+	totalChangeMapTime = (int)(time * 60.0f);
+	gm::capture_window();   // SetUpMapTransitionFrame: the last presented frame
+	LoadMap(mapId, x, y, dir == Direction::None ? prev : dir);
+	UpdateCamera();
+}
+
+void TileMap::ExecuteMapTransition(const std::string &name) {
+	// SpecialTransition (transition-pattern wipe) is approximated by a crossfade.
+	static bool warned;
+	if (!warned) { warned = true; sys::log("map transition '%s': using crossfade\n", name.c_str()); }
+	changeMapTimer = 0;
+	totalChangeMapTime = 40;
+}
+
+void TileMap::ScrollMap(int direction, int distance, int speed) {
+	scrollDirection = (Direction)direction;
+	scrollDistanceRemaining = distance * 16 * 256;
+	scrollSpeed = speed;
+}
+
+void TileMap::SetScreenTone(GameTone tone, int shiftTime) {
+	screenToneShiftTimer = 0;
+	if (shiftTime <= 0) {
+		screenToneShiftTotalTime = 0;
+		screenTone = tone;
+	} else {
+		startScreenTone = screenTone;
+		targetScreenTone = tone;
+		screenToneShiftTotalTime = shiftTime;
+	}
+}
+
+void TileMap::ScreenShake(int power, int speed, int duration, bool) {
+	shakePower = power;
+	shakeSpeed = speed;
+	shakeDuration = duration;
+	// Controller vibration: later (DS3 actuators via ioPadSetActDirect).
+}
+
+void TileMap::SetPanorama(const std::string &name) {
+	if (!name.empty()) sys::log("panorama '%s' requested (panoramas not drawn yet)\n", name.c_str());
+}
+
+void TileMap::SetFog(const std::string &name, int, float, gfx::Blend, int, int) {
+	if (!name.empty()) sys::log("fog '%s' requested (fogs not drawn yet)\n", name.c_str());
 }
 
 Vec2 TileMap::GetMaxCamPos() const {

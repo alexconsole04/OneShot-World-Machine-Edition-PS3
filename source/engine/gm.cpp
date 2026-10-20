@@ -103,6 +103,37 @@ void blit(const gfx::Texture *t, Vec2 p, float alpha, int hue, gfx::Blend blend,
 	blit(t, p, Rect(0, 0, (int)t->w, (int)t->h), alpha, hue, blend, scale, tone);
 }
 
+void blit_scaled(const gfx::Texture *t, Vec2 p, Rect src, float xs, float ys, float alpha, int hue,
+                 gfx::Blend blend, GameTone tone, float red, float green, float blue) {
+	if (!t) return;
+	float w = (float)(int)(src.w * xs), h = (float)(int)(src.h * ys);
+	gfx::Shade s;
+	s.r = red; s.g = green; s.b = blue; s.a = alpha;
+	s.tone_r = tone.r; s.tone_g = tone.g; s.tone_b = tone.b;
+	s.hue = (int16_t)hue;
+	gfx::draw(t, OX + p.x * S, OY + p.y * S, w * S, h * S, src.x, src.y, src.w, src.h, s, blend);
+}
+
+void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, gfx::Blend blend, int scale) {
+	if (r.w <= 0 || r.h <= 0) return;
+	gfx::Shade s;
+	s.r = red / 255.0f; s.g = green / 255.0f; s.b = blue / 255.0f; s.a = alpha / 255.0f;
+	gfx::draw(white_tex, OX + r.x * scale * S, OY + r.y * scale * S, r.w * scale * S, r.h * scale * S, 0, 0, 1, 1, s, blend);
+}
+
+static const gfx::Texture *captured;
+
+void capture_window() {
+	captured = gfx::capture_screen((int)(OX + 0.5f), (int)(OY + 0.5f), (int)(640.0f * S + 0.5f), (int)(480.0f * S + 0.5f));
+}
+
+void draw_captured_window(float alpha) {
+	if (!captured) return;
+	gfx::Shade s;
+	s.a = alpha;
+	gfx::draw(captured, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)captured->w, (int)captured->h, s, gfx::Blend::Normal);
+}
+
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,
                  const gfx::Shade &s, gfx::Blend blend) {
 	gfx::draw(t, x, y, w, h, src.x, src.y, src.w, src.h, s, blend);

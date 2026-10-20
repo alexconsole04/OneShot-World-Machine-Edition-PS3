@@ -1,6 +1,5 @@
 // player.cpp - see player.h. Follows Player.cs (Update / NormalizeWalkRunSpeed).
-// Not yet ported: the roomba (flag 79) branch, footprints and footstep
-// sounds, and starting scripts by touch / action button.
+// Not yet ported: the roomba (flag 79) branch, footprints and footstep sounds.
 #include "player.h"
 #include "tilemap.h"
 #include "game_state.h"
@@ -23,9 +22,7 @@ Player::Player(TileMap *m, GameState *s, int pid, float xPixel, float yPixel) : 
 	oldPos = pos;
 	ignoreMapCollision = false;
 	ignoreNpcCollision = false;
-	opacity = 255;
-	npcSheet = "niko";
-	ReloadTextures();
+	opacity = 255;   // no sprite until an event assigns one (C# does the same)
 }
 
 void Player::MapChanged(int eId, float xPixel, float yPixel) {
@@ -52,6 +49,34 @@ void Player::NormalizeWalkRunSpeed(bool run) {
 void Player::Update() {
 	if (moveRouteForcing) { CommonUpdate(); return; }
 	if (PlayerHasControl()) {
+		Entity *ie = nullptr;
+		if (map->CheckIfStartScript(this, input::pressed(input::BTN_OK), &ie)) {
+			// Snap onto the event's tile row/column, as Player.Update does.
+			if (ie->StartScriptOnPlayerTouch() && ie->IgnoreNpcCollision()) {
+				Vec2 t = GetCurrentTile(), t2 = ie->GetCurrentTile();
+				while (t.x > t2.x) { pos.x -= 256; t = GetCurrentTile(); }
+				while (t.x < t2.x) { pos.x += 256; t = GetCurrentTile(); }
+				while (t.y > t2.y) { pos.y -= 256; t = GetCurrentTile(); }
+				while (t.y < t2.y) { pos.y += 256; t = GetCurrentTile(); }
+			} else if (!ie->IgnoreNpcCollision() && (ie->StartScriptOnPlayerAction() || ie->StartScriptOnPlayerTouch()) &&
+			           ie->GetName() != "!minecart") {
+				Vec2 t = GetCurrentTile(), t2 = ie->GetCurrentTile();
+				switch (direction) {
+				case Direction::Down: case Direction::Up:
+					while (t.x > t2.x) { pos.x -= 256; t = GetCurrentTile(); }
+					while (t.x < t2.x) { pos.x += 256; t = GetCurrentTile(); }
+					break;
+				case Direction::Left: case Direction::Right:
+					while (t.y > t2.y) { pos.y -= 256; t = GetCurrentTile(); }
+					while (t.y < t2.y) { pos.y += 256; t = GetCurrentTile(); }
+					break;
+				default: break;
+				}
+			}
+			ie->NotifyScriptStarted(this);
+			map->StartEvent(ie);
+			vel = Vec2();
+		}
 		if (!map->IsInScript() && !state->flag(11)) {
 			oldDirection = direction;
 			bool run = input::held(input::BTN_RUN) ^ defaultMovementRun;

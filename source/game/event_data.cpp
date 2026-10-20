@@ -3,7 +3,8 @@
 #include "cJSON.h"
 #include <stdlib.h>
 
-EventFile::~EventFile() { if (root) cJSON_Delete(root); }
+int EventCommand::iparam(size_t i) const { return i < parameters.size() ? atoi(parameters[i].c_str()) : 0; }
+float EventCommand::fparam(size_t i) const { return i < parameters.size() ? (float)atof(parameters[i].c_str()) : 0.0f; }
 
 static int jint(const cJSON *o, const char *k, int def) {
 	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
@@ -21,40 +22,83 @@ static std::string jstr(const cJSON *o, const char *k) {
 	return cJSON_IsString(v) ? std::string(v->valuestring) : std::string();
 }
 
-static void parse_route(const cJSON *r, MoveRoute &mr) {
-	if (!r) return;
-	mr.repeat = jbool(r, "repeat", false);
-	mr.skippable = jbool(r, "skippable", false);
+// Parameters are strings in the exported JSON; anything else is kept as its
+// JSON text so int/float parsing still works.
+static void parse_params(const cJSON *ps, std::vector<std::string> &out) {
+	const cJSON *pp;
+	cJSON_ArrayForEach(pp, ps) {
+		if (cJSON_IsString(pp)) out.push_back(pp->valuestring);
+		else if (cJSON_IsNumber(pp)) {
+			if ((double)pp->valueint == pp->valuedouble) out.push_back(std::to_string(pp->valueint));
+			else out.push_back(std::to_string(pp->valuedouble));
+		} else if (cJSON_IsBool(pp)) out.push_back(cJSON_IsTrue(pp) ? "true" : "false");
+		else {
+			char *s = cJSON_PrintUnformatted(pp);
+			out.push_back(s ? s : "");
+			if (s) cJSON_free(s);
+		}
+	}
+}
+
+static void parse_audio(const cJSON *a, AudioFile &af) {
+	if (!cJSON_IsObject(a)) return;
+	af.valid = true;
+	af.name = jstr(a, "name");
+	af.volume = jint(a, "volume", 100);
+	af.pitch = jint(a, "pitch", 100);
+}
+
+static MoveRoutePtr parse_route(const cJSON *r) {
+	auto mr = std::make_shared<MoveRoute>();
+	if (!r) return mr;
+	mr->repeat = jbool(r, "repeat", false);
+	mr->skippable = jbool(r, "skippable", false);
 	const cJSON *list = cJSON_GetObjectItemCaseSensitive(r, "list");
 	const cJSON *c;
 	cJSON_ArrayForEach(c, list) {
 		MoveCommand mc;
 		mc.code = jint(c, "code", 0);
-		const cJSON *ps = cJSON_GetObjectItemCaseSensitive(c, "parameters"), *pp;
-		cJSON_ArrayForEach(pp, ps) {
-			if (cJSON_IsString(pp)) mc.parameters.push_back(pp->valuestring);
-			else if (cJSON_IsNumber(pp)) mc.parameters.push_back(std::to_string(pp->valueint));
-			else mc.parameters.push_back(std::string());
-		}
-		mr.list.push_back(std::move(mc));
+		parse_params(cJSON_GetObjectItemCaseSensitive(c, "parameters"), mc.parameters);
+		parse_audio(cJSON_GetObjectItemCaseSensitive(c, "audio_file"), mc.audio_file);
+		mr->list.push_back(std::move(mc));
 	}
+	return mr;
 }
 
-std::unique_ptr<EventFile> load_event_file(const char *rel_path) {
+static CommandListPtr parse_commands(const cJSON *list) {
+	auto out = std::make_shared<CommandList>();
+	const cJSON *c;
+	cJSON_ArrayForEach(c, list) {
+		EventCommand ec;
+		ec.code = jint(c, "code", 0);
+		ec.indent = jint(c, "indent", 0);
+		parse_params(cJSON_GetObjectItemCaseSensitive(c, "parameters"), ec.parameters);
+		const cJSON *mr = cJSON_GetObjectItemCaseSensitive(c, "move_route");
+		if (cJSON_IsObject(mr)) ec.move_route = parse_route(mr);
+		parse_audio(cJSON_GetObjectItemCaseSensitive(c, "audio_file"), ec.audio_file);
+		out->push_back(std::move(ec));
+	}
+	return out;
+}
+
+static cJSON *read_json(const char *rel_path) {
 	uint8_t *data;
 	size_t size;
 	if (!sys::read_file(rel_path, &data, &size)) {
 		sys::log("events: cannot read %s\n", rel_path);
 		return nullptr;
 	}
-	auto ef = std::make_unique<EventFile>();
-	ef->root = cJSON_ParseWithLength((const char *)data, size);
+	cJSON *root = cJSON_ParseWithLength((const char *)data, size);
 	free(data);
-	if (!ef->root) {
-		sys::log("events: bad JSON in %s\n", rel_path);
-		return nullptr;
-	}
-	const cJSON *events = cJSON_GetObjectItemCaseSensitive(ef->root, "events"), *e;
+	if (!root) sys::log("events: bad JSON in %s\n", rel_path);
+	return root;
+}
+
+std::unique_ptr<EventFile> load_event_file(const char *rel_path) {
+	cJSON *root = read_json(rel_path);
+	if (!root) return nullptr;
+	auto ef = std::make_unique<EventFile>();
+	const cJSON *events = cJSON_GetObjectItemCaseSensitive(root, "events"), *e;
 	cJSON_ArrayForEach(e, events) {
 		EventData ed;
 		ed.id = jint(e, "id", 0);
@@ -96,11 +140,30 @@ std::unique_ptr<EventFile> load_event_file(const char *rel_path) {
 				p.graphic.opacity = jint(g, "opacity", 255);
 				p.graphic.blend_type = jint(g, "blend_type", 0);
 			}
-			parse_route(cJSON_GetObjectItemCaseSensitive(pg, "move_route"), p.move_route);
-			p.list = cJSON_GetObjectItemCaseSensitive(pg, "list");
+			p.move_route = parse_route(cJSON_GetObjectItemCaseSensitive(pg, "move_route"));
+			p.list = parse_commands(cJSON_GetObjectItemCaseSensitive(pg, "list"));
 			ed.pages.push_back(std::move(p));
 		}
 		ef->events.push_back(std::move(ed));
 	}
+	cJSON_Delete(root);
 	return ef;
+}
+
+bool load_common_events(const char *rel_path, std::vector<CommonEvent> &out) {
+	out.clear();
+	cJSON *root = read_json(rel_path);
+	if (!root) return false;
+	const cJSON *list = cJSON_GetObjectItemCaseSensitive(root, "common_events"), *e;
+	cJSON_ArrayForEach(e, list) {
+		CommonEvent ce;
+		ce.id = jint(e, "id", 0);
+		ce.name = jstr(e, "name");
+		ce.trigger = jint(e, "trigger", 0);
+		ce.switch_id = jint(e, "switch_id", 0);
+		ce.list = parse_commands(cJSON_GetObjectItemCaseSensitive(e, "list"));
+		out.push_back(std::move(ce));
+	}
+	cJSON_Delete(root);
+	return true;
 }

@@ -71,6 +71,8 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	if (y0 < clip_y0) y0 = clip_y0;
 	if (x1 > clip_x1) x1 = clip_x1;
 	if (y1 > clip_y1) y1 = clip_y1;
+	static const bool dbg_noblend = getenv("OSPS3_NOBLEND") != nullptr;
+	static const bool dbg_partial = getenv("OSPS3_PARTIAL") != nullptr;
 	const uint32_t *px = (const uint32_t *)t->mem;
 	const float hue = s.hue * (3.14159265f / 180.0f);
 	const float tr = s.tone_r / 255.0f, tg = s.tone_g / 255.0f, tb = s.tone_b / 255.0f;
@@ -84,10 +86,10 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 			tx = ((tx % (int)t->w) + (int)t->w) % (int)t->w;
 			uint32_t p = px[ty * t->w + tx];
 			shade::RGBA c = { ((p >> 16) & 255) / 255.0f, ((p >> 8) & 255) / 255.0f,
-			                  (p & 255) / 255.0f, (p >> 24) / 255.0f };
+			                  (p & 255) / 255.0f, t->opaque ? 1.0f : (p >> 24) / 255.0f };
 			c = shade::apply(c, s.r, s.g, s.b, s.a, tr, tg, tb, hue);
-			if (getenv("OSPS3_NOBLEND")) { c.a = 1.0f; blend = Blend::Normal; }   // debug: emulate blending disabled
-			if (getenv("OSPS3_PARTIAL") && c.a > 0.0f) c.a = 1.0f;                  // debug: partial alpha -> opaque
+			if (dbg_noblend) { c.a = 1.0f; blend = Blend::Normal; }   // debug: emulate blending disabled
+			if (dbg_partial && c.a > 0.0f) c.a = 1.0f;                // debug: partial alpha -> opaque
 			if (c.a <= 0.0f) continue;
 			uint32_t &d = fb[y * W + x];
 			float dr = ((d >> 16) & 255) / 255.0f, dg = ((d >> 8) & 255) / 255.0f, db = (d & 255) / 255.0f;
@@ -127,6 +129,26 @@ void set_texel_coords(bool) {}
 bool texel_coords() { return false; }
 
 Stats last_stats() { return st; }
+
+static Texture *cap_tex;
+
+const Texture *capture_screen(int x, int y, int w, int h) {
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > W) w = W - x;
+	if (y + h > H) h = H - y;
+	if (w <= 0 || h <= 0) return nullptr;
+	if (!cap_tex || cap_tex->w != (uint32_t)w || cap_tex->h != (uint32_t)h) {
+		destroy_texture(cap_tex);
+		std::vector<uint32_t> blank(w * h, 0xff000000u);
+		cap_tex = create_texture(w, h, blank.data());
+		cap_tex->opaque = true;
+	}
+	uint32_t *dst = (uint32_t *)cap_tex->mem;
+	for (int j = 0; j < h; j++)
+		for (int i = 0; i < w; i++) dst[j * w + i] = 0xff000000u | shown[(y + j) * W + x + i];
+	return cap_tex;
+}
 
 bool screenshot(const char *path) {
 	std::vector<uint8_t> rgb(W * H * 3);

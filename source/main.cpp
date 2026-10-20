@@ -1,8 +1,10 @@
-// main.cpp - OneShot WME PS3 port, milestone 1: maps + Niko walking.
+// main.cpp - OneShot WME PS3 port, milestone 2: maps, Niko, event interpreter.
 //
 // Controls (PS3):  d-pad / left stick = walk,  Square (hold) = run,
-//                  SELECT = toggle debug overlay,
-//                  L1 / R1 = previous / next map (debug map browser).
+//                  Cross = OK / interact,  Circle = cancel,
+//                  SELECT = toggle debug overlay. While the overlay is shown:
+//                  L1 / R1 = previous / next map, R2/L2/R3/L3 = renderer
+//                  diagnostics, Circle = plain shader, Triangle = texture viewer.
 // Host build: env OSPS3_DATA (data dir), OSPS3_MAP, OSPS3_SPAWN="x,y",
 //             OSPS3_INPUT (scripted buttons), OSPS3_SHOTS="frame:file.png,...".
 #include "platform/gfx.h"
@@ -13,6 +15,8 @@
 #include "game/game_state.h"
 #include "game/tilemap.h"
 #include "game/player.h"
+#include "game/pictures.h"
+#include "engine/audio.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,8 +29,10 @@
 SYS_PROCESS_PARAM(1001, 0x100000);
 #endif
 
-static const int NEW_GAME_MAP = 2;          // from events_map1 'init': transfer to map 2 (15,17) facing down
-static const float NEW_GAME_X = 15, NEW_GAME_Y = 17;
+// A new game starts on map 1, whose autorun 'init' event shows the wake-up
+// CGs and transfers to Niko's room (map 2).
+static const int NEW_GAME_MAP = 1;
+static const float NEW_GAME_X = 17, NEW_GAME_Y = 17;   // OneshotWindow: LoadMap(1, 17, 17)
 
 static bool map_exists(int id) {
 	char rel[96];
@@ -70,7 +76,22 @@ int main(int argc, const char **argv) {
 	float sx = NEW_GAME_X, sy = NEW_GAME_Y;
 	if (const char *m = getenv("OSPS3_MAP")) mapId = atoi(m);
 	if (const char *s = getenv("OSPS3_SPAWN")) sscanf(s, "%f,%f", &sx, &sy);
+	if (const char *f = getenv("OSPS3_FLAGS"))   // host testing: "178,160"
+		for (const char *p = f; *p; ) { state.set_flag(atoi(p), true); while (*p && *p != ',') p++; if (*p) p++; }
+	if (const char *v = getenv("OSPS3_VARS"))    // host testing: "3=2,4=1"
+		for (const char *p = v; *p; ) {
+			int id = atoi(p);
+			while (*p && *p != '=') p++;
+			if (*p) p++;
+			state.set_var(id, atoi(p));
+			while (*p && *p != ',') p++;
+			if (*p) p++;
+		}
+	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
 	if (!map.LoadMap(mapId, sx, sy, Direction::Down)) { fatal_screen("Could not load the start map."); return 0; }
+	// The player starts without a sprite; the intro's "change party member"
+	// gives it Niko's. Debug starts elsewhere need it straight away.
+	if (mapId != NEW_GAME_MAP) map.GetPlayer()->SetNPCSheet("niko", 0);
 
 	// Host screenshot schedule.
 	struct Shot { int frame; std::string file; };
@@ -98,15 +119,17 @@ int main(int argc, const char **argv) {
 	while (!input::quit_requested()) {
 		input::update();
 		if (input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
-		if (input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
-		if (input::pressed(input::BTN_MASHTEXT)) gfx::set_full_sync(!gfx::full_sync());   // L2
-		if (input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
-		if (input::pressed(input::BTN_L3)) map.debugLayers = (map.debugLayers + 1) % 4;
-		if (input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
-		if (input::pressed(input::BTN_INVENTORY)) tex_view = !tex_view;                         // Triangle
+		// Diagnostics only while the overlay is up: the face buttons belong to the game.
+		bool dbg = show_overlay || tex_view;
+		if (dbg && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
+		if (dbg && input::pressed(input::BTN_MASHTEXT)) gfx::set_full_sync(!gfx::full_sync());   // L2
+		if (dbg && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
+		if (dbg && input::pressed(input::BTN_L3)) map.debugLayers = (map.debugLayers + 1) % 4;
+		if (dbg && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
+		if (dbg && input::pressed(input::BTN_INVENTORY)) tex_view = !tex_view;                         // Triangle
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
 		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
-		if (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1)) {
+		if (dbg && (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1))) {
 			int dir = input::pressed(input::BTN_R1) ? 1 : -1;
 			int next = mapId;
 			for (int tries = 0; tries < 400; tries++) {
@@ -124,14 +147,26 @@ int main(int argc, const char **argv) {
 		}
 
 		uint64_t t0 = sys::time_us();
-		map.Update();
+		if (!tex_view) {
+			// OneshotWindow.GameLogic order.
+			map.Update();
+			map.EventRunnerUpdate();
+			pictures().Update();
+			flash().Update();
+		}
+		mapId = map.GetMapID();
 		uint64_t t1 = sys::time_us();
 
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
 		uint64_t tb = sys::time_us();
 		if (!tex_view) {
+			// OneshotWindow.PreDraw order.
 			gm::clip_to_window();
 			map.Draw();
+			pictures().Draw();
+			flash().Draw();
+			map.DrawEventRunners();
+			map.DrawMapTransition();
 			gm::clip_off();
 		} else {
 			// Texture viewer: raw texture over a magenta/grey checkerboard so
@@ -177,6 +212,9 @@ int main(int argc, const char **argv) {
 			              layer_names[map.debugLayers]);
 			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   Triangle: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
 			overlay::text(16, 226, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
+			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
+			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
+			              pictures().Count());
 		}
 		gfx::end_frame();
 

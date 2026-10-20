@@ -9,21 +9,15 @@
 
 namespace overlay {
 
-void text(float x, float y, float s, unsigned rgb, const char *fmt, ...) {
-	char buf[512];
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-
+static void draw(float x, float y, float s, unsigned rgb, const char *buf, bool backing) {
 	static char quads[64 * 1024];   // stb_easy_font: 4 verts x 16 bytes per quad
-	int nq = stb_easy_font_print(0, 0, buf, nullptr, quads, sizeof(quads));
-	float w = (float)stb_easy_font_width(buf), h = (float)stb_easy_font_height(buf);
+	int nq = stb_easy_font_print(0, 0, (char *)buf, nullptr, quads, sizeof(quads));
+	float w = (float)stb_easy_font_width((char *)buf), h = (float)stb_easy_font_height((char *)buf);
 	const gfx::Texture *wt = gm::white();
 	gfx::Shade bg;
 	bg.r = bg.g = bg.b = 0.0f;
 	bg.a = 0.6f;
-	gm::blit_screen(wt, x - 3 * s, y - 3 * s, (w + 5) * s, (h + 4) * s, Rect(0, 0, 1, 1), bg);
+	if (backing) gm::blit_screen(wt, x - 3 * s, y - 3 * s, (w + 5) * s, (h + 4) * s, Rect(0, 0, 1, 1), bg);
 	gfx::Shade fg;
 	fg.r = ((rgb >> 16) & 255) / 255.0f;
 	fg.g = ((rgb >> 8) & 255) / 255.0f;
@@ -34,5 +28,18 @@ void text(float x, float y, float s, unsigned rgb, const char *fmt, ...) {
 		gm::blit_screen(wt, x + x0 * s, y + y0 * s, (x1 - x0) * s, (y1 - y0) * s, Rect(0, 0, 1, 1), fg);
 	}
 }
+
+void text(float x, float y, float s, unsigned rgb, const char *fmt, ...) {
+	char buf[512];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	draw(x, y, s, rgb, buf, true);
+}
+
+void text_plain(float x, float y, float s, unsigned rgb, const char *str) { draw(x, y, s, rgb, str, false); }
+
+int text_width(const char *str) { return stb_easy_font_width((char *)str); }
 
 } // namespace overlay

@@ -262,7 +262,9 @@ static void bind_texture(const Texture *t) {
 	tx.mipmap = 1;
 	tx.dimension = CELL_GCM_TEXTURE_DIMENSION_2;
 	tx.cubemap = CELL_GCM_FALSE;
-	tx.remap = (CELL_GCM_TEXTURE_REMAP_REMAP << 8) | (CELL_GCM_TEXTURE_REMAP_REMAP << 10)
+	// Bits 8..15 select per-channel ops (A,R,G,B); screen captures come from an
+	// X8R8G8B8 surface, so their alpha is forced to one.
+	tx.remap = ((t->opaque ? CELL_GCM_TEXTURE_REMAP_ONE : CELL_GCM_TEXTURE_REMAP_REMAP) << 8) | (CELL_GCM_TEXTURE_REMAP_REMAP << 10)
 	         | (CELL_GCM_TEXTURE_REMAP_REMAP << 12) | (CELL_GCM_TEXTURE_REMAP_REMAP << 14)
 	         | (CELL_GCM_TEXTURE_REMAP_FROM_A << 0) | (CELL_GCM_TEXTURE_REMAP_FROM_R << 2)
 	         | (CELL_GCM_TEXTURE_REMAP_FROM_G << 4) | (CELL_GCM_TEXTURE_REMAP_FROM_B << 6);
@@ -553,6 +555,35 @@ void end_frame() {
 	st = cur;
 	st.tex_bytes_used = heap_used;
 	st.tex_bytes_total = heap_total;
+}
+
+static Texture *cap_tex;
+
+const Texture *capture_screen(int x, int y, int w, int h) {
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > (int)display_width) w = (int)display_width - x;
+	if (y + h > (int)display_height) h = (int)display_height - y;
+	if (w <= 0 || h <= 0) return nullptr;
+	flush_batch();
+	if (!cap_tex || cap_tex->w != (u32)w || cap_tex->h != (u32)h) {
+		destroy_texture(cap_tex);
+		cap_tex = new Texture;
+		cap_tex->w = w; cap_tex->h = h;
+		cap_tex->pitch = (w * 4 + 63) & ~63u;
+		cap_tex->bytes = cap_tex->pitch * h;
+		cap_tex->mem = heap_alloc(cap_tex->bytes, 128);
+		cap_tex->opaque = true;
+		if (!cap_tex->mem) { delete cap_tex; cap_tex = nullptr; return nullptr; }
+		cellGcmAddressToOffset(cap_tex->mem, &cap_tex->gpu_offset);
+	}
+	// The frame presented last; the copy is queued behind its draws in the
+	// command stream, so it reads finished pixels.
+	u32 src = color_offset[(g_frame_index + COLOR_BUFFER_NUM - 1) % COLOR_BUFFER_NUM];
+	cellGcmSetTransferImage(ctx, CELL_GCM_TRANSFER_LOCAL_TO_LOCAL, cap_tex->gpu_offset, cap_tex->pitch, 0, 0,
+	                        src, color_pitch, (u32)x, (u32)y, (u32)w, (u32)h, 4);
+	tex_cache_dirty = true;
+	return cap_tex;
 }
 
 void set_clip(int x, int y, int w, int h) {

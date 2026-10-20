@@ -20,6 +20,7 @@ struct Texture {
 	uint32_t gpu_offset = 0; // RSX local offset (PS3)
 	void    *mem = nullptr;  // backend storage (RSX local mem / host heap)
 	uint32_t bytes = 0;
+	bool opaque = false;     // sample alpha as 1 (screen captures)
 };
 
 // Per-sprite shading parameters, mirroring GraphicsManager.MainBlit:
@@ -72,6 +73,10 @@ bool full_sync();
 // Debug: texture coordinates normalized (false) or in texels (true).
 void set_texel_coords(bool on);
 bool texel_coords();
+
+// Copy a rectangle of the last presented frame into an internal texture
+// (reused between calls; valid until the next capture). Alpha reads as 1.
+const Texture *capture_screen(int x, int y, int w, int h);
 
 // Host only: write the last presented frame to a PNG (no-op on PS3).
 bool screenshot(const char *path);

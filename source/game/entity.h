@@ -1,5 +1,5 @@
-// entity.h - port of OneShotMG.src.Entity (movement, pages, drawing, collision).
-// Event-script execution and move routes arrive with the interpreter milestone.
+// entity.h - port of OneShotMG.src.Entity: pages, movement, move routes,
+// script triggers, drawing and collision.
 #pragma once
 #include "../engine/types.h"
 #include "../platform/gfx.h"
@@ -40,7 +40,7 @@ public:
 	Vec2 GetPos() const { return pos; }
 	Vec2 GetOldPos() const { return oldPos; }
 	void SetPos(Vec2 p) { pos = p; }
-	void SetPosTile(Vec2 t) { pos = Vec2(t.x * 16 * 256 + 2048, t.y * 16 * 256 + 2048); oldPos = pos; moving = false; moveTarget = pos; vel = Vec2(); }
+	void SetPosTile(Vec2 t) { pos = Vec2(t.x * 16 * 256 + 2048, t.y * 16 * 256 + 2048); moving = false; moveTarget = pos; vel = Vec2(); }
 	Vec2 GetVel() const { return vel; }
 	void SetVel(Vec2 v) { vel = v; }
 	Rect GetCollisionRect() const { return collisionRect; }
@@ -55,6 +55,23 @@ public:
 	void ReloadTextures();   // re-resolve sheet/lightmap after a cache clear
 	bool TouchingRect(Rect o) const;
 	void EntityCollision(Entity *other);
+	void SetNPCSheet(const std::string &sheet, int hue = 0);
+	const std::string &GetNPCSheet() const { return npcSheet; }
+	int GetCurrentPageNumber() const { return currentPageIndex; }
+	const CommandListPtr &GetList() const { return list; }
+	Rect GetButtonPressRect() const;
+
+	// move routes / scripts
+	void ForceMoveRoute(const MoveRoutePtr &route);
+	bool IsInForcedRoute() const { return active && moveRouteForcing; }
+	void Lock();
+	void Unlock();
+	void NotifyScriptStarted(Entity *) { Lock(); }
+	bool StartScriptOnPlayerTouch() const { return eventTrigger == EventTrigger::PlayerTouch; }
+	bool StartScriptOnEventTouch() const { return eventTrigger == EventTrigger::EventTouch; }
+	bool StartScriptOnPlayerAction() const { return eventTrigger == EventTrigger::ActionButton; }
+	bool HandlesMapEventVar = false;
+	bool isTouchingPlayerAndTriggeredEvent = false;
 
 	EventTrigger eventTrigger = EventTrigger::ActionButton;
 	bool NeverHash = false;
@@ -66,8 +83,30 @@ protected:
 	void CheckForActivePage();
 	void SetActivePage(int idx);
 	bool isPageActive(const EventPage &p) const;
-	void SetNPCSheet(const std::string &sheet, int hue);
 	void CommonUpdate();
+	void DoNextMove();
+	void MoveTypeCustom();
+	void MoveJump(int xDelta, int yDelta);
+	static Vec2 TargetTileFromDirection(Vec2 t, Direction d);
+	bool Passable(Vec2 currentTile, Direction d);
+	void Turn(Direction d);
+	void TurnRight90();
+	void TurnLeft90();
+	void Turn180();
+	void TurnRightOrLeft90();
+	void TurnRandom();
+	void TurnTowardPlayer();
+	void TurnAwayFromPlayer();
+	void MoveToNpc();
+	void MoveTowardPlayer();
+	void MoveAwayFromPlayer();
+	void MoveBackward();
+	void MoveInDirection(Direction d, bool turnEnabled = true);
+	void Straighten();
+	void StepForwardNoSnap();
+	void MoveDiagonal(Direction vert, Direction horiz);
+	void MoveRandom();
+	void EmitFootprint() {}   // footprints: not ported yet
 	void UpdateMovement();
 	void UpdateJump();
 	void CancelMoveDueToMoveStuck();
@@ -99,6 +138,10 @@ protected:
 	int stopTimer = 0, moveFrequency = 0, moveSpeed = 0;
 	bool moveAnimation = false, stopAnimation = false;
 	bool moveRouteForcing = false, locked = false;
+	MoveRoutePtr moveRoute, storedMoveRoute;
+	int moveRouteIndex = 0, storedMoveRouteIndex = 0;
+	Direction prelockDirection = Direction::None;
+	CommandListPtr list;
 	int waitTimer = 0, moveStuckTimer = 0;
 	bool jumping = false, moving = false;
 	int jumpCount = 0, jumpPeak = 0;

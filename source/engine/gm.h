@@ -33,6 +33,21 @@ void blit(const gfx::Texture *t, Vec2 pixelPos, Rect src, float alpha = 1.0f, in
 void blit(const gfx::Texture *t, Vec2 pixelPos, float alpha = 1.0f, int hue = 0,
           gfx::Blend blend = gfx::Blend::Normal, int scale = 2, GameTone tone = GameTone());
 
+// MainBlit(tex, pixelPos, srcRect, xScale, yScale, ...): pixelPos already in
+// 640x480 window space, destination size = src size * scale (truncated).
+void blit_scaled(const gfx::Texture *t, Vec2 windowPos, Rect src, float xScale, float yScale,
+                 float alpha = 1.0f, int hue = 0, gfx::Blend blend = gfx::Blend::Normal,
+                 GameTone tone = GameTone(), float red = 1.0f, float green = 1.0f, float blue = 1.0f);
+// ColorBoxBlit(rect, colour, blend, scale): solid box, rect in game pixels.
+void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha,
+               gfx::Blend blend = gfx::Blend::Normal, int scale = 2);
+
+// Map-transition snapshot (GraphicsManager.SetUpMapTransitionFrame /
+// DrawMapTransitionFrame): grab the last presented 640x480 window, then draw
+// it over the new map with fading alpha.
+void capture_window();
+void draw_captured_window(float alpha);
+
 // Screen-space helpers for overlays (raw TV pixels).
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,
                  const gfx::Shade &s, gfx::Blend blend = gfx::Blend::Normal);
