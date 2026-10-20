@@ -59,6 +59,11 @@ struct Stats {
 };
 Stats last_stats();
 
+// Debug: RSX submission method (0 indexed triangles, 1 quads, 2 quads <=256 verts/draw).
+void set_draw_mode(int mode);
+int draw_mode();
+const char *draw_mode_name();
+
 // Host only: write the last presented frame to a PNG (no-op on PS3).
 bool screenshot(const char *path);
 

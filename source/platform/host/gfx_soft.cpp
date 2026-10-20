@@ -113,6 +113,10 @@ void set_clip(int x, int y, int w, int h) {
 }
 void clip_off() { clip_x0 = 0; clip_y0 = 0; clip_x1 = W; clip_y1 = H; }
 
+void set_draw_mode(int) {}
+int draw_mode() { return 0; }
+const char *draw_mode_name() { return "software"; }
+
 Stats last_stats() { return st; }
 
 bool screenshot(const char *path) {

@@ -96,6 +96,7 @@ int main(int argc, const char **argv) {
 	while (!input::quit_requested()) {
 		input::update();
 		if (input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
+		if (input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
 		if (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1)) {
 			int dir = input::pressed(input::BTN_R1) ? 1 : -1;
 			int next = mapId;
@@ -131,7 +132,8 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 76, 2, 0xc0e0ff, "draw calls %d  sprites %d  entities %d", st.draw_calls, st.quads, map.EntityCount());
 			overlay::text(16, 106, 2, 0xffe0a0, "vram tex %.1f / %.1f MB  niko px %d,%d", st.tex_bytes_used / 1048576.0f,
 			              st.tex_bytes_total / 1048576.0f, pp.x, pp.y);
-			overlay::text(16, 136, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
+			overlay::text(16, 136, 2, 0xff90ff, "rsx draw mode: %s  (R2 to cycle)", gfx::draw_mode_name());
+			overlay::text(16, 166, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
 		}
 		gfx::end_frame();
 

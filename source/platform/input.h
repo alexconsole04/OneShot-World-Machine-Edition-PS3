@@ -13,7 +13,7 @@ enum Button : uint32_t {
 	BTN_OK = 1u << 4, BTN_CANCEL = 1u << 5, BTN_RUN = 1u << 6, BTN_INVENTORY = 1u << 7,
 	BTN_MAINMENU = 1u << 8, BTN_MASHTEXT = 1u << 9,
 	BTN_SELECT = 1u << 10,  // debug overlay toggle (with L3/R3 combos later)
-	BTN_L1 = 1u << 11, BTN_R1 = 1u << 12,
+	BTN_L1 = 1u << 11, BTN_R1 = 1u << 12, BTN_R2 = 1u << 13,
 };
 
 void init();

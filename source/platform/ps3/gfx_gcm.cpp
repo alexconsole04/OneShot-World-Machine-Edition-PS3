@@ -65,6 +65,12 @@ static u32 fp_offset;
 static int attr_pos, attr_uv, attr_col, attr_tone;
 
 static Vertex *vb[VB_COUNT];
+// Static index buffer: quad q -> triangles (4q,4q+1,4q+2) (4q,4q+2,4q+3).
+// Indexed triangle lists are the path PS3 games use most, and the one RPCS3
+// handles most robustly (QUADS need on-the-fly conversion).
+static const u32 MAX_QUADS = VB_BYTES / (4 * sizeof(Vertex));
+static u32 ib_offset;
+static int g_draw_mode = 0;
 static u32 vb_offset[VB_COUNT];
 static u32 vb_fence_value[VB_COUNT];
 static u32 frame_counter;
@@ -263,7 +269,18 @@ static void flush_batch() {
 	// RSX's vertex cache can hand back vertices from an earlier frame,
 	// which showed up as flickering black slivers next to sprites.
 	cellGcmSetInvalidateVertexCache(ctx);
-	rsxDrawVertexArray(ctx, GCM_TYPE_QUADS, batch_first, n);
+	if (g_draw_mode == 0) {
+		rsxDrawIndexArray(ctx, GCM_TYPE_TRIANGLES, ib_offset + (batch_first / 4) * 6 * 4, (n / 4) * 6,
+		                  GCM_INDEX_TYPE_32B, CELL_GCM_LOCATION_LOCAL);
+	} else if (g_draw_mode == 1) {
+		rsxDrawVertexArray(ctx, GCM_TYPE_QUADS, batch_first, n);
+	} else {
+		for (u32 f = batch_first, left = n; left; ) {
+			u32 c = left > 256 ? 256 : left;
+			rsxDrawVertexArray(ctx, GCM_TYPE_QUADS, f, c);
+			f += c; left -= c;
+		}
+	}
 	cur.draw_calls++;
 	batch_first = vb_used;
 }
@@ -310,6 +327,14 @@ bool init() {
 		vb_fence_value[i] = 0;
 		*(volatile u32 *)cellGcmGetLabelAddress(LABEL_VB_FENCE + i) = 0;
 	}
+
+	u32 *ib = (u32 *)bump_alloc(MAX_QUADS * 6 * 4, 128);
+	for (u32 q = 0; q < MAX_QUADS; q++) {
+		u32 b = q * 4, *o = ib + q * 6;
+		o[0] = b; o[1] = b + 1; o[2] = b + 2;
+		o[3] = b; o[4] = b + 2; o[5] = b + 3;
+	}
+	cellGcmAddressToOffset(ib, &ib_offset);
 
 	// Shaders
 	u32 vpsize = 0, fpsize = 0;
@@ -489,6 +514,13 @@ void set_clip(int x, int y, int w, int h) {
 void clip_off() {
 	flush_batch();
 	rsxSetScissor(ctx, 0, 0, display_width, display_height);
+}
+
+void set_draw_mode(int m) { flush_batch(); g_draw_mode = m % 3; }
+int draw_mode() { return g_draw_mode; }
+const char *draw_mode_name() {
+	static const char *n[] = { "indexed tris", "quads", "quads <=64/draw" };
+	return n[g_draw_mode];
 }
 
 Stats last_stats() { return st; }

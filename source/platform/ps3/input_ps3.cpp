@@ -71,6 +71,7 @@ void update() {
 		if (pd.BTN_SELECT) cur |= BTN_SELECT;
 		if (pd.BTN_L1) cur |= BTN_L1;
 		if (pd.BTN_R1) cur |= BTN_R1;
+		if (pd.BTN_R2) cur |= BTN_R2;
 		stick(pd, sx, sy);
 		break;   // first connected pad drives the game
 	}
