@@ -7,16 +7,18 @@ void main(
 	uniform sampler2D tex : TEXUNIT0,
 	out float4 out_color  : COLOR)
 {
-	float4 c = tex2D(tex, in_texcoord) * in_color;
+	float4 t = tex2D(tex, in_texcoord);
 
-	// Hue rotation about the grey axis (identity when angle = 0: cos 1, sin 0).
+	// Same as the game's HueShader: rotate hue about the grey axis,
+	// add tone, (gamma = 1 for now), then multiply by the vertex colour.
 	float cs = in_hue.x, sn = in_hue.y;
 	float k = (1.0f - cs) / 3.0f;
 	float q = 0.57735026f * sn;
 	float3 rgb;
-	rgb.r = c.r * (cs + k) + c.g * (k - q) + c.b * (k + q);
-	rgb.g = c.r * (k + q) + c.g * (cs + k) + c.b * (k - q);
-	rgb.b = c.r * (k - q) + c.g * (k + q) + c.b * (cs + k);
+	rgb.r = t.r * (cs + k) + t.g * (k - q) + t.b * (k + q);
+	rgb.g = t.r * (k + q) + t.g * (cs + k) + t.b * (k - q);
+	rgb.b = t.r * (k - q) + t.g * (k + q) + t.b * (cs + k);
+	rgb = rgb + in_tone.rgb;
 
-	out_color = float4(saturate(rgb + in_tone.rgb), c.a);
+	out_color = saturate(float4(rgb, t.a) * in_color);
 }

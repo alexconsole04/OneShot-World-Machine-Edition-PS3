@@ -78,6 +78,7 @@ static Blend cur_blend;
 
 static Stats st, cur;
 static bool overflow_warned;
+static bool tex_cache_dirty = true;   // set when the PPU uploads texture data
 
 // ---------------------------------------------------------------- RSX local memory allocator
 struct Block { u32 off, size; bool free; };
@@ -251,7 +252,17 @@ static void flush_batch() {
 	u32 n = vb_used - batch_first;
 	if (n == 0 || !batch_tex) return;
 	apply_blend(batch_blend);
+	if (tex_cache_dirty) {
+		// New texels were written to VRAM (possibly into memory a freed
+		// texture used); drop any cached copies before sampling.
+		cellGcmSetInvalidateTextureCache(ctx, CELL_GCM_INVALIDATE_TEXTURE);
+		tex_cache_dirty = false;
+	}
 	bind_texture(batch_tex);
+	// The vertex ring is reused every VB_COUNT frames: without this the
+	// RSX's vertex cache can hand back vertices from an earlier frame,
+	// which showed up as flickering black slivers next to sprites.
+	cellGcmSetInvalidateVertexCache(ctx);
 	rsxDrawVertexArray(ctx, GCM_TYPE_QUADS, batch_first, n);
 	cur.draw_calls++;
 	batch_first = vb_used;
@@ -367,6 +378,7 @@ Texture *create_texture(uint32_t w, uint32_t h, const uint32_t *argb) {
 	for (uint32_t y = 0; y < h; y++)               // big-endian u32 = A,R,G,B bytes
 		memcpy(dst + y * t->pitch, argb + y * w, w * 4);
 	cellGcmAddressToOffset(t->mem, &t->gpu_offset);
+	tex_cache_dirty = true;
 	return t;
 }
 
@@ -446,6 +458,9 @@ void end_frame() {
 	vb_fence_value[vb_cur] = frame_counter;
 	cellGcmSetWriteBackEndLabel(ctx, LABEL_VB_FENCE + vb_cur, frame_counter);
 
+	// Make every vertex/texel the PPU wrote this frame visible to the RSX
+	// before the commands that read them are kicked off.
+	__asm__ volatile("sync" ::: "memory");
 	s32 qid = cellGcmSetPrepareFlip(ctx, (u8)g_frame_index);
 	while (qid < 0) { usleep(1000); qid = cellGcmSetPrepareFlip(ctx, (u8)g_frame_index); }
 	cellGcmSetWriteBackEndLabel(ctx, LABEL_PREPARED_BUFFER_OFFSET, (g_frame_index << 8) | (u32)qid);
