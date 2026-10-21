@@ -21,8 +21,19 @@ bool file_exists(const char *rel);
 // Case-insensitive lookup of root/rel; out = the real full path.
 }
 #include <string>
+#include <vector>
 namespace sys {
 bool resolve_case(const char *root, const char *rel, std::string &out);
+
+// Opens the platform's log file (call first thing in main).
+void init_log();
+// On-disk log: open once (moves the previous log to prev_path).
+void log_file_open(const char *path, const char *prev_path);
+void log_file_write(const char *msg);
+bool log_file_ok();
+
+// Names of the entries in <data_dir>/<rel> (case as on disk).
+bool list_dir(const char *rel, std::vector<std::string> &out);
 
 // The console's / OS's user name (OneShot addresses the player by it).
 const char *user_name();

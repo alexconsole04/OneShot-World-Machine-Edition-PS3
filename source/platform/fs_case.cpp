@@ -52,4 +52,11 @@ bool resolve_case(const char *root, const char *rel, std::string &out) {
 	return true;
 }
 
+bool list_dir(const char *rel, std::vector<std::string> &out) {
+	std::string real;
+	if (!resolve_case(data_dir(), rel, real)) return false;
+	for (auto &kv : listing(real)) out.push_back(kv.second);
+	return true;
+}
+
 } // namespace sys

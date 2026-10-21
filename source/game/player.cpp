@@ -147,6 +147,7 @@ void Player::Update() {
 				if (frameTimer >= frameTime) {
 					frameIndex = (frameIndex + 1) % 4;
 					frameTimer = 0;
+					CheckIfPlayFootstepSound();
 				}
 			}
 		} else {

@@ -12,17 +12,26 @@ namespace sys {
 static char g_dir[512];
 
 void log(const char *fmt, ...) {
+	char buf[1024];
 	va_list ap;
 	va_start(ap, fmt);
-	vprintf(fmt, ap);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
+	fputs(buf, stdout);   // TTY (RPCS3 log / ps3load console) or terminal
 	fflush(stdout);
+	log_file_write(buf);
 }
 
 uint64_t time_us() {
 	timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (uint64_t)ts.tv_sec * 1000000u + ts.tv_nsec / 1000;
+}
+
+void init_log() {
+	const char *p = getenv("OSPS3_LOG");
+	std::string path = p ? p : "build-host/oneshot_log.txt";
+	log_file_open(path.c_str(), (path + ".prev").c_str());
 }
 
 bool find_data_dir(const char *argv0) {

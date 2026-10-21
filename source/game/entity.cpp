@@ -304,7 +304,10 @@ void Entity::CommonUpdate() {
 	if (frameTimer > num) {
 		frameTimer = 0;
 		if (!stopAnimation && stopTimer > 0) frameIndex = originalFrameIndex;
-		else frameIndex = (frameIndex + 1) % 4;
+		else {
+			frameIndex = (frameIndex + 1) % 4;
+			if (IsPlayer()) CheckIfPlayFootstepSound();
+		}
 	}
 	if (waitTimer > 0) waitTimer--;
 	else if (moveRouteForcing) MoveTypeCustom();
@@ -801,4 +804,23 @@ void Entity::MoveRandom() {
 	case 2: MoveInDirection(Direction::Right, false); break;
 	case 3: MoveInDirection(Direction::Down, false); break;
 	}
+}
+
+void Entity::CheckIfPlayFootstepSound() {
+	if (frameIndex % 2 != 1) return;
+	float vol;
+	const std::vector<std::string> *ss = map->GetStepSounds(Vec2(pos.x / 256, pos.y / 256), &vol);
+	if (ss && !ss->empty()) {
+		std::string name = (*ss)[util::random(0, (int)ss->size() - 1)];
+		float v = (float)util::random(70, 90) * vol / 100.0f;
+		float pitch = (float)util::random(85, 115) / 100.0f;
+		if (state->flag(112)) {
+			name = "wheel_squeak1";
+			pitch = (float)util::random(120, 130) / 100.0f;
+			if (wheelSqueak) pitch += 0.1f;
+			wheelSqueak = !wheelSqueak;
+		}
+		audio::play_sound(name.c_str(), v, pitch);
+	}
+	// EmitFootsplash: not ported yet
 }

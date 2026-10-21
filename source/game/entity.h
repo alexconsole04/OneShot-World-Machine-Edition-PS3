@@ -109,6 +109,8 @@ protected:
 	void MoveDiagonal(Direction vert, Direction horiz);
 	void MoveRandom();
 	void EmitFootprint() {}   // footprints: not ported yet
+	void CheckIfPlayFootstepSound();
+	bool wheelSqueak = false;
 	void UpdateMovement();
 	void UpdateJump();
 	void CancelMoveDueToMoveStuck();

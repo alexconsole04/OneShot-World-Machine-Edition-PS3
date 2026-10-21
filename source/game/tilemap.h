@@ -20,6 +20,8 @@ struct TilesetInfo {   // oneshot_tilesets.json entry (TilesetInfoJson)
 	int id = 0;
 	std::string panorama_name;
 	std::vector<uint8_t> passages, priorities, terrain_tags;
+	std::vector<std::vector<std::string>> step_sounds;
+	std::vector<float> step_volumes;
 };
 
 class TileSet {
@@ -102,6 +104,9 @@ public:
 	bool AreAnyEntitiesInForcedRoutes() const;
 	void SpawnFollowers();   // FollowerManager.SpawnAllFollowers (followers not ported yet)
 	void HashedEntityCollision(Entity *e, Entity *ignoredEntity = nullptr, bool isTestCollisionEntity = false);
+	// Footstep sounds for the terrain under a pixel position (null = none).
+	const std::vector<std::string> *GetStepSounds(Vec2 px, float *volume) const;
+	void OverrideStepSounds(const std::vector<std::vector<std::string>> &s) { overrideStepSounds = s; hasStepOverride = true; }
 	// ---- ScriptParser helpers
 	void SetCamPos(Vec2 c) { camPos = c; }
 	void EnableWrapping() { Wrapping = true; }
@@ -176,6 +181,8 @@ private:
 	// while an event runner may still point at them (C#'s GC did this).
 	std::vector<std::unique_ptr<Entity>> retired;
 	std::string background;
+	std::vector<std::vector<std::string>> overrideStepSounds;
+	bool hasStepOverride = false;
 	std::unique_ptr<Panorama> panorama;
 	std::unique_ptr<Fog> fog;   // 'bg' script: a panorama drawn instead of the base layers
 };

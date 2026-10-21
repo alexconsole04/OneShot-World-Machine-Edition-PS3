@@ -21,6 +21,7 @@
 #include "engine/audio.h"
 
 #include <stdio.h>
+#define OSPS3_VERSION "m6"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -59,7 +60,8 @@ static void fatal_screen(const char *msg) {
 }
 
 int main(int argc, const char **argv) {
-	sys::log("OneShot PS3 port - milestone 1\n");
+	sys::init_log();
+	sys::log("OneShot PS3 port %s (built %s %s)\n", OSPS3_VERSION, __DATE__, __TIME__);
 	if (!gfx::init()) return 1;
 	gm::init();
 	input::init();
@@ -69,6 +71,9 @@ int main(int argc, const char **argv) {
 		gfx::shutdown();
 		return 0;
 	}
+
+	audio::init();
+	audio::preload_sfx();
 
 	GameState state;
 	state.player_name = sys::user_name();
@@ -166,6 +171,7 @@ int main(int argc, const char **argv) {
 			map.EventRunnerUpdate();
 			pictures().Update();
 			flash().Update();
+			audio::update();
 		}
 		mapId = map.GetMapID();
 		uint64_t t1 = sys::time_us();
@@ -231,11 +237,25 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
-			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)", state.var(55));
+			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   log file: %s", state.var(55),
+			              sys::log_file_ok() ? "ok" : "NOT WRITABLE");
 		}
 		gfx::end_frame();
 
 		uint64_t now = sys::time_us();
+		{
+			// Hitch log: frames well over budget (rate-limited; skips map-load frames).
+			static uint64_t last_hitch_log;
+			static int last_map = -1;
+			float ms = (now - last) / 1000.0f;
+			if (ms > 40.0f && mapId == last_map && now - last_hitch_log > 1000000) {
+				Vec2 pp = map.GetPlayer()->GetPixelPos();
+				sys::log("slow frame: %.1f ms (update %.2f, draw %.2f) map %d at %d,%d\n", ms, (t1 - t0) / 1000.0f,
+				         (t2 - tb) / 1000.0f, mapId, pp.x / 16, pp.y / 16);
+				last_hitch_log = now;
+			}
+			last_map = mapId;
+		}
 		frame_ms = frame_ms * 0.9f + ((now - last) / 1000.0f) * 0.1f;
 		update_ms = update_ms * 0.9f + ((t1 - t0) / 1000.0f) * 0.1f;
 		draw_ms = draw_ms * 0.9f + ((t2 - tb) / 1000.0f) * 0.1f;
@@ -246,6 +266,7 @@ int main(int argc, const char **argv) {
 			if (s.frame == frame) gfx::screenshot(s.file.c_str());
 	}
 	sys::log("exit after %d frames\n", frame);
+	audio::shutdown();
 	gfx::shutdown();
 	return 0;
 }

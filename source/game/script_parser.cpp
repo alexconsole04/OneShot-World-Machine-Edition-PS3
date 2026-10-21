@@ -248,12 +248,18 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	t["blue_ambient\nbg 'blue_mine'\n$game_temp.footstep_sfx = \n['step_gravel']"] = [](Ctx &c) {
 		c.map->SetAmbientTone(GameTone(-40, -40, -40));
 		c.map->SetBackground("blue_mine");
+		c.map->OverrideStepSounds({ { "step_gravel" } });
 		return false;
 	};
-	t["$game_temp.footstep_sfx = \\\n['step_tile_soft',\\\n   'step_wood',\\\n   'step_grate_soft']"] = none;
+	t["$game_temp.footstep_sfx = \\\n['step_tile_soft',\\\n   'step_wood',\\\n   'step_grate_soft']"] = [](Ctx &c) {
+		c.map->OverrideStepSounds({ { "step_tile_soft01", "step_tile_soft02", "step_tile_soft03", "step_tile_soft04" },
+		                            { "step_wood" }, { "step_grate_soft" } });
+		return false;
+	};
 	t["ambient -30, -30, -30\nbg 'green_maize'\n$game_temp.footstep_sfx = ['step_grass']"] = [](Ctx &c) {
 		c.map->SetAmbientTone(GameTone(-30, -30, -30));
 		c.map->SetBackground("green_maize");
+		c.map->OverrideStepSounds({ { "step_grass" } });
 		return false;
 	};
 	t["safe_puzzle_write"] = [](Ctx &c) {
@@ -267,8 +273,8 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	                       "Wallpaper.reset_persistent", "Niko.do_your_thing", "set_wallpaper_black",
 	                       "stop_speedrun_timer", "kill_perma_flags", "erase_game\nload_perma_flags" })
 		t[s] = [s](Ctx &) { note("desktop/save (not ported)", s); return false; };
-	t["Script.fadein_bgm(90,5)"] = none;
-	t["Script.fadein_bgm(90,3)"] = none;
+	t["Script.fadein_bgm(90,5)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 5.0f); return false; };
+	t["Script.fadein_bgm(90,3)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 3.0f); return false; };
 	t["particles :fireflies"] = [](Ctx &) { note("particles (not ported)", "fireflies"); return false; };
 	t["particles :fireflies\ngreen_ambient"] = green;
 	t["particles :fireflies\n#green_ambient"] = none;

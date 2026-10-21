@@ -6,6 +6,7 @@
 #include "game_state.h"
 #include "event_runner.h"
 #include "pictures.h"
+#include "../engine/audio.h"
 #include "../engine/gm.h"
 #include "../engine/xml.h"
 #include "../platform/sys.h"
@@ -298,6 +299,15 @@ bool TileMap::LoadGlobalData() {
 		ti.passages = json_bytes(cJSON_GetObjectItemCaseSensitive(t, "passages"));
 		ti.priorities = json_bytes(cJSON_GetObjectItemCaseSensitive(t, "priorities"));
 		ti.terrain_tags = json_bytes(cJSON_GetObjectItemCaseSensitive(t, "terrain_tags"));
+		const cJSON *ss = cJSON_GetObjectItemCaseSensitive(t, "step_sounds"), *e;
+		cJSON_ArrayForEach(e, ss) {
+			std::vector<std::string> names;
+			const cJSON *nm;
+			cJSON_ArrayForEach(nm, e) if (cJSON_IsString(nm)) names.push_back(nm->valuestring);
+			ti.step_sounds.push_back(names);
+		}
+		const cJSON *sv = cJSON_GetObjectItemCaseSensitive(t, "step_volumes");
+		cJSON_ArrayForEach(e, sv) ti.step_volumes.push_back(cJSON_IsNumber(e) ? (float)e->valuedouble : 1.0f);
 		tilesetInfos[ti.id] = std::move(ti);
 	}
 	cJSON_Delete(root);
@@ -342,6 +352,8 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	scrollSpeed = 0;
 	scrollDirection = Direction::None;
 	background.clear();
+	overrideStepSounds.clear();
+	hasStepOverride = false;
 	panorama.reset();
 	fog.reset();
 	if (hadMap) gm::clear_cache(gm::Game);   // ChangeMap clears the Game cache
@@ -472,6 +484,26 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	}
 	if (eventFile)
 		for (auto &ed : eventFile->events) AddEntity(new Entity(this, state, &ed));
+
+	snprintf(rel, sizeof(rel), "gamedata/maps/music_map%d.json", mapId);
+	{
+		uint8_t *md;
+		size_t ms;
+		if (sys::read_file(rel, &md, &ms)) {
+			cJSON *mj = cJSON_ParseWithLength((const char *)md, ms);
+			free(md);
+			const cJSON *ap = cJSON_GetObjectItemCaseSensitive(mj, "autoplay_bgm");
+			const cJSON *bgm = cJSON_GetObjectItemCaseSensitive(mj, "bgm");
+			if (cJSON_IsTrue(ap) && bgm) {
+				const cJSON *n = cJSON_GetObjectItemCaseSensitive(bgm, "name");
+				const cJSON *v = cJSON_GetObjectItemCaseSensitive(bgm, "volume");
+				const cJSON *p = cJSON_GetObjectItemCaseSensitive(bgm, "pitch");
+				audio::queue_song(cJSON_IsString(n) ? n->valuestring : "", 0.25f,
+				                  (cJSON_IsNumber(v) ? v->valueint : 100) / 100.0f, (cJSON_IsNumber(p) ? p->valueint : 100) / 100.0f);
+			}
+			cJSON_Delete(mj);
+		}
+	}
 
 	float px = (playerTileX + 0.5f) * tileSize.x, py = (playerTileY + 0.5f) * tileSize.y;
 	if (!keepPlayer) {
@@ -850,6 +882,18 @@ void TileMap::RemoveEntity(Entity *e) {
 	if (!e->NeverHash) RemoveEntityFromHash(e);
 	retired.push_back(std::move(*it));
 	entities.erase(it);
+}
+
+const std::vector<std::string> *TileMap::GetStepSounds(Vec2 px, float *volume) const {
+	int x = px.x / tileSize.x, y = px.y / tileSize.y;
+	*volume = 1.0f;
+	if (x < 0 || x >= mapSize.x || y < 0 || y >= mapSize.y || terrainTiles.empty()) return nullptr;
+	uint8_t b = terrainTiles[x + y * mapSize.x];
+	if (b == 0) return nullptr;
+	if (hasStepOverride) return b - 1 < (int)overrideStepSounds.size() ? &overrideStepSounds[b - 1] : nullptr;
+	if (!curInfo || b - 1 >= (int)curInfo->step_sounds.size()) return nullptr;
+	if (b - 1 < (int)curInfo->step_volumes.size()) *volume = curInfo->step_volumes[b - 1];
+	return &curInfo->step_sounds[b - 1];
 }
 
 void TileMap::MovePlayerRelative(int x, int y) {

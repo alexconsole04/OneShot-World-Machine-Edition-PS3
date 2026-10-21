@@ -12,6 +12,7 @@ add_executable(oneshot-ps3
     source/engine/overlay.cpp
     source/engine/util.cpp
     source/engine/audio.cpp
+    source/engine/mixer.cpp
     source/engine/ui.cpp
     source/game/event_data.cpp
     source/game/entity.cpp
@@ -27,16 +28,18 @@ add_executable(oneshot-ps3
     source/game/name_input.cpp
     source/platform/input_common.cpp
     source/platform/fs_case.cpp
+    source/platform/log_file.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/sys_ps3.cpp
     source/platform/ps3/input_ps3.cpp
+    source/platform/ps3/audio_out_ps3.cpp
     third_party/cJSON.c
 )
 target_include_directories(oneshot-ps3 PRIVATE source third_party)
 target_compile_features(oneshot-ps3 PRIVATE cxx_std_17 c_std_11)
 target_compile_options(oneshot-ps3 PRIVATE -O2 -Wall
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti>)
-target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysutil_userinfo_stub rtc_stub sysmodule rt lv2 m stdc++)
+target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysutil_userinfo_stub rtc_stub audio_stub sysmodule rt lv2 m stdc++)
 
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_vp.vcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_fp.fcg)

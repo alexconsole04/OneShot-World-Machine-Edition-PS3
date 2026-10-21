@@ -18,10 +18,13 @@ namespace sys {
 static char g_dir[512];
 
 void log(const char *fmt, ...) {
+	char buf[1024];
 	va_list ap;
 	va_start(ap, fmt);
-	vprintf(fmt, ap);   // TTY -> RPCS3 log / ps3load console
+	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
+	fputs(buf, stdout);   // TTY (RPCS3 log / ps3load console) or terminal
+	log_file_write(buf);
 }
 
 uint64_t time_us() {
@@ -37,6 +40,11 @@ static bool exists(const char *dir, const char *rel) {
 	if (!f) return false;
 	fclose(f);
 	return true;
+}
+
+void init_log() {
+	log_file_open("/dev_hdd0/game/" TITLE_ID "/USRDIR/oneshot_log.txt",
+	              "/dev_hdd0/game/" TITLE_ID "/USRDIR/oneshot_log_prev.txt");
 }
 
 bool find_data_dir(const char *argv0) {
