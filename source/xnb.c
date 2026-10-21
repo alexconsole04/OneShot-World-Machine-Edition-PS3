@@ -223,7 +223,7 @@ static int rd_rect_list(cursor *c, uint32_t *count, xnb_rect **out) {
 	xnb_rect *r = (xnb_rect *)malloc(sizeof(xnb_rect) * (n ? n : 1));
 	if (!r) return 0;
 	for (uint32_t i = 0; i < n; i++) {
-		uint32_t a, b, w, h;
+		uint32_t a = 0, b = 0, w = 0, h = 0;
 		rd_u32le(c, &a); rd_u32le(c, &b); rd_u32le(c, &w); rd_u32le(c, &h);
 		r[i].x = (int32_t)a; r[i].y = (int32_t)b; r[i].w = (int32_t)w; r[i].h = (int32_t)h;
 	}

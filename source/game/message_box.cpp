@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool mashing() { return input::held(input::BTN_MASHTEXT); }
+static bool mashing() { return auto_mashing(); }
 
 unsigned TextBox::TextColor(int code) {
 	switch (code) {

@@ -14,7 +14,9 @@ struct GameState;
 class EventRunner {
 public:
 	EventRunner(TileMap *map, CommandListPtr list, int eventId, int eventPageNumber, Entity *triggeringEntity = nullptr);
+	EventRunner(TileMap *map, const struct cJSON *saved);   // from EventRunnerData
 	~EventRunner();
+	struct cJSON *GetSaveData() const;
 	void Update();
 	void Draw();
 	void EndEvent() { commandIndex = (int)commands->size(); }

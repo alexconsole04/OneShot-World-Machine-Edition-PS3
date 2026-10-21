@@ -1,5 +1,6 @@
 // game_state.h - FlagManager / VariableManager / SelfSwitchManager equivalents.
 #pragma once
+#include "settings.h"
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,7 +17,7 @@ struct GameState {
 	// FastTravelManager
 	struct TravelLocation { int zone = 0, mapId = 0; int x = 0, y = 0; int direction = 2; };
 	std::vector<TravelLocation> travel_locations;
-	bool travel_enabled = true;
+	bool travel_enabled = false;     // FastTravelManager.Unlocked
 	std::string journal_page;
 	int plight_timer_start = 0;          // minutes, local clock
 	bool window_maximized = false;       // "$console" / Graphics.fullscreen
@@ -28,7 +29,16 @@ struct GameState {
 	void remove_item(int id) { if (id >= 0 && id < (int)inventory.size()) inventory[id] = false; }
 	bool has_follower(int f) const { for (int i : followers) if (i == f) return true; return false; }
 
-	bool flag(int id) const { return id >= 0 && id < (int)flags.size() && flags[id]; }
+	// FlagManager.IsFlagSet, including its computed flags. Desktop unlock
+	// flags (401+) read false until the desktop is ported.
+	bool flag(int id) const {
+		switch (id) {
+		case 25: case 390: return true;
+		case 395: case 396: return false;   // Steam demo builds
+		case 252: return settings().colorblindMode;
+		default: return id >= 0 && id < (int)flags.size() && flags[id];
+		}
+	}
 	void set_flag(int id, bool v) { if (id >= 0 && id < (int)flags.size()) flags[id] = v; }
 	int var(int id) const { return id >= 0 && id < (int)vars.size() ? vars[id] : 0; }
 	void set_var(int id, int v) { if (id >= 0 && id < (int)vars.size()) vars[id] = v; }

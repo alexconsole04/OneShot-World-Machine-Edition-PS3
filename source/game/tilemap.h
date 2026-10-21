@@ -86,6 +86,9 @@ public:
 	void StartCommonEvent(int commonEventId, bool parallelProcess = false);
 	const CommonEvent *GetCommonEvent(int id) const;
 	void DebugRunTexts(const std::vector<std::string> &texts);
+	// TileMapSaveData (save files).
+	struct cJSON *GetSaveData() const;
+	void LoadSaveData(const struct cJSON *o);
 	Entity *GetNPCTriggeringEvent() const;
 	void EventRunnerUpdate();
 	void DrawEventRunners();
@@ -174,6 +177,9 @@ private:
 	bool wasMapChangedDuringUpdate = false;
 	std::map<int, CommonEvent> commonEvents;
 	std::unique_ptr<EventRunner> mainEventRunner;
+	// A runner replaced while it was executing (loading a save from a
+	// script) lives until the next EventRunnerUpdate.
+	std::vector<std::unique_ptr<EventRunner>> retiredRunners;
 	// C# Dictionary<int, EventRunner>: iterated in insertion order.
 	std::vector<std::pair<int, std::unique_ptr<EventRunner>>> parallelEventRunners;
 	int queuedCommonEventId = -1;

@@ -80,7 +80,7 @@ void Player::Update() {
 		}
 		if (!map->IsInScript() && !state->flag(11)) {
 			oldDirection = direction;
-			bool run = input::held(input::BTN_RUN) ^ defaultMovementRun;
+			bool run = input::held(input::BTN_RUN) ^ settings().defaultMovementRun;
 			bool lockDown = directionFix && direction == Direction::Down;
 			bool onlyLR = state->flag(112) || state->flag(146);
 			Vec2 moved = pos - oldPos;

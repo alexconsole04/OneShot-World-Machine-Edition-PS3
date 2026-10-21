@@ -3,6 +3,7 @@
 // same as the C#'s fade timers); the platform backend runs the mixer on
 // its own audio thread.
 #include "audio.h"
+#include <stdio.h>
 #include "mixer.h"
 #include "util.h"
 #include "../platform/audio_out.h"
@@ -395,6 +396,36 @@ void update() {
 		}
 	}
 	audio_out::pump();   // host backend renders here; PS3 runs its own thread
+}
+
+SaveData get_save_data() {
+	SaveData d;
+	snprintf(d.bgm, sizeof(d.bgm), "%s", currentSong.c_str());
+	d.bgmVol = currentSongVolume;
+	d.bgmPitch = bgmPitch;
+	snprintf(d.bgs, sizeof(d.bgs), "%s", smBgsName.c_str());
+	d.bgsVol = smBgsVol;
+	d.bgsPitch = smBgsPitch;
+	return d;
+}
+
+void load_save_data(const SaveData &d) {
+	play_song(d.bgm, 0.0f, d.bgmVol, d.bgmPitch);
+	play_bgs(d.bgs, d.bgsVol, d.bgsPitch);
+}
+
+void stop_all() {
+	fm_stop_song();
+	fm_stop_bgs();
+	fm_stop_me();
+	for (int v = V_SFX0; v < mixer::MAX_VOICES; v++) mixer::stop(v);
+	queuedSongName.clear();
+	smSongName.clear();
+	smBgsName.clear();
+	memSongName.clear();
+	memBgsName.clear();
+	fadeTimeTotal = 0;
+	fadeVol = 1;
 }
 
 void set_volumes(int bgm, int sfxv) { bgm_vol_setting = bgm; sfx_vol_setting = sfxv; }

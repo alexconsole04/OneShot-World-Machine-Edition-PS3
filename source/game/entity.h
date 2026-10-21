@@ -53,6 +53,9 @@ public:
 	bool isCollisionDirectionSet(Direction d) const { return (collisionDirection & CollisionFlagMask(d)) != 0; }
 
 	void ReloadTextures();   // re-resolve sheet/lightmap after a cache clear
+	// EntitySaveData (save files).
+	struct cJSON *GetSaveData() const;
+	void LoadSaveData(const struct cJSON *o);
 	bool TouchingRect(Rect o) const;
 	void EntityCollision(Entity *other);
 	void SetNPCSheet(const std::string &sheet, int hue = 0);

@@ -824,3 +824,83 @@ void Entity::CheckIfPlayFootstepSound() {
 	}
 	// EmitFootsplash: not ported yet
 }
+
+// ---------------------------------------------------------------- save data
+#include "cJSON.h"
+
+static cJSON *vec_json(Vec2 v) {
+	cJSON *o = cJSON_CreateObject();
+	cJSON_AddNumberToObject(o, "X", v.x);
+	cJSON_AddNumberToObject(o, "Y", v.y);
+	return o;
+}
+
+static Vec2 json_vec(const cJSON *o, const char *k, Vec2 def) {
+	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+	if (!cJSON_IsObject(v)) return def;
+	const cJSON *x = cJSON_GetObjectItemCaseSensitive(v, "X"), *y = cJSON_GetObjectItemCaseSensitive(v, "Y");
+	return Vec2(cJSON_IsNumber(x) ? (int)x->valuedouble : def.x, cJSON_IsNumber(y) ? (int)y->valuedouble : def.y);
+}
+
+static int json_int(const cJSON *o, const char *k, int def) {
+	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+	return cJSON_IsNumber(v) ? (int)v->valuedouble : def;
+}
+
+static bool json_bool(const cJSON *o, const char *k, bool def) {
+	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+	return cJSON_IsBool(v) ? cJSON_IsTrue(v) : def;
+}
+
+cJSON *Entity::GetSaveData() const {
+	cJSON *o = cJSON_CreateObject();
+	cJSON_AddNumberToObject(o, "id", id);
+	cJSON_AddNumberToObject(o, "direction", (int)direction);
+	cJSON_AddNumberToObject(o, "frameIndex", frameIndex);
+	cJSON_AddNumberToObject(o, "frameTimer", frameTimer);
+	cJSON_AddNumberToObject(o, "collisionDirection", collisionDirection);
+	cJSON_AddNumberToObject(o, "currentPageIndex", currentPageIndex);
+	cJSON_AddItemToObject(o, "pos", vec_json(pos));
+	cJSON_AddItemToObject(o, "vel", vec_json(vel));
+	cJSON_AddBoolToObject(o, "active", active);
+	cJSON_AddNumberToObject(o, "stopTimer", stopTimer);
+	cJSON_AddNumberToObject(o, "moveRouteIndex", moveRouteIndex);
+	cJSON_AddNumberToObject(o, "waitTimer", waitTimer);
+	cJSON_AddNumberToObject(o, "moveStuckTimer", moveStuckTimer);
+	cJSON_AddBoolToObject(o, "jumping", jumping);
+	cJSON_AddBoolToObject(o, "moving", moving);
+	cJSON_AddItemToObject(o, "moveTarget", vec_json(moveTarget));
+	cJSON_AddBoolToObject(o, "ignoreMapCollision", ignoreMapCollision);
+	cJSON_AddBoolToObject(o, "ignoreNpcCollision", ignoreNpcCollision);
+	if (moveRoute) cJSON_AddItemToObject(o, "moveRoute", route_to_json(*moveRoute));
+	cJSON_AddBoolToObject(o, "moveRouteForcing", moveRouteForcing);
+	if (storedMoveRoute) cJSON_AddItemToObject(o, "storedMoveRoute", route_to_json(*storedMoveRoute));
+	return o;
+}
+
+void Entity::LoadSaveData(const cJSON *o) {
+	SetActivePage(json_int(o, "currentPageIndex", currentPageIndex));
+	direction = (Direction)json_int(o, "direction", (int)direction);
+	if (!IsPlayer()) {
+		frameIndex = json_int(o, "frameIndex", frameIndex);
+		frameTimer = json_int(o, "frameTimer", frameTimer);
+	}
+	collisionDirection = json_int(o, "collisionDirection", collisionDirection);
+	pos = json_vec(o, "pos", pos);
+	vel = json_vec(o, "vel", vel);
+	active = json_bool(o, "active", active);
+	stopTimer = json_int(o, "stopTimer", stopTimer);
+	moveRouteIndex = json_int(o, "moveRouteIndex", moveRouteIndex);
+	waitTimer = json_int(o, "waitTimer", waitTimer);
+	moveStuckTimer = json_int(o, "moveStuckTimer", moveStuckTimer);
+	jumping = json_bool(o, "jumping", jumping);
+	moving = json_bool(o, "moving", moving);
+	moveTarget = json_vec(o, "moveTarget", moveTarget);
+	ignoreMapCollision = json_bool(o, "ignoreMapCollision", ignoreMapCollision);
+	ignoreNpcCollision = json_bool(o, "ignoreNpcCollision", ignoreNpcCollision);
+	const cJSON *mr = cJSON_GetObjectItemCaseSensitive(o, "moveRoute");
+	moveRoute = cJSON_IsObject(mr) ? route_from_json(mr) : nullptr;
+	moveRouteForcing = json_bool(o, "moveRouteForcing", false);
+	const cJSON *smr = cJSON_GetObjectItemCaseSensitive(o, "storedMoveRoute");
+	storedMoveRoute = cJSON_IsObject(smr) ? route_from_json(smr) : nullptr;
+}

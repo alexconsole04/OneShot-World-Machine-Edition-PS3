@@ -17,6 +17,8 @@ public:
 	                 gfx::Blend blend);
 	void ChangePictureTone(int slot, GameTone tone, int duration);
 	void Clear() { pictures.clear(); }
+	struct cJSON *GetSaveData() const;          // PictureSaveData list
+	void LoadSaveData(const struct cJSON *list);
 	int Count() const { return (int)pictures.size(); }
 
 private:

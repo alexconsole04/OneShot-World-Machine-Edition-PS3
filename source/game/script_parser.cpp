@@ -3,8 +3,8 @@
 //
 // Desktop (TWM) side effects - files written into the World Machine's file
 // system, wallpapers, profiles, achievements - are recorded/logged only
-// until the desktop is ported. Saves, quitting, glitch effects, particles,
-// lights and step sounds are stubs for now (logged once).
+// until the desktop is ported. Glitch effects, particles and lights are
+// stubs for now (logged once).
 #include "script_parser.h"
 #include "event_runner.h"
 #include "entity.h"
@@ -13,6 +13,10 @@
 #include "game_state.h"
 #include "menus.h"
 #include "modal.h"
+#include "loc.h"
+#include "oneshot_window.h"
+#include "save.h"
+#include "settings.h"
 #include "../engine/audio.h"
 #include "../platform/input.h"
 #include "../platform/sys.h"
@@ -139,8 +143,9 @@ static void UnlockMap(Ctx &c, std::string s) {
 		else if (parts[2] == ":left") loc.direction = 4;
 		else if (parts[2] == ":right") loc.direction = 6;
 	}
+	c.st->travel_enabled = true;   // FastTravelManager.Unlocked
 	for (auto &l : c.st->travel_locations)
-		if (l.mapId == loc.mapId && l.x == loc.x && l.y == loc.y) return;
+		if (l.zone == loc.zone && l.mapId == loc.mapId) return;
 	c.st->travel_locations.push_back(loc);
 }
 
@@ -190,7 +195,7 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	t["$scene = Scene_Map.new"] = [](Ctx &c) { if (c.map->menus) c.map->menus->itemMenu.Close(); return false; };
 	t["disable_travel"] = [](Ctx &c) { c.st->travel_enabled = false; return false; };
 	t["enable_travel"] = [](Ctx &c) { c.st->travel_enabled = true; return false; };
-	t["save"] = [](Ctx &) { note("saving (not ported)", "save"); return false; };
+	t["save"] = [](Ctx &c) { save::Make(c.map, c.st); return false; };
 	t["Script.niko_reflection_enc_update"] = [](Ctx &c) { set_reflection(c, 83968, 79872, true, false, true); return false; };
 	t["Script.niko_reflection_peng_update"] = [](Ctx &c) { set_reflection(c, 83968, 79872, false, false, false); return false; };
 	t["Script.niko_reflection_update"] = [](Ctx &c) { set_reflection(c, 57344, 0, true, true, true); return false; };
@@ -200,9 +205,24 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	t["house_ambient\nadd_light :eyes, 'niko_eyes', 1.0, \n14 * 32, 16 * 32"] = house;
 	t["house_ambient"] = house;
 	t["blue_ambient"] = blue;
-	t["quit_game_bed"] = [](Ctx &c) { note("quit (not ported)", "quit_game_bed"); c.caller->EndEvent(); return true; };
-	t["quit_game_no_save"] = [](Ctx &c) { note("quit (not ported)", "quit_game_no_save"); c.caller->EndEvent(); return true; };
-	t["real_load"] = [](Ctx &c) { note("loading (not ported)", "real_load"); c.caller->EndEvent(); return false; };
+	t["quit_game_bed"] = [](Ctx &c) {
+		save::Make(c.map, c.st);
+		window().ExitGame();
+		return true;
+	};
+	t["quit_game_no_save"] = [](Ctx &) { window().ExitGame(); return true; };
+	t["real_load"] = [](Ctx &c) {
+		if (!save::Load(c.map, c.st)) {
+			sys::log("ERROR: %s\n", loc::twm("game_load_failed").c_str());
+			save::ClearCorrupt();
+			window().ExitGame();
+		}
+		c.caller->EndEvent();
+		return false;
+	};
+	t["erase_game\nload_perma_flags"] = [](Ctx &) { save::Erase(); return false; };
+	t["kill_perma_flags"] = [](Ctx &c) { save::KillPermaFlags(c.st); return false; };
+	t["Window_Settings.load_settings"] = [](Ctx &) { settings().Load(); return false; };
 	t["$game_variables[22] = $game_player.x\n$game_variables[23] = $game_player.y"] = [](Ctx &c) {
 		Vec2 p = c.ptile();
 		c.st->set_var(22, p.x);
@@ -271,7 +291,7 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	for (const char *s : { "Script.copy_journal", "Script.create_boxes", "Script.clear_boxes", "Script.put_key_in_box(1)",
 	                       "Script.put_key_in_box(2)", "Script.put_key_in_box(3)", "Script.password1", "Script.password2",
 	                       "Wallpaper.reset_persistent", "Niko.do_your_thing", "set_wallpaper_black",
-	                       "stop_speedrun_timer", "kill_perma_flags", "erase_game\nload_perma_flags" })
+	                       "stop_speedrun_timer" })
 		t[s] = [s](Ctx &) { note("desktop/save (not ported)", s); return false; };
 	t["Script.fadein_bgm(90,5)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 5.0f); return false; };
 	t["Script.fadein_bgm(90,3)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 3.0f); return false; };
@@ -374,7 +394,7 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	                       "loadQASave(\"Save9_ReachedGlen\")", "loadQASave(\"Save4_barrens_done\")",
 	                       "loadQASave(\"Save14_ReachedRefugeSky\")", "loadQASave(\"Save9_glen_done\")",
 	                       "loadQASave(\"Save16_ReachedRedGround\")", "add_light :window, \n'start_window', 2.0, 680, 370",
-	                       "add_light :bulb,\n'bulb_ground', 0.70, 304, 688", "del_light :eyes", "Window_Settings.load_settings",
+	                       "add_light :bulb,\n'bulb_ground', 0.70, 304, 688", "del_light :eyes",
 	                       "fake_save" })
 		t[s] = none;
 	return t;
@@ -457,7 +477,7 @@ CondResult HandleScriptConditional(TileMap *map, const std::string &script, Even
 	std::string lname = name;
 	for (auto &ch : lname) ch = (char)tolower((unsigned char)ch);
 	if (s == "$debug") r = false;
-	else if (s == "save_exists") r = false;   // saving: not ported yet
+	else if (s == "save_exists") r = save::Exists();
 	else if (s == "$persistent.langcode != 'zh_CN'") r = true;
 	else if (s == "$persistent.langcode == 'ja'") r = false;
 	else if (s == "$game_player.y == 17") r = c.ptile().y == 17;

@@ -23,6 +23,15 @@ void set_song_paused(bool paused);
 void memorize_bgm_bgs();
 void restore_bgm_bgs();
 
+// SoundSaveData: the current BGM and BGS.
+struct SaveData {
+	char bgm[64] = "", bgs[64] = "";
+	float bgmVol = 1, bgmPitch = 1, bgsVol = 1, bgsPitch = 1;
+};
+SaveData get_save_data();
+void load_save_data(const SaveData &d);   // plays them
+void stop_all();                          // music, ambience, jingles, sounds
+
 void set_volumes(int bgm, int sfx);   // settings, 0..100
 const char *current_song();
 bool output_ok();

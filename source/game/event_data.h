@@ -84,3 +84,10 @@ struct CommonEvent {
 std::unique_ptr<EventFile> load_event_file(const char *rel_path);
 // Returns false if the file is missing or malformed (out is left empty).
 bool load_common_events(const char *rel_path, std::vector<CommonEvent> &out);
+
+// Save files: command lists and move routes in the gamedata JSON shape.
+struct cJSON;
+cJSON *commands_to_json(const CommandList &l);
+CommandListPtr commands_from_json(const cJSON *list);
+cJSON *route_to_json(const MoveRoute &r);
+MoveRoutePtr route_from_json(const cJSON *r);

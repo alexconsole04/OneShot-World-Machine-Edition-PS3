@@ -9,7 +9,6 @@ public:
 	void Update() override;
 	bool IsPlayer() const override { return true; }
 	bool PlayerHasControl() const;
-	bool defaultMovementRun = false;   // SettingsMenu.IsDefaultMovementRun
 private:
 	void NormalizeWalkRunSpeed(bool run);
 	int footprintEmitTimer = 0;

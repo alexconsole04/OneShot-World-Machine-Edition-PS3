@@ -10,6 +10,8 @@ public:
 	Panorama(const std::string &imageName, Vec2 size);
 	void Update();
 	void Draw(Vec2 camPos, Vec2 playerPos, Vec2 mapSize, Vec2 tileSize, GameTone tone) const;
+	const std::string &Source() const { return source; }
+	Vec2 Size() const { return size; }
 private:
 	enum class Type { Normal, Clamped, AnimatedWater, Scroll };
 	std::string source, back, front;

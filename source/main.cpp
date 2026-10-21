@@ -19,6 +19,7 @@
 #include "game/pictures.h"
 #include "game/menus.h"
 #include "game/modal.h"
+#include "game/oneshot_window.h"
 #include "engine/audio.h"
 
 #include <stdio.h>
@@ -76,36 +77,37 @@ int main(int argc, const char **argv) {
 	audio::init();
 	audio::preload_sfx();
 
-	GameState state;
-	state.player_name = sys::user_name();
-	TileMap map(&state);
-	if (!map.LoadGlobalData()) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
-	MenuManager menus(&map, &state);
-	menus.itemMenu.LoadData();
-	map.menus = &menus;
-
-	int mapId = NEW_GAME_MAP;
-	float sx = NEW_GAME_X, sy = NEW_GAME_Y;
-	if (const char *m = getenv("OSPS3_MAP")) mapId = atoi(m);
-	if (const char *s = getenv("OSPS3_SPAWN")) sscanf(s, "%f,%f", &sx, &sy);
-	if (const char *f = getenv("OSPS3_FLAGS"))   // host testing: "178,160"
-		for (const char *p = f; *p; ) { state.set_flag(atoi(p), true); while (*p && *p != ',') p++; if (*p) p++; }
-	if (const char *v = getenv("OSPS3_VARS"))    // host testing: "3=2,4=1"
-		for (const char *p = v; *p; ) {
-			int id = atoi(p);
-			while (*p && *p != '=') p++;
-			if (*p) p++;
-			state.set_var(id, atoi(p));
-			while (*p && *p != ',') p++;
-			if (*p) p++;
-		}
-	if (const char *it = getenv("OSPS3_ITEMS"))  // host testing: "3,4"
-		for (const char *p = it; *p; ) { state.add_item(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
+	// Debug starts (OSPS3_MAP, or the map browser) skip the title screen.
+	const char *debugMap = getenv("OSPS3_MAP");
+	if (!window().Boot(debugMap == nullptr)) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
 	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
-	if (!map.LoadMap(mapId, sx, sy, Direction::Down)) { fatal_screen("Could not load the start map."); return 0; }
-	// The player starts without a sprite; the intro's "change party member"
-	// gives it Niko's. Debug starts elsewhere need it straight away.
-	if (mapId != NEW_GAME_MAP) map.GetPlayer()->SetNPCSheet("niko", 0);
+	{
+		GameState &state = window().State();
+		if (const char *f = getenv("OSPS3_FLAGS"))   // host testing: "178,160"
+			for (const char *p = f; *p; ) { state.set_flag(atoi(p), true); while (*p && *p != ',') p++; if (*p) p++; }
+		if (const char *v = getenv("OSPS3_VARS"))    // host testing: "3=2,4=1"
+			for (const char *p = v; *p; ) {
+				int id = atoi(p);
+				while (*p && *p != '=') p++;
+				if (*p) p++;
+				state.set_var(id, atoi(p));
+				while (*p && *p != ',') p++;
+				if (*p) p++;
+			}
+		if (const char *it = getenv("OSPS3_ITEMS"))  // host testing: "3,4"
+			for (const char *p = it; *p; ) { state.add_item(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
+	}
+	int mapId = 0;
+	if (debugMap) {
+		float sx = NEW_GAME_X, sy = NEW_GAME_Y;
+		mapId = atoi(debugMap);
+		if (const char *s = getenv("OSPS3_SPAWN")) sscanf(s, "%f,%f", &sx, &sy);
+		TileMap &map = window().Map();
+		if (!map.LoadMap(mapId, sx, sy, Direction::Down)) { fatal_screen("Could not load the start map."); return 0; }
+		// The player starts without a sprite; the intro's "change party member"
+		// gives it Niko's. Debug starts elsewhere need it straight away.
+		if (mapId != NEW_GAME_MAP) map.GetPlayer()->SetNPCSheet("niko", 0);
+	}
 
 	// Host testing: OSPS3_TEXTS="text1|text2" runs Show Text commands.
 	if (const char *tx = getenv("OSPS3_TEXTS")) {
@@ -118,7 +120,7 @@ int main(int argc, const char **argv) {
 			if (e == std::string::npos) break;
 			p = e + 1;
 		}
-		map.DebugRunTexts(v);
+		window().Map().DebugRunTexts(v);
 	}
 
 	// Host screenshot schedule.
@@ -144,15 +146,16 @@ int main(int argc, const char **argv) {
 	float frame_ms = 16.7f, update_ms = 0, draw_ms = 0, wait_ms = 0;
 	int frame = 0;
 
-	while (!input::quit_requested()) {
+	while (!input::quit_requested() && !window().QuitRequested()) {
 		input::update();
+		TileMap *mp = &window().Map();
 		if (input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
 		bool dbg = show_overlay || tex_view;
 		if (dbg && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
 		if (dbg && input::pressed(input::BTN_MASHTEXT)) gfx::set_vertex_main_memory(!gfx::vertex_main_memory());   // L2
 		if (dbg && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
-		if (dbg && input::pressed(input::BTN_L3)) map.debugLayers = (map.debugLayers + 1) % 4;
+		if (dbg && input::pressed(input::BTN_L3)) mp->debugLayers = (mp->debugLayers + 1) % 4;
 		if (dbg && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
 		if (dbg && input::pressed(input::BTN_R1) && input::held(input::BTN_L1)) tex_view = !tex_view;  // L1+R1
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
@@ -167,43 +170,30 @@ int main(int argc, const char **argv) {
 				if (next > 400) next = 1;
 				if (map_exists(next)) break;
 			}
-			if (map.LoadMap(next, 0, 0, Direction::Down)) {
+			if (!window().TitleOpen() && mp->LoadMap(next, 0, 0, Direction::Down)) {
 				mapId = next;
-				Vec2 ms = map.GetMapSize();
-				map.GetPlayer()->SetPosTile(map.FindOpenTileNear(ms.x / 2, ms.y / 2));
-				map.Update();
+				Vec2 ms = mp->GetMapSize();
+				mp->GetPlayer()->SetPosTile(mp->FindOpenTileNear(ms.x / 2, ms.y / 2));
+				if (mp->GetPlayer()->GetNPCSheet().empty()) mp->GetPlayer()->SetNPCSheet("niko", 0);
+				mp->Update();
 			}
 		}
 
 		uint64_t t0 = sys::time_us();
 		if (!tex_view) {
-			// OneshotWindow.GameLogic order.
 			modal::update();
-			state.play_frames++;
-			font::tick();
-			menus.Update();
-			menus.itemMenu.UpdateSelectedItemIcon();
-			map.Update();
-			map.EventRunnerUpdate();
-			pictures().Update();
-			flash().Update();
-			audio::update();
+			window().Update();   // OneshotWindow.GameLogic
 		}
+		TileMap &map = window().Map();
+		GameState &state = window().State();
 		mapId = map.GetMapID();
 		uint64_t t1 = sys::time_us();
 
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
 		uint64_t tb = sys::time_us();
 		if (!tex_view) {
-			// OneshotWindow.PreDraw order.
 			gm::clip_to_window();
-			map.Draw();
-			menus.itemMenu.DrawSelectedItemIcon();
-			menus.Draw();
-			pictures().Draw();
-			flash().Draw();
-			map.DrawEventRunners();
-			map.DrawMapTransition();
+			window().Draw();     // OneshotWindow.PreDraw
 			gm::clip_off();
 			modal::draw();
 		} else {
@@ -237,7 +227,7 @@ int main(int argc, const char **argv) {
 		uint64_t t2 = sys::time_us();
 		if (show_overlay && !tex_view) {
 			gfx::Stats st = gfx::last_stats();
-			Vec2 pp = map.GetPlayer()->GetPixelPos();
+			Vec2 pp = map.GetPlayer() ? map.GetPlayer()->GetPixelPos() : Vec2();
 			overlay::text(16, 16, 2, 0xffffff, "map %d  frame %.2f ms (%.1f fps)", mapId, frame_ms, 1000.0f / frame_ms);
 			overlay::text(16, 46, 2, 0xc0ffc0, "cpu: update %.2f ms  draw %.2f ms  (idle/vsync %.2f ms)", update_ms, draw_ms, wait_ms);
 			overlay::text(16, 76, 2, 0xc0e0ff, "draw calls %d  sprites %d  entities %d", st.draw_calls, st.quads, map.EntityCount());
@@ -265,7 +255,7 @@ int main(int argc, const char **argv) {
 			static int last_map = -1;
 			float ms = (now - last) / 1000.0f;
 			if (ms > 40.0f && mapId == last_map && now - last_hitch_log > 1000000) {
-				Vec2 pp = map.GetPlayer()->GetPixelPos();
+				Vec2 pp = map.GetPlayer() ? map.GetPlayer()->GetPixelPos() : Vec2();
 				sys::log("slow frame: %.1f ms (update %.2f, draw %.2f) map %d at %d,%d\n", ms, (t1 - t0) / 1000.0f,
 				         (t2 - tb) / 1000.0f, mapId, pp.x / 16, pp.y / 16);
 				last_hitch_log = now;

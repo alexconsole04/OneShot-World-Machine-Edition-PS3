@@ -40,4 +40,11 @@ const char *user_name();
 // Local wall-clock time (DateTime.Now): fills hour/min/sec and day of year (1..366).
 void local_time(int *hour, int *minute, int *second, int *day_of_year);
 
+// Save files (save_io.cpp): <save_dir>/<name>, written atomically.
+const char *save_dir();
+bool save_exists(const char *name);
+bool save_read(const char *name, std::string &out);
+bool save_write(const char *name, const std::string &data);
+bool save_delete(const char *name);
+
 } // namespace sys

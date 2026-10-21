@@ -10,7 +10,7 @@
 #include "../platform/input.h"
 
 static bool close_pressed() {
-	return input::pressed(input::BTN_OK) || input::pressed(input::BTN_CANCEL) || input::held(input::BTN_MASHTEXT);
+	return input::pressed(input::BTN_OK) || input::pressed(input::BTN_CANCEL) || auto_mashing();
 }
 
 static void replace_all(std::string &s, const std::string &from, const std::string &to) {

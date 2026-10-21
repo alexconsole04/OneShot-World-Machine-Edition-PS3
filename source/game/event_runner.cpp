@@ -78,6 +78,49 @@ EventRunner::EventRunner(TileMap *m, CommandListPtr list, int eventId, int event
 	: map(m), state(m->State()), commands(list ? std::move(list) : std::make_shared<CommandList>()),
 	  triggeringEventId(eventId), triggeringEventPageNumber(eventPageNumber), triggeringEntity(trig) {}
 
+// ---------------------------------------------------------------- EventRunnerData
+static int jnum(const cJSON *o, const char *k, int def) {
+	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+	return cJSON_IsNumber(v) ? (int)v->valuedouble : def;
+}
+
+cJSON *EventRunner::GetSaveData() const {
+	cJSON *o = cJSON_CreateObject();
+	cJSON_AddItemToObject(o, "commands", commands_to_json(*commands));
+	cJSON_AddNumberToObject(o, "commandIndex", commandIndex);
+	cJSON_AddNumberToObject(o, "waitTimer", waitTimer);
+	cJSON_AddNumberToObject(o, "buttonInputVarId", buttonInputVarId);
+	cJSON_AddNumberToObject(o, "selectedChoice", selectedChoice);
+	cJSON_AddNumberToObject(o, "currentChoicesIndent", currentChoicesIndent);
+	cJSON_AddNumberToObject(o, "TriggeringEntityId", triggeringEntity ? triggeringEntity->GetID() : -1);
+	if (innerRunner) cJSON_AddItemToObject(o, "innerRunner", innerRunner->GetSaveData());
+	cJSON_AddBoolToObject(o, "waitForMapTransition", waitForMapTransition);
+	cJSON_AddNumberToObject(o, "currentTextBoxStyle", (int)currentStyle);
+	cJSON_AddNumberToObject(o, "currentTextBoxArea", (int)currentArea);
+	cJSON_AddNumberToObject(o, "eventId", triggeringEventId);
+	cJSON_AddNumberToObject(o, "eventPageNumber", triggeringEventPageNumber);
+	return o;
+}
+
+EventRunner::EventRunner(TileMap *m, const cJSON *o)
+	: map(m), state(m->State()),
+	  commands(commands_from_json(cJSON_GetObjectItemCaseSensitive(o, "commands"))),
+	  triggeringEventId(jnum(o, "eventId", 0)), triggeringEventPageNumber(jnum(o, "eventPageNumber", -1)),
+	  triggeringEntity(nullptr) {
+	commandIndex = jnum(o, "commandIndex", 0);
+	waitTimer = jnum(o, "waitTimer", 0);
+	buttonInputVarId = jnum(o, "buttonInputVarId", 0);
+	selectedChoice = jnum(o, "selectedChoice", -1);
+	currentChoicesIndent = jnum(o, "currentChoicesIndent", -1);
+	int tid = jnum(o, "TriggeringEntityId", -1);
+	if (tid >= 0) triggeringEntity = map->GetEntityByID(tid);
+	const cJSON *inner = cJSON_GetObjectItemCaseSensitive(o, "innerRunner");
+	if (cJSON_IsObject(inner)) innerRunner.reset(new EventRunner(map, inner));
+	waitForMapTransition = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "waitForMapTransition"));
+	currentStyle = (TextBox::Style)jnum(o, "currentTextBoxStyle", 0);
+	currentArea = (TextBox::Area)jnum(o, "currentTextBoxArea", (int)TextBox::Area::Down);
+}
+
 EventRunner::~EventRunner() = default;
 
 TextBox *EventRunner::textBox() { return messageBox ? messageBox->AsTextBox() : nullptr; }
@@ -137,7 +180,7 @@ void EventRunner::Update() {
 	if (buttonInputVarId > 0) {
 		using namespace input;
 		if (!pressed(BTN_OK) && !pressed(BTN_CANCEL) && !pressed(BTN_DOWN) && !pressed(BTN_LEFT) &&
-		    !pressed(BTN_RIGHT) && !pressed(BTN_UP) && !held(BTN_MASHTEXT))
+		    !pressed(BTN_RIGHT) && !pressed(BTN_UP) && !auto_mashing())
 			return;
 		state->set_var(22, 1);   // C# sets variable 22, not buttonInputVarId
 		buttonInputVarId = 0;

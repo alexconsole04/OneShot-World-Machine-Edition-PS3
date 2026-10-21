@@ -110,3 +110,44 @@ void FlashManager::Draw() {
 	uint8_t a = (uint8_t)(ca * timeRemaining / duration);
 	gm::color_box(Rect(0, 0, 320, 240), cr, cg, cb, a);
 }
+
+// ---------------------------------------------------------------- save data
+#include "cJSON.h"
+
+cJSON *PictureManager::GetSaveData() const {
+	cJSON *a = cJSON_CreateArray();
+	for (auto &kv : pictures) {
+		const Picture &p = kv.second;
+		cJSON *o = cJSON_CreateObject();
+		cJSON_AddNumberToObject(o, "id", kv.first);
+		cJSON_AddStringToObject(o, "name", p.name.c_str());
+		cJSON *pos = cJSON_AddObjectToObject(o, "pos");
+		cJSON_AddNumberToObject(pos, "X", p.pos.x);
+		cJSON_AddNumberToObject(pos, "Y", p.pos.y);
+		cJSON_AddBoolToObject(o, "isPosCenter", p.isPosCenter);
+		cJSON_AddNumberToObject(o, "xScale", p.xScale);
+		cJSON_AddNumberToObject(o, "yScale", p.yScale);
+		cJSON_AddNumberToObject(o, "opacity", p.opacity);
+		cJSON_AddNumberToObject(o, "blendMode", (int)p.blend);
+		cJSON_AddItemToArray(a, o);
+	}
+	return a;
+}
+
+static double jd(const cJSON *o, const char *k, double def) {
+	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+	return cJSON_IsNumber(v) ? v->valuedouble : def;
+}
+
+void PictureManager::LoadSaveData(const cJSON *list) {
+	pictures.clear();
+	const cJSON *o;
+	cJSON_ArrayForEach(o, list) {
+		const cJSON *n = cJSON_GetObjectItemCaseSensitive(o, "name");
+		const cJSON *pos = cJSON_GetObjectItemCaseSensitive(o, "pos");
+		Vec2 p(pos ? (int)jd(pos, "X", 0) : 0, pos ? (int)jd(pos, "Y", 0) : 0);
+		ShowPicture((int)jd(o, "id", 0), cJSON_IsString(n) ? n->valuestring : "",
+		            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "isPosCenter")), p, (float)jd(o, "xScale", 1),
+		            (float)jd(o, "yScale", 1), (int)jd(o, "opacity", 255), (gfx::Blend)(int)jd(o, "blendMode", 0));
+	}
+}

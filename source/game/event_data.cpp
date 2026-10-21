@@ -81,6 +81,53 @@ static CommandListPtr parse_commands(const cJSON *list) {
 	return out;
 }
 
+// ---- the same JSON shape back out, for save files
+static cJSON *params_json(const std::vector<std::string> &ps) {
+	cJSON *a = cJSON_CreateArray();
+	for (const std::string &p : ps) cJSON_AddItemToArray(a, cJSON_CreateString(p.c_str()));
+	return a;
+}
+
+static void audio_json(cJSON *o, const AudioFile &af) {
+	if (!af.valid) return;
+	cJSON *a = cJSON_AddObjectToObject(o, "audio_file");
+	cJSON_AddStringToObject(a, "name", af.name.c_str());
+	cJSON_AddNumberToObject(a, "volume", af.volume);
+	cJSON_AddNumberToObject(a, "pitch", af.pitch);
+}
+
+cJSON *route_to_json(const MoveRoute &r) {
+	cJSON *o = cJSON_CreateObject();
+	cJSON_AddBoolToObject(o, "repeat", r.repeat);
+	cJSON_AddBoolToObject(o, "skippable", r.skippable);
+	cJSON *list = cJSON_AddArrayToObject(o, "list");
+	for (const MoveCommand &mc : r.list) {
+		cJSON *c = cJSON_CreateObject();
+		cJSON_AddNumberToObject(c, "code", mc.code);
+		cJSON_AddItemToObject(c, "parameters", params_json(mc.parameters));
+		audio_json(c, mc.audio_file);
+		cJSON_AddItemToArray(list, c);
+	}
+	return o;
+}
+
+cJSON *commands_to_json(const CommandList &l) {
+	cJSON *a = cJSON_CreateArray();
+	for (const EventCommand &ec : l) {
+		cJSON *c = cJSON_CreateObject();
+		cJSON_AddNumberToObject(c, "code", ec.code);
+		cJSON_AddNumberToObject(c, "indent", ec.indent);
+		cJSON_AddItemToObject(c, "parameters", params_json(ec.parameters));
+		if (ec.move_route) cJSON_AddItemToObject(c, "move_route", route_to_json(*ec.move_route));
+		audio_json(c, ec.audio_file);
+		cJSON_AddItemToArray(a, c);
+	}
+	return a;
+}
+
+MoveRoutePtr route_from_json(const cJSON *r) { return parse_route(r); }
+CommandListPtr commands_from_json(const cJSON *list) { return parse_commands(list); }
+
 static cJSON *read_json(const char *rel_path) {
 	uint8_t *data;
 	size_t size;

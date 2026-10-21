@@ -4,6 +4,9 @@
 #include "../engine/audio.h"
 #include "../engine/gm.h"
 #include "../engine/ui.h"
+#include "../engine/font.h"
+#include "loc.h"
+#include "settings.h"
 #include "../platform/input.h"
 #include "../platform/sys.h"
 #include "cJSON.h"
@@ -130,7 +133,8 @@ void ItemMenu::Update() {
 			audio::play_sound("menu_cancel");
 			Close();
 		} else if (input::pressed(input::BTN_MAINMENU)) {
-			Close();   // main menu: not ported yet
+			Close();
+			if (manager) manager->ShowMenu(MenuManager::Menu::Main);
 		}
 		break;
 	}
@@ -218,11 +222,230 @@ void ItemMenu::DrawSelectedItemIcon() {
 	if (v == 58) gm::blit(gm::texture((name + "2").c_str()), pos, flashOpacity / 255.0f);
 }
 
+void MenuManager::ShowMenu(Menu m) {
+	AbstractMenu *n = m == Menu::Item ? (AbstractMenu *)&itemMenu
+	                : m == Menu::Main ? (AbstractMenu *)&mainMenu : (AbstractMenu *)&settingsMenu;
+	next = n;
+	if (current == next) { next = nullptr; return; }
+	if (current) current->Close();
+	next->Open();
+}
+
 void MenuManager::Update() {
-	// Single menu for now; MenuManager's current/next hand-off collapses to this.
-	itemMenu.Update();
-	if (itemMenu.IsOpen()) return;
-	if (!map->IsInScript()) {
-		if (input::pressed(input::BTN_INVENTORY)) itemMenu.Open();
+	if (current) current->Update();
+	if (next) next->Update();
+	if (current && current->IsOpen()) return;
+	if (next) { current = next; next = nullptr; return; }
+	current = nullptr;
+	if (!map->IsInScript() && !titleOpen) {
+		if (input::pressed(input::BTN_INVENTORY)) ShowMenu(Menu::Item);
+		else if (input::pressed(input::BTN_MAINMENU)) ShowMenu(Menu::Main);
+	}
+}
+
+void MenuManager::Draw() {
+	if (current) current->Draw();
+	if (next) next->Draw();
+}
+
+bool MenuManager::IsMenuOpen() const {
+	if (current && current->IsOpen()) return true;
+	return next && next->IsOpen();
+}
+
+// ===================================================================== MainMenu
+static const int MAIN_ITEMS = 4, MAIN_SPACING = 150;   // PC: 3 items, 202 apart
+
+void MainMenu::Open() {
+	audio::play_sound("menu_decision");
+	st = Opening;
+	opacity = 0;
+	cursorAlpha = 0.5f;
+}
+
+void MainMenu::Close() {
+	st = Closing;
+	opacity = 255;
+}
+
+void MainMenu::Update() {
+	switch (st) {
+	case Opening:
+		opacity += 48;
+		if (opacity >= 255) { opacity = 255; st = Shown; }
+		break;
+	case Closing:
+		opacity -= 48;
+		if (opacity <= 0) { opacity = 0; st = Closed; }
+		break;
+	case Shown:
+		if (++cursorAnimTimer >= 32) cursorAnimTimer = 0;
+		cursorAlpha = 0.5f + (float)abs(16 - cursorAnimTimer) / 32.0f;
+		if (map->IsInScript()) break;
+		if (input::pressed(input::BTN_LEFT)) {
+			if (cursorIndex > 0) { cursorIndex--; audio::play_sound("menu_cursor"); }
+		} else if (input::pressed(input::BTN_RIGHT)) {
+			if (cursorIndex < MAIN_ITEMS - 1) { cursorIndex++; audio::play_sound("menu_cursor"); }
+		}
+		if (input::pressed(input::BTN_OK)) {
+			switch (cursorIndex) {
+			case 0:
+				// The fast travel map is not ported yet; it answers like a locked one.
+				if (state->travel_enabled) sys::log("fast travel menu: not ported yet\n");
+				map->StartCommonEvent(4);
+				audio::play_sound("menu_buzzer");
+				break;
+			case 1:
+				map->StartCommonEvent(15);   // the instruction pages
+				Close();
+				break;
+			case 2:
+				manager->ShowMenu(MenuManager::Menu::Settings);
+				break;
+			case 3:
+				audio::play_sound("menu_decision");
+				Close();
+				if (onQuit) onQuit();
+				break;
+			}
+		} else if (input::pressed(input::BTN_MAINMENU) || input::pressed(input::BTN_CANCEL)) {
+			audio::play_sound("menu_cancel");
+			Close();
+		} else if (input::pressed(input::BTN_INVENTORY)) {
+			Close();
+			manager->ShowMenu(MenuManager::Menu::Item);
+		}
+		break;
+	case Closed:
+		break;
+	}
+}
+
+void MainMenu::Draw() {
+	if (st == Closed) return;
+	float a = opacity / 255.0f;
+	gm::color_box(Rect(10, 10, 300, 28), 24, 12, 30, (uint8_t)(opacity * 200 / 255));
+	ui::window_border(Rect(8, 8, 304, 32), gfx::Blend::Normal, a);
+	// The cursor art spans one PC slot; squeeze it to the narrower slots.
+	if (const gfx::Texture *cur = gm::texture("ui/main_menu_cursor")) {
+		float sx = (float)MAIN_SPACING / 202.0f;
+		int cx = 95 + cursorIndex * MAIN_SPACING - (int)(84 * sx);
+		gm::blit_scaled(cur, Vec2(cx, 32), Rect(0, 0, (int)cur->w, (int)cur->h), sx, 1.0f, a * cursorAlpha);
+	}
+	static const char *keys[MAIN_ITEMS] = { "mainmenu_fasttravel", "mainmenu_notes", "mainmenu_settings", "mainmenu_quit" };
+	for (int i = 0; i < MAIN_ITEMS; i++) {
+		float ia = a;
+		if (i == 0 && !state->travel_enabled) ia *= 0.5f;
+		font::draw_centered(font::Game, Vec2(95 + i * MAIN_SPACING, 37), loc::twm(keys[i]), 0xffffff, ia, 1);
+	}
+}
+
+// ===================================================================== SettingsMenu
+std::string SettingsMenu::Name(int i) const {
+	static const char *k[COUNT] = { "settings_movement", "settings_colorblind", "settings_vibration",
+	                                "settings_screentear", "settings_chromaaberration", "settings_automash" };
+	return loc::twm(k[i]);
+}
+
+std::string SettingsMenu::Value(int i) const {
+	const Settings &s = settings();
+	bool v = false;
+	switch (i) {
+	case Movement: return loc::twm(s.defaultMovementRun ? "settings_run" : "settings_walk");
+	case Colorblind: v = s.colorblindMode; break;
+	case Vibration: v = s.vibration; break;
+	case ScreenTear: v = s.screenTear; break;
+	case ChromaAberration: v = s.chromaAberration; break;
+	case Automash: v = s.automash; break;
+	}
+	return loc::twm(v ? "settings_on" : "settings_off");
+}
+
+void SettingsMenu::Open() {
+	audio::play_sound("menu_decision");
+	st = Opening;
+	opacity = 0;
+	selected = 0;
+	for (int i = 0; i < COUNT; i++) { offsetX[i] = 0; optOpacity[i] = 128; }
+}
+
+void SettingsMenu::Close() {
+	settings().Save();
+	st = Closing;
+	opacity = 255;
+}
+
+void SettingsMenu::Update() {
+	using namespace input;
+	switch (st) {
+	case Opening: {
+		opacity = opacity + 20 > 255 ? 255 : opacity + 20;
+		bool sliding = false;
+		for (int i = 0; i < COUNT; i++)
+			if (offsetX[i] < 30) {
+				sliding = true;
+				offsetX[i] = offsetX[i] + 6 > 30 ? 30 : offsetX[i] + 6;
+				break;
+			}
+		if (!sliding && opacity >= 255) st = Shown;
+		break;
+	}
+	case Closing:
+		opacity -= 20;
+		if (opacity <= 0) { opacity = 0; st = Closed; }
+		break;
+	case Shown: {
+		if (pressed(BTN_UP)) {
+			audio::play_sound("menu_cursor");
+			if (--selected < 0) selected = COUNT - 1;
+		} else if (pressed(BTN_DOWN)) {
+			audio::play_sound("menu_cursor");
+			if (++selected >= COUNT) selected = 0;
+		}
+		for (int i = 0; i < COUNT; i++) {
+			if (i == selected) {
+				offsetX[i] = offsetX[i] + 6 > 50 ? 50 : offsetX[i] + 6;
+				optOpacity[i] = optOpacity[i] + 10 > 255 ? 255 : optOpacity[i] + 10;
+			} else {
+				offsetX[i] = offsetX[i] - 6 < 30 ? 30 : offsetX[i] - 6;
+				optOpacity[i] = optOpacity[i] - 10 < 128 ? 128 : optOpacity[i] - 10;
+			}
+		}
+		if (pressed(BTN_LEFT) || pressed(BTN_RIGHT) || pressed(BTN_OK)) {
+			audio::play_sound("menu_decision");
+			Settings &s = settings();
+			switch (selected) {
+			case Movement: s.defaultMovementRun = !s.defaultMovementRun; break;
+			case Colorblind: s.colorblindMode = !s.colorblindMode; break;
+			case Vibration: s.vibration = !s.vibration; break;
+			case ScreenTear: s.screenTear = !s.screenTear; break;
+			case ChromaAberration: s.chromaAberration = !s.chromaAberration; break;
+			case Automash: s.automash = !s.automash; break;
+			}
+		}
+		if (pressed(BTN_CANCEL)) {
+			audio::play_sound("menu_cancel");
+			Close();
+		}
+		break;
+	}
+	case Closed:
+		break;
+	}
+}
+
+void SettingsMenu::Draw() {
+	if (st == Closed) return;
+	float a = opacity / 255.0f;
+	gm::color_box(Rect(0, 0, 320, 240), 0, 0, 0, (uint8_t)(opacity * 180 / 255));
+	// The title texture is the Game font blitted at game scale (doubled).
+	font::draw(font::Game, Vec2(13, 24), loc::twm("settings_title"), 0xffffff, a, 2);
+	int y = 118;
+	for (int i = 0; i < COUNT; i++) {
+		float oa = optOpacity[i] / 255.0f * a;
+		if (i == Automash) y += 32;   // the PC build sets this one apart
+		font::draw(font::Game, Vec2(30 + offsetX[i] - 2, y), Name(i), 0xffffff, oa, 1);
+		font::draw(font::Game, Vec2(400 + offsetX[i] - 2, y), Value(i), 0xffffff, oa, 1);
+		y += 32;
 	}
 }

@@ -1075,6 +1075,7 @@ void TileMap::UpdateCommonEvents() {
 }
 
 void TileMap::EventRunnerUpdate() {
+	retiredRunners.clear();
 	if (mainEventRunner) {
 		mainEventRunner->Update();
 		if (mainEventRunner->IsFinished()) mainEventRunner.reset();
@@ -1295,4 +1296,94 @@ Vec2 TileMap::FindOpenTileNear(int cx, int cy) const {
 				if (!IsTileSolid(x, y) && has_floor(x, y)) return Vec2(x, y);
 			}
 	return Vec2(cx, cy);
+}
+
+// ---------------------------------------------------------------- save data
+#include "cJSON.h"
+
+cJSON *TileMap::GetSaveData() const {
+	cJSON *o = cJSON_CreateObject();
+	cJSON_AddNumberToObject(o, "playerTileX", GetPlayerXTile());
+	cJSON_AddNumberToObject(o, "playerTileY", GetPlayerYTile());
+	cJSON_AddNumberToObject(o, "playerDirection", (int)player->GetDirection());
+	cJSON_AddStringToObject(o, "playerSheet", player->GetNPCSheet().c_str());
+	cJSON_AddNumberToObject(o, "currentMap", currentMapId);
+	cJSON *ents = cJSON_AddArrayToObject(o, "entitySaveDatas");
+	for (auto &kv : entitiesById)
+		if (kv.second->GetID() >= 0) cJSON_AddItemToArray(ents, kv.second->GetSaveData());
+	cJSON *tone = cJSON_AddObjectToObject(o, "mapAmbientTone");
+	cJSON_AddNumberToObject(tone, "r", ambientTone.r);
+	cJSON_AddNumberToObject(tone, "g", ambientTone.g);
+	cJSON_AddNumberToObject(tone, "b", ambientTone.b);
+	cJSON_AddStringToObject(o, "mapBackground", background.c_str());
+	if (mainEventRunner) cJSON_AddItemToObject(o, "mainEventRunnerData", mainEventRunner->GetSaveData());
+	if (panorama) {
+		cJSON *p = cJSON_AddObjectToObject(o, "panoramaSaveData");
+		cJSON_AddStringToObject(p, "name", panorama->Source().c_str());
+		cJSON_AddNumberToObject(p, "X", panorama->Size().x);
+		cJSON_AddNumberToObject(p, "Y", panorama->Size().y);
+	}
+	if (hasStepOverride) {
+		cJSON *a = cJSON_AddArrayToObject(o, "overrideStepSounds");
+		for (auto &v : overrideStepSounds) {
+			cJSON *inner = cJSON_CreateArray();
+			for (auto &n : v) cJSON_AddItemToArray(inner, cJSON_CreateString(n.c_str()));
+			cJSON_AddItemToArray(a, inner);
+		}
+	}
+	return o;
+}
+
+static int jn(const cJSON *o, const char *k, int def) {
+	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+	return cJSON_IsNumber(v) ? (int)v->valuedouble : def;
+}
+
+void TileMap::LoadSaveData(const cJSON *o) {
+	const cJSON *px = cJSON_GetObjectItemCaseSensitive(o, "playerTileX");
+	const cJSON *py = cJSON_GetObjectItemCaseSensitive(o, "playerTileY");
+	float x = cJSON_IsNumber(px) ? (float)px->valuedouble : 0, y = cJSON_IsNumber(py) ? (float)py->valuedouble : 0;
+	ChangeMap(jn(o, "currentMap", 1), x, y, 0.0f, (Direction)jn(o, "playerDirection", 2));
+	// LoadEntitySaveDatas: restore saved entities, drop ones that were gone.
+	std::unordered_map<int, const cJSON *> byId;
+	const cJSON *e;
+	cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(o, "entitySaveDatas")) {
+		int id = jn(e, "id", -1);
+		if (!byId.count(id)) byId[id] = e;
+	}
+	std::vector<Entity *> gone;
+	for (auto &kv : entitiesById) {
+		auto it = byId.find(kv.second->GetID());
+		if (it != byId.end()) kv.second->LoadSaveData(it->second);
+		else if (!kv.second->IsPlayer()) gone.push_back(kv.second);
+	}
+	for (Entity *g : gone) RemoveEntity(g);
+	const cJSON *sheet = cJSON_GetObjectItemCaseSensitive(o, "playerSheet");
+	player->SetNPCSheet(cJSON_IsString(sheet) ? sheet->valuestring : "");
+	const cJSON *tone = cJSON_GetObjectItemCaseSensitive(o, "mapAmbientTone");
+	if (tone) ambientTone = GameTone(jn(tone, "r", 0), jn(tone, "g", 0), jn(tone, "b", 0));
+	const cJSON *bg = cJSON_GetObjectItemCaseSensitive(o, "mapBackground");
+	background = cJSON_IsString(bg) ? bg->valuestring : "";
+	const cJSON *pan = cJSON_GetObjectItemCaseSensitive(o, "panoramaSaveData");
+	if (cJSON_IsObject(pan)) {
+		const cJSON *n = cJSON_GetObjectItemCaseSensitive(pan, "name");
+		if (cJSON_IsString(n)) panorama.reset(new Panorama(n->valuestring, Vec2(jn(pan, "X", 0), jn(pan, "Y", 0))));
+	}
+	const cJSON *run = cJSON_GetObjectItemCaseSensitive(o, "mainEventRunnerData");
+	if (cJSON_IsObject(run)) {
+		if (mainEventRunner) retiredRunners.push_back(std::move(mainEventRunner));
+		mainEventRunner.reset(new EventRunner(this, run));
+	}
+	const cJSON *steps = cJSON_GetObjectItemCaseSensitive(o, "overrideStepSounds");
+	if (cJSON_IsArray(steps)) {
+		overrideStepSounds.clear();
+		const cJSON *inner;
+		cJSON_ArrayForEach(inner, steps) {
+			std::vector<std::string> v;
+			const cJSON *n;
+			cJSON_ArrayForEach(n, inner) if (cJSON_IsString(n)) v.push_back(n->valuestring);
+			overrideStepSounds.push_back(v);
+		}
+		hasStepOverride = true;
+	}
 }
