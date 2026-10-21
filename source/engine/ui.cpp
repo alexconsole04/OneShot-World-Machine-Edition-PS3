@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "gm.h"
+#include "font.h"
 #include "overlay.h"
 
 namespace ui {
@@ -33,18 +34,17 @@ void window_border(Rect b, gfx::Blend blend, float alpha) {
 	}
 }
 
-static const float BASE = 1.6f;   // debug-font scale in window px
-
-int text_width(const std::string &s, float size) { return (int)(overlay::text_width(s.c_str()) * BASE * size); }
-int line_height(float size) { return (int)(12 * BASE * size); }
+// Game font at scale 1 (window pixels), like TextBox and the menus.
+int text_width(const std::string &s, float size) {
+	(void)size;
+	return font::width(font::Game, s, true);
+}
+int line_height(float size) { return (int)(24 * size); }
 
 int text(int wx, int wy, const std::string &s, unsigned rgb, float alpha, Align align, float size) {
-	int w = text_width(s, size);
-	if (align == Align::Center) wx -= w / 2;
-	float S = gm::window_scale();
-	Vec2 o = gm::window_origin();
-	overlay::text_plain(o.x + wx * S, o.y + wy * S, BASE * size * S, rgb, s.c_str(), alpha);
-	return w;
+	(void)size;
+	if (align == Align::Center) return font::draw_centered(font::Game, Vec2(wx, wy), s, rgb, alpha, 1);
+	return font::draw(font::Game, Vec2(wx, wy), s, rgb, alpha, 1);
 }
 
 } // namespace ui

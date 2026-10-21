@@ -1037,6 +1037,19 @@ void TileMap::StartCommonEvent(int id, bool parallel) {
 	}
 }
 
+// Host testing: run a list of Show Text commands as a script.
+void TileMap::DebugRunTexts(const std::vector<std::string> &texts) {
+	auto list = std::make_shared<CommandList>();
+	for (const std::string &t : texts) {
+		EventCommand c;
+		c.code = 101;
+		c.parameters.push_back(t);
+		list->push_back(c);
+	}
+	list->push_back(EventCommand());
+	mainEventRunner.reset(new EventRunner(this, list, 0, -1));
+}
+
 const CommonEvent *TileMap::GetCommonEvent(int id) const {
 	auto it = commonEvents.find(id);
 	if (it == commonEvents.end()) {

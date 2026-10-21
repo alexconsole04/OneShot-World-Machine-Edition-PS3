@@ -14,12 +14,14 @@ add_executable(oneshot-ps3
     source/engine/audio.cpp
     source/engine/mixer.cpp
     source/engine/ui.cpp
+    source/engine/font.cpp
     source/game/event_data.cpp
     source/game/entity.cpp
     source/game/player.cpp
     source/game/tilemap.cpp
     source/game/event_runner.cpp
     source/game/message_box.cpp
+    source/game/message_boxes.cpp
     source/game/pictures.cpp
     source/game/script_parser.cpp
     source/game/menus.cpp

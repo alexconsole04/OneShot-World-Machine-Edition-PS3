@@ -274,7 +274,7 @@ void EventRunner::OpenNameInput() {
 
 void EventRunner::ensureTextBox() {
 	TextBox *tb = textBox();
-	if (!messageBox || !tb || tb->GetKind() != TextBox::Kind::Text || tb->CurrentStyle() != currentStyle ||
+	if (!messageBox || !tb || tb->CurrentStyle() != currentStyle ||
 	    tb->CurrentArea() != currentArea) {
 		messageBox.reset(new TextBox(map, currentStyle, currentArea));
 	} else {
@@ -294,19 +294,18 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 	if (text.empty()) return false;
 	// LanguageManager.GetMapLocString: English text is used as-is.
 	std::string low = util::lower(text);
-	auto newBox = [&](TextBox::Kind k) { messageBox.reset(new TextBox(map, currentStyle, currentArea, k)); };
 	if (util::starts_with(low, "@ed ")) {
 		text = text.substr(4);
-		newBox(TextBox::Kind::Ed);
+		messageBox.reset(new EdBox(state));
 	} else if (util::starts_with(low, "@desktop ")) {
 		text = text.substr(9);
-		newBox(TextBox::Kind::Desktop);
+		messageBox.reset(new DesktopBox());
 	} else if (util::starts_with(low, "@credits ")) {
 		text = text.substr(9);
-		newBox(TextBox::Kind::Credits);
+		messageBox.reset(new CreditsBox(state, false));
 	} else if (util::starts_with(low, "@credits_small ")) {
 		text = text.substr(15);
-		newBox(TextBox::Kind::CreditsSmall);
+		messageBox.reset(new CreditsBox(state, true));
 	} else if (util::starts_with(text, "@tut ") || util::starts_with(text, "@tut2 ")) {
 		bool tut2 = util::starts_with(text, "@tut2 ");
 		text = text.substr(tut2 ? 6 : 5);
@@ -318,7 +317,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 			text += s;
 			commandIndex++;
 		}
-		newBox(TextBox::Kind::Tutorial);
+		messageBox.reset(new TutorialBox(tut2));
 	} else if (!text.empty() && text[0] == '$') {
 		text = text.substr(1);
 		while (commandIndex < count() && cmd(commandIndex).code == ShowText &&
@@ -326,7 +325,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 			text += "\n\n" + cmd(commandIndex).param(0).substr(1);
 			commandIndex++;
 		}
-		newBox(TextBox::Kind::Doc);
+		messageBox.reset(new DocBox(state));
 	} else {
 		bool inputNumber = false, showChoices = false;
 		int inputNumberDigits = -1, inputNumberVar = -1;
@@ -361,7 +360,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 bool EventRunner::commandShowChoices(const EventCommand &c) {
 	std::vector<std::string> list = parse_string_list(c.param(0));
 	TextBox *tb = textBox();
-	if (!messageBox || !tb || tb->GetKind() != TextBox::Kind::Text || tb->CurrentStyle() != currentStyle ||
+	if (!messageBox || !tb || tb->CurrentStyle() != currentStyle ||
 	    tb->CurrentArea() != currentArea) {
 		messageBox.reset(new TextBox(map, currentStyle, currentArea));
 	} else {

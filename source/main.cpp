@@ -11,6 +11,7 @@
 #include "platform/input.h"
 #include "platform/sys.h"
 #include "engine/gm.h"
+#include "engine/font.h"
 #include "engine/overlay.h"
 #include "game/game_state.h"
 #include "game/tilemap.h"
@@ -106,6 +107,20 @@ int main(int argc, const char **argv) {
 	// gives it Niko's. Debug starts elsewhere need it straight away.
 	if (mapId != NEW_GAME_MAP) map.GetPlayer()->SetNPCSheet("niko", 0);
 
+	// Host testing: OSPS3_TEXTS="text1|text2" runs Show Text commands.
+	if (const char *tx = getenv("OSPS3_TEXTS")) {
+		std::vector<std::string> v;
+		std::string all(tx);
+		size_t p = 0;
+		while (true) {
+			size_t e = all.find('|', p);
+			v.push_back(all.substr(p, e == std::string::npos ? std::string::npos : e - p));
+			if (e == std::string::npos) break;
+			p = e + 1;
+		}
+		map.DebugRunTexts(v);
+	}
+
 	// Host screenshot schedule.
 	struct Shot { int frame; std::string file; };
 	std::vector<Shot> shots;
@@ -165,6 +180,7 @@ int main(int argc, const char **argv) {
 			// OneshotWindow.GameLogic order.
 			modal::update();
 			state.play_frames++;
+			font::tick();
 			menus.Update();
 			menus.itemMenu.UpdateSelectedItemIcon();
 			map.Update();

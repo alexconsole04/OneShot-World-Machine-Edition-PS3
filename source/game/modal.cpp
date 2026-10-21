@@ -6,6 +6,7 @@
 #include "../platform/input.h"
 #include "../platform/sys.h"
 #include <vector>
+#include <stdio.h>
 
 namespace modal {
 
@@ -23,7 +24,12 @@ void show(Type t, const std::string &text) {
 	cursor = 0;
 	age = 0;
 	sys::log("modal: %s\n", text.c_str());
-	audio::play_sound("twm_notif1", 0.5f);
+	static const int order[4] = { 2, 3, 4, 2 };
+	static int idx;
+	char snd[16];
+	snprintf(snd, sizeof(snd), "twm_notif%d", order[idx]);
+	idx = (idx + 1) % 4;
+	audio::play_sound(snd, 0.5f);
 }
 
 bool is_open() { return open_; }

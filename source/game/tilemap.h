@@ -85,6 +85,7 @@ public:
 	void StartEvent(Entity *triggeringEntity, bool parallelProcess = false);
 	void StartCommonEvent(int commonEventId, bool parallelProcess = false);
 	const CommonEvent *GetCommonEvent(int id) const;
+	void DebugRunTexts(const std::vector<std::string> &texts);
 	Entity *GetNPCTriggeringEvent() const;
 	void EventRunnerUpdate();
 	void DrawEventRunners();

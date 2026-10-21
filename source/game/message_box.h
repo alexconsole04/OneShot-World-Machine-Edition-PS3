@@ -4,10 +4,10 @@
 // escape codes \n \c[n] \. \| \> and \@portrait are honoured, word wrap
 // uses the measured line width, choices and number input work the same,
 // and the Opening/Opened/Closing/Closed states drive the interpreter.
-// Only the glyphs differ: the debug font stands in for the game's
-// SpriteFont until that renderer is ported. EdBox/DocBox/TutorialBox etc.
-// use the same class with a different look.
+// The other IMessageBox kinds (EdBox, DesktopBox, TutorialBox, DocBox,
+// CreditsBox) are separate classes below, as in the C#.
 #pragma once
+#include <stdint.h>
 #include <functional>
 #include <string>
 #include <vector>
@@ -33,9 +33,7 @@ class TextBox : public IMessageBox {
 public:
 	enum class Style { GoldBorder, NoBorder };
 	enum class Area { Up, Middle, Down };
-	enum class Kind { Text, Ed, Desktop, Credits, CreditsSmall, Tutorial, Doc };
-
-	TextBox(TileMap *map, Style style, Area area, Kind kind = Kind::Text);
+	TextBox(TileMap *map, Style style, Area area);
 	void Update() override;
 	void Draw() override;
 	bool IsReadyForMoreInput() const override { return st == State::Closing; }
@@ -51,14 +49,13 @@ public:
 	                const std::string &playerName);
 	Style CurrentStyle() const { return style; }
 	Area CurrentArea() const { return area; }
-	Kind GetKind() const { return kind; }
 
 	static std::string ReplaceVariableMarkup(const GameState *state, std::string text);
 	static unsigned TextColor(int code);
 
 private:
 	enum class State { Opening, Opened, Closing, Closed };
-	struct Glyph { char c; unsigned rgb; };
+	struct Glyph { uint32_t c; unsigned rgb; };
 	void Close();
 	bool IsRollingText() const { return !inputText.empty() && !forcedNod && textPauseTimer <= 0; }
 	void RollOutAllText();
@@ -66,7 +63,7 @@ private:
 	void SetPortrait(const std::string &p);
 	int TextAreaWidth() const;   // game px
 	void addNewLine();
-	void addNewChar(char c);
+	void addNewChar(uint32_t c);
 	void HandleChoiceInput();
 	void HandleNumberInput();
 
@@ -74,7 +71,6 @@ private:
 	GameState *state;
 	Style style;
 	Area area;
-	Kind kind;
 	int boxX = 8, boxY = 168, boxW = 304, boxH = 64;
 	int padX = 12, padY = 8, padW = 12;
 	State st = State::Opening;
@@ -96,4 +92,109 @@ private:
 	int inputNumberVar = -1;
 	std::vector<int> digits;
 	int digitCursor = 0;
+};
+
+// Shared Opening/Opened/Closing/Closed fade used by the simple boxes.
+struct BoxFade {
+	enum State { Opening, Opened, Closing, Closed } st = Opening;
+	int timer = 0, total = 0;
+	float alpha = 0;
+	void open(int frames) { st = Opening; total = frames; timer = 0; }
+	void close(int frames) { st = Closing; total = frames; timer = 0; }
+	void update();   // advances Opening/Closing
+};
+
+// "@ed": centred white text over a dimmed screen (EdBox).
+class EdBox : public IMessageBox {
+public:
+	explicit EdBox(GameState *state);
+	void Update() override;
+	void Draw() override;
+	bool IsReadyForMoreInput() const override { return false; }
+	bool IsFinished() const override { return fade.st == BoxFade::Closed; }
+	void FeedText(const std::string &text, const std::string &playerName) override;
+	void Open() override { fade.open(13); }
+	void ClearText() override { lines.clear(); widths.clear(); }
+	void InputNumberSetup(int, int) override {}
+private:
+	GameState *state;
+	BoxFade fade;
+	std::vector<std::string> lines;
+	std::vector<int> widths;
+};
+
+// "@desktop": the PC's message box picture with centred black text.
+class DesktopBox : public IMessageBox {
+public:
+	DesktopBox();
+	void Update() override;
+	void Draw() override;
+	bool IsReadyForMoreInput() const override { return false; }
+	bool IsFinished() const override { return fade.st == BoxFade::Closed; }
+	void FeedText(const std::string &text, const std::string &playerName) override;
+	void Open() override;
+	void ClearText() override { lines.clear(); }
+	void InputNumberSetup(int, int) override {}
+private:
+	BoxFade fade;
+	std::vector<std::string> lines;
+};
+
+// "@tut" / "@tut2": the instruction pages (TutorialBox).
+class TutorialBox : public IMessageBox {
+public:
+	explicit TutorialBox(bool rightAligned);
+	void Update() override;
+	void Draw() override;
+	bool IsReadyForMoreInput() const override { return false; }
+	bool IsFinished() const override { return fade.st == BoxFade::Closed; }
+	void FeedText(const std::string &text, const std::string &playerName) override;
+	void Open() override { fade.open(30); }
+	void ClearText() override { lines.clear(); }
+	void InputNumberSetup(int, int) override {}
+private:
+	int LineHeight() const { return rightAligned ? 15 : 13; }
+	int LineLength(size_t i) const;
+	bool rightAligned;
+	BoxFade fade;
+	std::vector<std::string> lines;
+};
+
+// "$...": a document page on lined paper, scrollable (DocBox).
+class DocBox : public IMessageBox {
+public:
+	explicit DocBox(GameState *state);
+	void Update() override;
+	void Draw() override;
+	bool IsReadyForMoreInput() const override { return false; }
+	bool IsFinished() const override { return fade.st == BoxFade::Closed; }
+	void FeedText(const std::string &text, const std::string &playerName) override;
+	void Open() override;
+	void ClearText() override { lines.clear(); }
+	void InputNumberSetup(int, int) override {}
+private:
+	GameState *state;
+	BoxFade fade;
+	std::vector<std::string> lines;
+	int startLine = 0;
+};
+
+// "@credits" / "@credits_small" (CreditsBox).
+class CreditsBox : public IMessageBox {
+public:
+	CreditsBox(GameState *state, bool small);
+	void Update() override;
+	void Draw() override;
+	bool IsReadyForMoreInput() const override { return false; }
+	bool IsFinished() const override { return fade.st == BoxFade::Closed; }
+	void FeedText(const std::string &text, const std::string &playerName) override;
+	void Open() override { fade.open(51); }
+	void ClearText() override { lines.clear(); }
+	void InputNumberSetup(int, int) override {}
+private:
+	struct Line { std::string center, left, right; bool header; };
+	GameState *state;
+	bool small;
+	BoxFade fade;
+	std::vector<Line> lines;
 };

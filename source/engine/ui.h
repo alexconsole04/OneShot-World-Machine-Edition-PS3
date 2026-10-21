@@ -1,6 +1,6 @@
 // ui.h - shared UI drawing: TextBox.DrawWindowBorder and text in the
-// game's 640x480 window space. Text uses the debug font until the
-// SpriteFont renderer lands; only ui::text needs to change then.
+// game's 640x480 window space. Text is the Game SpriteFont (font.h) at
+// window scale.
 #pragma once
 #include "types.h"
 #include "../platform/gfx.h"

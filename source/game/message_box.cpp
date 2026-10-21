@@ -3,6 +3,7 @@
 #include "player.h"
 #include "tilemap.h"
 #include "../engine/audio.h"
+#include "../engine/font.h"
 #include "../engine/gm.h"
 #include "../engine/ui.h"
 #include "../engine/util.h"
@@ -26,9 +27,8 @@ unsigned TextBox::TextColor(int code) {
 	}
 }
 
-TextBox::TextBox(TileMap *m, Style sty, Area ar, Kind k) : map(m), state(m->State()), style(sty), area(ar), kind(k) {
+TextBox::TextBox(TileMap *m, Style sty, Area ar) : map(m), state(m->State()), style(sty), area(ar) {
 	boxY = area == Area::Down ? 168 : (area == Area::Middle ? 80 : 8);
-	if (kind == Kind::Doc || kind == Kind::Tutorial) { boxX = 24; boxY = 16; boxW = 272; boxH = 208; }
 	st = State::Opening;
 	transitionTimer = 0;
 	totalTransitionTime = 6;
@@ -150,10 +150,22 @@ void TextBox::addNewLine() {
 	lineWidth = 0;
 }
 
-void TextBox::addNewChar(char c) {
+static std::string utf8(uint32_t c) {
+	std::string o;
+	if (c < 0x80) o += (char)c;
+	else if (c < 0x800) { o += (char)(0xC0 | (c >> 6)); o += (char)(0x80 | (c & 63)); }
+	else if (c < 0x10000) { o += (char)(0xE0 | (c >> 12)); o += (char)(0x80 | ((c >> 6) & 63)); o += (char)(0x80 | (c & 63)); }
+	else { o += (char)(0xF0 | (c >> 18)); o += (char)(0x80 | ((c >> 12) & 63)); o += (char)(0x80 | ((c >> 6) & 63)); o += (char)(0x80 | (c & 63)); }
+	return o;
+}
+
+// Width of one character in the Game font (TextBox measures char by char).
+static int char_w(uint32_t c) { return font::width(font::Game, utf8(c)); }
+
+void TextBox::addNewChar(uint32_t c) {
 	if (lines.empty()) lines.emplace_back();
 	lines.back().push_back({ c, color });
-	lineWidth += ui::text_width(std::string(1, c));
+	lineWidth += char_w(c);
 }
 
 void TextBox::ProcessInputText(bool fastCycle) {
@@ -168,6 +180,7 @@ void TextBox::ProcessInputText(bool fastCycle) {
 	scrollTimer += 1.0f;
 	while (scrollTimer >= 1.0f && !inputText.empty() && !forcedNod && textPauseTimer <= 0) {
 		char c = inputText[0];
+		size_t consume = 1;
 		scrollTimer -= 1.0f;
 		if (c == '\n') {
 			addNewLine();
@@ -194,7 +207,7 @@ void TextBox::ProcessInputText(bool fastCycle) {
 			case '>': forcedNod = true; break;
 			case '.': if (!mashing()) { textPauseTimer = 10; scrollSoundTimer = 0; } break;
 			case '|': if (!mashing()) { textPauseTimer = 40; scrollSoundTimer = 0; } break;
-			default: addNewChar(c); break;
+			default: addNewChar((unsigned char)c); break;
 			}
 		} else {
 			bool add = true;
@@ -204,14 +217,17 @@ void TextBox::ProcessInputText(bool fastCycle) {
 				size_t e = rest.find_first_of(" \n");
 				std::string word = " " + rest.substr(0, e);
 				for (const char *esc : { "\\>", "\\.", "\\|" }) replace_all(word, esc, "");
-				if (ui::text_width(word) + lineWidth > maxw) { addNewLine(); add = false; }
+				if (font::width(font::Game, word) + lineWidth > maxw) { addNewLine(); add = false; }
 			}
+			consume = (size_t)font::utf8_len((unsigned char)c);
 			if (add) {
-				if (ui::text_width(std::string(1, c)) + lineWidth > maxw) addNewLine();
-				addNewChar(c);
+				size_t k = 0;
+				uint32_t cp = font::decode_utf8(inputText, k);
+				if (char_w(cp) + lineWidth > maxw) addNewLine();
+				addNewChar(cp);
 			}
 		}
-		inputText = inputText.substr(1);
+		inputText = inputText.substr(consume < inputText.size() ? consume : inputText.size());
 	}
 }
 
@@ -302,14 +318,15 @@ void TextBox::HandleNumberInput() {
 void TextBox::Draw() {
 	if (st == State::Closed) return;
 	Rect box(boxX, boxY, boxW, boxH);
-	bool framed = style == Style::GoldBorder || kind != Kind::Text;
-	if (framed) {
+	if (style == Style::GoldBorder) {
 		gm::color_box(Rect(box.x + 4, box.y + 4, box.w - 8, box.h - 8), 24, 12, 30, (uint8_t)(210 * alpha));
 		ui::window_border(box, gfx::Blend::Normal, alpha);
 	}
-	if (!portrait.empty() && kind == Kind::Text) {
+	if (!portrait.empty()) {
 		const gfx::Texture *fp = gm::texture(("facepics/" + portrait).c_str());
-		if (fp) gm::blit(fp, Vec2(box.x + box.w - 48 - 8, box.y + 8), alpha);
+		Vec2 p(box.x + box.w - 48 - 8, box.y + 8);
+		if (portrait == "af") { p.x *= 2; p.y *= 2; }   // the cat's facepic is drawn at window scale
+		if (fp) gm::blit(fp, p, alpha, 0, gfx::Blend::Normal, portrait == "af" ? 1 : 2);
 	}
 	int tx = (box.x + padX) * 2, ty = (box.y + padY) * 2;
 	// Number input: cursor + digits on the line after the text.
@@ -341,7 +358,7 @@ void TextBox::Draw() {
 		while (i < ln.size()) {
 			std::string run;
 			unsigned col = ln[i].rgb;
-			while (i < ln.size() && ln[i].rgb == col) run += ln[i++].c;
+			while (i < ln.size() && ln[i].rgb == col) run += utf8(ln[i++].c);
 			x += ui::text(x, ty + (int)l * 24, run, col, alpha);
 		}
 	}
