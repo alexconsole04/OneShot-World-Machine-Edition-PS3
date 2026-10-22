@@ -31,6 +31,9 @@ int rstick_y();
 bool quit_requested();
 // Count of system (XMB) events seen so far (PS3; 0 on the host).
 int system_events();
+// True while the system draws over the game (XMB open, system dialogs):
+// the game pauses and stops drawing until it ends.
+bool system_drawing();
 // Frames a single button has been held (0 when up). InputManager.holdTime.
 int held_frames(uint32_t b);
 // InputManager.HoldAutoTriggerInput: true every `interval` frames once held

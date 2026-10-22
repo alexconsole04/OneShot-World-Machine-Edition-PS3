@@ -82,5 +82,6 @@ int rstick_x() { return (cur_rs & 1) ? -100 : (cur_rs & 2) ? 100 : 0; }
 int rstick_y() { return (cur_rs & 4) ? -100 : (cur_rs & 8) ? 100 : 0; }
 bool quit_requested() { return done; }
 int system_events() { return 0; }
+bool system_drawing() { return false; }
 
 } // namespace input

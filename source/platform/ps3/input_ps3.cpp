@@ -14,6 +14,7 @@ static int sx, sy, rx, ry;
 static volatile bool quit;
 
 static volatile int g_sys_events;
+static volatile bool g_sys_drawing;   // between system drawing begin / end (XMB, system dialogs)
 
 static void on_sysutil(uint64_t status, uint64_t param, void *) {
 	if (status == CELL_SYSUTIL_REQUEST_EXITGAME) quit = true;
@@ -27,11 +28,14 @@ static void on_sysutil(uint64_t status, uint64_t param, void *) {
 	char st[512];
 	gfx::debug_status(st, sizeof(st));
 	sys::log("system event 0x%04x (%s, param %llu): %s\n", (unsigned)status, what, (unsigned long long)param, st);
+	if (status == 0x0121) g_sys_drawing = true;
+	if (status == 0x0122) { g_sys_drawing = false; gfx::system_menu_closed(); }
 	if (status == 0x0132) gfx::system_menu_closed();
 	g_sys_events++;
 }
 
 int system_events() { return g_sys_events; }
+bool system_drawing() { return g_sys_drawing; }
 
 void init() {
 	ioPadInit(7);

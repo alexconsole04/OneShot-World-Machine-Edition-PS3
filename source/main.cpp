@@ -31,8 +31,9 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m10g"
+#define OSPS3_VERSION "m10h"
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <string>
 #include <vector>
@@ -172,6 +173,15 @@ int main(int argc, const char **argv) {
 				linesLeft--;
 				nextLine = sys::time_us() + 1000000;
 			}
+		}
+		// XMB open (or another system overlay): pause the game and leave the
+		// graphics chip to the system until it's done, like most PS3 games.
+		if (input::system_drawing()) {
+			static bool logged;
+			if (!logged) { logged = true; sys::log("paused while the system draws (XMB)\n"); }
+			usleep(16000);
+			last = sys::time_us();
+			continue;
 		}
 		TileMap *mp = &window().Map();
 		bool mapMenu = debug_map_menu::is_open();

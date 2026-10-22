@@ -852,6 +852,12 @@ void set_render_target(Texture *rt) {
 	cellGcmSetWaitForIdle(ctx);
 	cur_rt = rt;
 	if (rt) last_rt = rt;
+	// Programs, constants, vertex arrays and switches again with every
+	// target: after the XMB has been open, drawing stopped working after the
+	// first target switch of each frame.
+	cellGcmCgUploadInternalConsts(ctx, vpo);
+	set_draw_env();
+	bind_vertex_arrays(vb_cur);
 	if (rt) {
 		bind_rt_surface(rt);
 	} else {
@@ -990,8 +996,10 @@ void system_menu_closed() {
 	cellGcmSetFlipMode(GCM_FLIP_HSYNC);
 	// ...and set the drawing state again from scratch.
 	set_render_target(nullptr);
+	cellGcmCgUploadInternalConsts(ctx, vpo);
 	set_draw_env();
-	bind_color_buffer(g_frame_index);
+	bind_vertex_arrays(vb_cur);
+	bind_screen();
 	tex_cache_dirty = true;
 }
 bool screenshot(const char *) { return false; }
