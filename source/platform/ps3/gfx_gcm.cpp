@@ -58,7 +58,9 @@ static_assert(sizeof(Vertex) == 48, "vertex layout");
 
 // ---------------------------------------------------------------- state
 static u32 display_width, display_height, color_pitch, depth_pitch;
-static u32 tgt_w, tgt_h;          // size of what's being drawn into (screen or render target)
+static u32 tgt_w, tgt_h;
+static uint8_t *color_mem[COLOR_BUFFER_NUM];   // CPU view of the screen buffers (debug reads)
+static Texture *last_rt;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
 static CellGcmContextData *ctx;
@@ -396,6 +398,7 @@ bool init() {
 
 	u32 color_size = color_pitch * display_height;
 	void *color_base = bump_alloc(COLOR_BUFFER_NUM * color_size, 64);
+	for (int i = 0; i < COLOR_BUFFER_NUM; i++) color_mem[i] = (uint8_t *)color_base + (u32)i * color_size;
 	for (int i = 0; i < COLOR_BUFFER_NUM; i++) {
 		cellGcmAddressToOffset((void *)((uintptr_t)color_base + (u32)i * color_size), &color_offset[i]);
 		cellGcmSetDisplayBuffer((u8)i, color_offset[i], color_pitch, display_width, display_height);
@@ -711,6 +714,7 @@ void set_render_target(Texture *rt) {
 	// RSX starts on the next one (it may sample what was just drawn).
 	cellGcmSetWaitForIdle(ctx);
 	cur_rt = rt;
+	if (rt) last_rt = rt;
 	if (rt) {
 		CellGcmSurface sf;
 		memset(&sf, 0, sizeof(sf));
@@ -822,8 +826,33 @@ bool texel_coords() { return g_texel_coords; }
 
 Stats last_stats() { return st; }
 
+// Debug: how many of 9 sample points (a 3x3 grid) in a buffer aren't black,
+// and the centre pixel. Read by the PPU straight from video memory.
+static void sample_pixels(const uint8_t *mem, u32 pitch, u32 w, u32 h, int *lit, u32 *centre) {
+	*lit = 0;
+	*centre = 0;
+	if (!mem) return;
+	for (int j = 1; j <= 3; j++)
+		for (int i = 1; i <= 3; i++) {
+			u32 x = w * i / 4, y = h * j / 4;
+			u32 px = *(volatile const u32 *)(mem + y * pitch + x * 4) & 0xffffff;
+			if (px) (*lit)++;
+			if (i == 2 && j == 2) *centre = px;
+		}
+}
+
 void debug_status(char *buf, int n) {
 	u32 prep = *(volatile u32 *)cellGcmGetLabelAddress(LABEL_PREPARED_BUFFER_OFFSET);
+	int lit0, lit1, litrt = 0;
+	u32 c0, c1, crt = 0;
+	sample_pixels(color_mem[g_buffer_on_display % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit0, &c0);
+	sample_pixels(color_mem[(g_buffer_on_display + 1) % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit1, &c1);
+	if (last_rt) sample_pixels((const uint8_t *)last_rt->mem, last_rt->pitch, last_rt->w, last_rt->h, &litrt, &crt);
+	int k = snprintf(buf, n, "[pixels lit of 9: shown buffer %d (centre %06x), other buffer %d (%06x), game window %d (%06x)] ",
+	                 lit0, c0, lit1, c1, litrt, crt);
+	if (k < 0 || k >= n) return;
+	buf += k;
+	n -= k;
 	snprintf(buf, n, "vblanks %u, flips asked %u (failed %u), flips done %u, recovered %u; showing buffer %u, next prepared %u/%u, "
 	         "drawing into %u, flip status %u, waiting %u",
 	         g_vblank_count, g_flip_requests, g_flip_fail, g_flip_count, g_flip_recovered, g_buffer_on_display, prep >> 8, prep & 7,
@@ -836,6 +865,11 @@ void system_menu_closed() {
 	for (int i = 0; i < COLOR_BUFFER_NUM; i++)
 		cellGcmSetDisplayBuffer((u8)i, color_offset[i], color_pitch, display_width, display_height);
 	cellGcmSetFlipMode(GCM_FLIP_HSYNC);
+	// ...and set the drawing state again from scratch.
+	set_render_target(nullptr);
+	set_draw_env();
+	bind_color_buffer(g_frame_index);
+	tex_cache_dirty = true;
 }
 bool screenshot(const char *) { return false; }
 

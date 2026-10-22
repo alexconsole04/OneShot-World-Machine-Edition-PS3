@@ -31,7 +31,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m10c"
+#define OSPS3_VERSION "m10d"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -166,7 +166,7 @@ int main(int argc, const char **argv) {
 			static uint64_t nextLine;
 			if (input::system_events() != lastEvents) { lastEvents = input::system_events(); linesLeft = 10; nextLine = 0; }
 			if (linesLeft > 0 && sys::time_us() >= nextLine) {
-				char st[256];
+				char st[512];
 				gfx::debug_status(st, sizeof(st));
 				sys::log("display: frame %d, %s\n", frame, st);
 				linesLeft--;

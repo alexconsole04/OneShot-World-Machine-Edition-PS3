@@ -24,7 +24,7 @@ static void on_sysutil(uint64_t status, uint64_t param, void *) {
 	                 : status == 0x0132 ? "XMB closed"
 	                 : status == 0x0133 ? "XMB music started"
 	                 : status == 0x0134 ? "XMB music stopped" : "other";
-	char st[256];
+	char st[512];
 	gfx::debug_status(st, sizeof(st));
 	sys::log("system event 0x%04x (%s, param %llu): %s\n", (unsigned)status, what, (unsigned long long)param, st);
 	if (status == 0x0132) gfx::system_menu_closed();
