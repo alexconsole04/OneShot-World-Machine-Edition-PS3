@@ -61,6 +61,16 @@ static u32 display_width, display_height, color_pitch, depth_pitch;
 static u32 tgt_w, tgt_h;
 static uint8_t *color_mem[COLOR_BUFFER_NUM];   // CPU view of the screen buffers (debug reads)
 static Texture *last_rt;
+// After the XMB closes, the PS3 sometimes stops showing anything the 3D
+// pipeline draws into the screen buffers (clears still work, off-screen
+// targets are fine). Copy presentation draws the frame off-screen and
+// copies it in with the copy engine. Two probe pixels in the top-left
+// corner show which paths reach the screen.
+static bool g_present_copy;
+static Texture *frame_rt, *probe_tex, *probe_white;
+static const u32 PROBE_COPY_RGB = 0x0a141e;   // copied into pixel (1,0)
+static int g_draw_fails, g_checks;
+static bool g_draw_ok = true, g_copy_ok = true, g_checked;
 static uint8_t *depth_mem;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
@@ -495,6 +505,12 @@ bool init() {
 	cellGcmSetVBlankHandler(on_vblank);
 	cellGcmSetFlipHandler(on_flip);
 
+	{
+		uint32_t px = 0xff000000u | PROBE_COPY_RGB;
+		probe_tex = create_texture(1, 1, &px);
+		uint32_t white = 0xffffffffu;
+		probe_white = create_texture(1, 1, &white);
+	}
 	cellGcmCgUploadInternalConsts(ctx, vpo);
 	set_draw_env();
 	bind_color_buffer(g_frame_index);
@@ -680,9 +696,28 @@ static void wrap_fifo_early() {
 	if (!logged) { logged = true; sys::log("gfx: command buffer wrapped between frames\n"); }
 }
 
+static Texture *make_rt(u32 w, u32 h);
+static void bind_screen();
+
 void end_frame() {
 	if (cur_rt) set_render_target(nullptr);
+	// Draw probe: one pixel in the top-left corner, a known colour.
+	{
+		Shade ps;
+		ps.r = 0.2f; ps.g = 0.4f; ps.b = 0.6f;
+		clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
+		if (probe_white) draw(probe_white, 0, 0, 1, 1, 0, 0, 1, 1, ps, Blend::Normal);
+	}
 	flush_batch();
+	if (g_present_copy && frame_rt) {
+		cellGcmSetWaitForIdle(ctx);
+		cellGcmSetTransferImage(ctx, CELL_GCM_TRANSFER_LOCAL_TO_LOCAL, color_offset[g_frame_index], color_pitch, 0, 0,
+		                        frame_rt->gpu_offset, frame_rt->pitch, 0, 0, display_width, display_height, 4);
+	}
+	// Copy probe: one pixel from a 1x1 texture into (1,0) with the copy engine.
+	if (probe_tex)
+		cellGcmSetTransferImage(ctx, CELL_GCM_TRANSFER_LOCAL_TO_LOCAL, color_offset[g_frame_index], color_pitch, 1, 0,
+		                        probe_tex->gpu_offset, probe_tex->pitch, 0, 0, 1, 1, 4);
 	// Fence: the RSX writes this once it has consumed this frame's vertices.
 	frame_counter++;
 	vb_fence_value[vb_cur] = frame_counter;
@@ -703,7 +738,33 @@ void end_frame() {
 	g_frame_index = (g_frame_index + 1) % COLOR_BUFFER_NUM;
 	cellGcmSetWaitLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_IDLE);
 	cellGcmSetWriteCommandLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_BUSY);
-	bind_color_buffer(g_frame_index);
+
+	// Every half second: did the probes reach the frame now on screen?
+	if (++g_checks % 30 == 0 && frame_counter > 10) {
+		const uint8_t *m = color_mem[g_buffer_on_display % COLOR_BUFFER_NUM];
+		u32 p0 = *(volatile const u32 *)m & 0xffffff, p1 = *(volatile const u32 *)(m + 4) & 0xffffff;
+		auto near = [](u32 c, int r, int g, int b) {
+			int dr = (int)((c >> 16) & 255) - r, dg = (int)((c >> 8) & 255) - g, db = (int)(c & 255) - b;
+			return dr > -4 && dr < 4 && dg > -4 && dg < 4 && db > -4 && db < 4;
+		};
+		bool draw_ok = near(p0, 51, 102, 153), copy_ok = p1 == PROBE_COPY_RGB;
+		if (!g_checked || draw_ok != g_draw_ok || copy_ok != g_copy_ok)
+			sys::log("gfx: screen check: drawing %s, copying %s (presenting by %s; probe pixels %06x %06x)\n",
+			         draw_ok ? "reaches the screen" : "DOES NOT reach the screen", copy_ok ? "works" : "FAILS",
+			         g_present_copy ? "copy" : "drawing", p0, p1);
+		g_checked = true;
+		g_draw_ok = draw_ok;
+		g_copy_ok = copy_ok;
+		g_draw_fails = draw_ok ? 0 : g_draw_fails + 1;
+		if (!g_present_copy && g_draw_fails >= 2 && copy_ok) {
+			if (!frame_rt) frame_rt = make_rt(display_width, display_height);
+			if (frame_rt) {
+				g_present_copy = true;
+				sys::log("gfx: switching to copy presentation (the screen stopped accepting drawing)\n");
+			}
+		}
+	}
+	bind_screen();
 
 	static u32 recovered_logged;
 	static uint64_t recovered_log_time;
@@ -716,6 +777,15 @@ void end_frame() {
 	st.tex_bytes_used = heap_used;
 	st.tex_bytes_total = heap_total;
 }
+
+static Texture *make_rt(u32 w, u32 h) { return create_render_target(w, h); }
+
+void set_present_copy(bool on) {
+	if (on && !frame_rt) frame_rt = make_rt(display_width, display_height);
+	g_present_copy = on && frame_rt;
+	sys::log("gfx: presenting by %s\n", g_present_copy ? "copy" : "drawing");
+}
+bool present_copy() { return g_present_copy; }
 
 Texture *create_render_target(uint32_t w, uint32_t h) {
 	Texture *t = new Texture;
@@ -737,6 +807,40 @@ Texture *create_render_target(uint32_t w, uint32_t h) {
 	return t;
 }
 
+static void bind_rt_surface(Texture *rt) {
+	CellGcmSurface sf;
+	memset(&sf, 0, sizeof(sf));
+	sf.colorFormat = GCM_SURFACE_X8R8G8B8;
+	sf.colorTarget = GCM_SURFACE_TARGET_0;
+	sf.colorLocation[0] = GCM_LOCATION_RSX;
+	sf.colorOffset[0] = rt->gpu_offset;
+	sf.colorPitch[0] = rt->pitch;
+	for (int i = 1; i < 4; i++) { sf.colorLocation[i] = GCM_LOCATION_RSX; sf.colorPitch[i] = 64; }
+	u32 doff;
+	cellGcmAddressToOffset(rt->aux, &doff);
+	sf.depthFormat = GCM_SURFACE_ZETA_Z16;
+	sf.depthLocation = GCM_LOCATION_RSX;
+	sf.depthOffset = doff;
+	sf.depthPitch = (rt->w * 2 + 63) & ~63u;
+	sf.type = GCM_SURFACE_TYPE_LINEAR;
+	sf.antiAlias = GCM_SURFACE_CENTER_1;
+	sf.width = rt->w;
+	sf.height = rt->h;
+	cellGcmSetSurface(ctx, &sf);
+	set_viewport(rt->w, rt->h);
+}
+
+// "The screen": normally the colour buffer being drawn this frame. In copy
+// presentation, a full-screen render target that end_frame copies into the
+// colour buffer with the copy engine instead (see present_copy below).
+static void bind_screen() {
+	if (g_present_copy && frame_rt) bind_rt_surface(frame_rt);
+	else {
+		bind_color_buffer(g_frame_index);
+		set_viewport(display_width, display_height);
+	}
+}
+
 void set_render_target(Texture *rt) {
 	if (rt == cur_rt) return;
 	flush_batch();
@@ -746,29 +850,9 @@ void set_render_target(Texture *rt) {
 	cur_rt = rt;
 	if (rt) last_rt = rt;
 	if (rt) {
-		CellGcmSurface sf;
-		memset(&sf, 0, sizeof(sf));
-		sf.colorFormat = GCM_SURFACE_X8R8G8B8;
-		sf.colorTarget = GCM_SURFACE_TARGET_0;
-		sf.colorLocation[0] = GCM_LOCATION_RSX;
-		sf.colorOffset[0] = rt->gpu_offset;
-		sf.colorPitch[0] = rt->pitch;
-		for (int i = 1; i < 4; i++) { sf.colorLocation[i] = GCM_LOCATION_RSX; sf.colorPitch[i] = 64; }
-		u32 doff;
-		cellGcmAddressToOffset(rt->aux, &doff);
-		sf.depthFormat = GCM_SURFACE_ZETA_Z16;
-		sf.depthLocation = GCM_LOCATION_RSX;
-		sf.depthOffset = doff;
-		sf.depthPitch = (rt->w * 2 + 63) & ~63u;
-		sf.type = GCM_SURFACE_TYPE_LINEAR;
-		sf.antiAlias = GCM_SURFACE_CENTER_1;
-		sf.width = rt->w;
-		sf.height = rt->h;
-		cellGcmSetSurface(ctx, &sf);
-		set_viewport(rt->w, rt->h);
+		bind_rt_surface(rt);
 	} else {
-		bind_color_buffer(g_frame_index);
-		set_viewport(display_width, display_height);
+		bind_screen();
 	}
 	clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
 	tex_cache_dirty = true;   // the target's new pixels must not come from a stale texture cache
@@ -879,6 +963,10 @@ void debug_status(char *buf, int n) {
 	sample_pixels(color_mem[(g_buffer_on_display + 1) % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit1, &c1);
 	if (last_rt) sample_pixels((const uint8_t *)last_rt->mem, last_rt->pitch, last_rt->w, last_rt->h, &litrt, &crt);
 	u32 zc = depth_mem ? *(volatile const uint16_t *)(depth_mem + (display_height / 2) * depth_pitch + display_width) : 0;
+	int k0 = snprintf(buf, n, "[presenting by %s] ", g_present_copy ? "copy" : "drawing");
+	if (k0 < 0 || k0 >= n) return;
+	buf += k0;
+	n -= k0;
 	int k = snprintf(buf, n, "[pixels lit of 9: shown buffer %d (centre %06x), other buffer %d (%06x), game window %d (%06x); screen depth centre %04x] ",
 	                 lit0, c0, lit1, c1, litrt, crt, zc);
 	if (k < 0 || k >= n) return;

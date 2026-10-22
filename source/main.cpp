@@ -31,7 +31,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m10e"
+#define OSPS3_VERSION "m10f"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -213,6 +213,7 @@ int main(int argc, const char **argv) {
 			else if (diag && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
 			else if (diag && input::pressed(input::BTN_L3)) mp->debugLayers = (mp->debugLayers + 1) % 4;
 			else if (diag && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
+			else if (diag && input::pressed(input::BTN_RUN)) gfx::set_present_copy(!gfx::present_copy());     // Square
 			else changed = false;
 			if (changed)
 				sys::log("debug: renderer settings now: draw mode %s, vertices %s, texcoords %s, layers %d, shader %s\n",
@@ -295,8 +296,8 @@ int main(int argc, const char **argv) {
 					}
 				gfx::Shade s;
 				gm::blit_screen(t, x0, y0, w, h, Rect(0, 0, (int)t->w, (int)t->h), s);
-				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   R1: close   R2/L2/R3/L3/Circle: renderer switches",
-				              i + 1, n, names[i], t->w, t->h);
+				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   R1: close   R2/L2/R3/L3/Circle: renderer switches   Square: present by %s",
+				              i + 1, n, names[i], t->w, t->h, gfx::present_copy() ? "copy" : "drawing");
 			}
 		}
 		uint64_t t2 = sys::time_us();
