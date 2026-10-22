@@ -38,6 +38,8 @@ add_executable(oneshot-ps3
     source/platform/fs_case.cpp
     source/platform/save_io.cpp
     source/platform/log_file.cpp
+    source/platform/loader.cpp
+    source/platform/ps3/thread_ps3.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/sys_ps3.cpp
     source/platform/ps3/input_ps3.cpp

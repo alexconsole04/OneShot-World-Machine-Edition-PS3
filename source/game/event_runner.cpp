@@ -142,6 +142,49 @@ void EventRunner::skipToIndent(int indent) {
 	while (commandIndex < count() && cmd(commandIndex).indent != indent) commandIndex++;
 }
 
+// ---------------------------------------------------------------- command trace
+// The last commands the event runners executed, written to the log by the
+// "mark" button (hold SELECT) so a report comes with what just ran.
+namespace script_trace {
+struct Entry { long long frame; int map, event, code, indent; char text[48]; };
+static Entry ring[96];
+static int head, count;
+
+static void record(long long frame, int mapId, int eventId, const EventCommand &c) {
+	if (c.code == 0 || c.code == 411 || c.code == 412) return;   // block ends / else: no information
+	std::string t;
+	for (size_t i = 0; i < c.parameters.size() && t.size() < 44; i++) {
+		if (i) t += ", ";
+		t += c.parameters[i];
+	}
+	// Parallel events re-check the same conditions every frame: keep one copy.
+	for (int k = 1; k <= 12 && k <= count; k++) {
+		const Entry &p = ring[(head - k + 96) % 96];
+		if (p.event == eventId && p.map == mapId && p.code == c.code && strncmp(p.text, t.c_str(), sizeof(p.text) - 1) == 0) {
+			ring[(head - k + 96) % 96].frame = frame;   // last seen
+			return;
+		}
+	}
+	Entry &e = ring[head];
+	e.frame = frame;
+	e.map = mapId;
+	e.event = eventId;
+	e.code = c.code;
+	e.indent = c.indent;
+	snprintf(e.text, sizeof(e.text), "%s", t.c_str());
+	head = (head + 1) % 96;
+	if (count < 96) count++;
+}
+
+void dump() {
+	sys::log("last %d script commands (oldest first): frame / map / event / code: parameters\n", count);
+	for (int i = 0; i < count; i++) {
+		const Entry &e = ring[(head - count + i + 96) % 96];
+		sys::log("  %lld  map %d  ev %d  %*s%d: %s\n", e.frame, e.map, e.event, e.indent * 2, "", e.code, e.text);
+	}
+}
+} // namespace script_trace
+
 void EventRunner::Update() {
 	if (waitForModalWindow) {
 		if (modal::is_open()) return;
@@ -196,6 +239,7 @@ void EventRunner::Update() {
 		}
 		const EventCommand &c = cmd(commandIndex);
 		commandIndex++;
+		script_trace::record(state->play_frames, map->GetMapID(), triggeringEventId, c);
 		switch (c.code) {
 		case ShowText: stop = commandShowText(c); break;
 		case ConditionalBranch: stop = commandConditionalBranch(c); break;
@@ -627,7 +671,10 @@ bool EventRunner::commandTransferPlayer(const EventCommand &c) {
 	}
 	dir = c.iparam(4);
 	bool fade = c.iparam(5) == 0;
-	sys::log("transfer: map %d -> %d at (%d,%d) by event %d\n", map->GetMapID(), mapId, x, y, triggeringEventId);
+	GameTone tone = map->GetScreenTone();
+	sys::log("transfer: map %d -> %d at (%d,%d) by event %d (%s; screen tone %d,%d,%d%s, set %lld frames ago; %d pictures)\n",
+	         map->GetMapID(), mapId, x, y, triggeringEventId, fade ? "fade" : "no fade", tone.r, tone.g, tone.b,
+	         map->IsScreenToneShifting() ? " still shifting" : "", map->FramesSinceToneChange(), pictures().Count());
 	map->ChangeMap(mapId, (float)x, (float)y, fade ? 0.5f : 0.0f, (Direction)dir);
 	waitForMapTransition = fade;
 	return fade;

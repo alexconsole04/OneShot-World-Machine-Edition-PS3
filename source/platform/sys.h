@@ -31,6 +31,8 @@ void init_log();
 void log_file_open(const char *path, const char *prev_path);
 void log_file_write(const char *msg);
 bool log_file_ok();
+// Wait (up to ~1 s) for queued log lines to reach the file (before exiting).
+void log_flush();
 
 // Names of the entries in <data_dir>/<rel> (case as on disk).
 bool list_dir(const char *rel, std::vector<std::string> &out);

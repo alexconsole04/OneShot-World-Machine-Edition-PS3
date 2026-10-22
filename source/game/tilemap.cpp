@@ -506,7 +506,18 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 
 	uint64_t tLayers = sys::time_us();
 	snprintf(rel, sizeof(rel), "gamedata/maps/events_map%d.json", mapId);
-	eventFile = load_event_file(rel);
+	eventFile.reset();
+	for (auto it = eventCache.begin(); it != eventCache.end(); ++it)
+		if (it->first == mapId) {
+			eventFile = it->second;
+			eventCache.erase(it);
+			break;
+		}
+	if (!eventFile) eventFile = load_event_file(rel);
+	if (eventFile) {
+		eventCache.emplace_front(mapId, eventFile);
+		while (eventCache.size() > 6) eventCache.pop_back();
+	}
 	uint64_t tEvents = sys::time_us();
 	if (eventFile && !eventFile->events.empty()) {
 		entityIDcounter = 0;
@@ -1211,7 +1222,10 @@ void TileMap::ScrollMap(int direction, int distance, int speed) {
 	scrollSpeed = speed;
 }
 
+long long TileMap::FramesSinceToneChange() const { return state->play_frames - toneChangeFrame; }
+
 void TileMap::SetScreenTone(GameTone tone, int shiftTime) {
+	toneChangeFrame = state->play_frames;
 	screenToneShiftTimer = 0;
 	if (shiftTime <= 0) {
 		screenToneShiftTotalTime = 0;

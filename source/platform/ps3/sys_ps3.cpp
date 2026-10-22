@@ -9,6 +9,7 @@
 #include <cell/sysmodule.h>
 #include <cell/sysutil_userinfo.h>
 #include <cell/rtc.h>
+#include <cell/cell_fs.h>
 #include <sysutil/sysutil_common.h>
 
 #define TITLE_ID "OSWM00001"
@@ -74,25 +75,42 @@ bool find_data_dir(const char *argv0) {
 
 const char *data_dir() { return g_dir; }
 
-bool read_file(const char *rel, uint8_t **data, size_t *size) {
-	char p[1024];
-	snprintf(p, sizeof(p), "%s/%s", g_dir, rel);
-	FILE *f = fopen(p, "rb");
-	if (!f) {
-		std::string real;
-		if (resolve_case(g_dir, rel, real)) f = fopen(real.c_str(), "rb");
-	}
-	if (!f) return false;
-	fseek(f, 0, SEEK_END);
-	long n = ftell(f);
-	fseek(f, 0, SEEK_SET);
+// One cellFsRead for the whole file: the C library's stdio reads in small
+// pieces, each a separate system call (a 2 MB music file took ~160 ms).
+static bool read_whole(const char *path, uint8_t **data, size_t *size) {
+	int fd;
+	if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, nullptr, 0) != CELL_FS_SUCCEEDED) return false;
+	CellFsStat st;
+	if (cellFsFstat(fd, &st) != CELL_FS_SUCCEEDED) { cellFsClose(fd); return false; }
+	size_t n = (size_t)st.st_size;
 	uint8_t *b = (uint8_t *)malloc(n + 1);
-	if (!b || fread(b, 1, n, f) != (size_t)n) { fclose(f); free(b); return false; }
-	fclose(f);
+	uint64_t got = 0;
+	bool ok = b != nullptr;
+	while (ok && got < n) {
+		uint64_t r = 0;
+		if (cellFsRead(fd, b + got, n - got, &r) != CELL_FS_SUCCEEDED || r == 0) ok = false;
+		got += r;
+	}
+	cellFsClose(fd);
+	if (!ok) { free(b); return false; }
 	b[n] = 0;
 	*data = b;
-	*size = (size_t)n;
+	*size = n;
 	return true;
+}
+
+bool read_file(const char *rel, uint8_t **data, size_t *size) {
+	uint64_t t0 = time_us();
+	char p[1024];
+	snprintf(p, sizeof(p), "%s/%s", g_dir, rel);
+	bool ok = read_whole(p, data, size);
+	if (!ok) {
+		std::string real;
+		if (resolve_case(g_dir, rel, real)) ok = read_whole(real.c_str(), data, size);
+	}
+	uint64_t ms = (time_us() - t0) / 1000;
+	if (ms >= 30) log("file: %s took %u ms (%u KB)\n", rel, (unsigned)ms, ok ? (unsigned)(*size / 1024) : 0u);
+	return ok;
 }
 
 bool file_exists(const char *rel) {

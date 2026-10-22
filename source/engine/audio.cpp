@@ -8,6 +8,7 @@
 #include "util.h"
 #include "../platform/audio_out.h"
 #include "../platform/sys.h"
+#include "../platform/loader.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -116,6 +117,38 @@ static mixer::Stream *open_ogg(const char *dir, const std::string &name) {
 	return s;
 }
 
+// Music effects (get_item etc.) are small: their files are read in the
+// background at boot and kept, so playing one never touches the disk.
+struct MeFile { sys::LoadJob *job = nullptr; uint8_t *data = nullptr; size_t size = 0; };
+static std::unordered_map<std::string, MeFile> me_files;   // lower-case name
+
+static mixer::Stream *open_me(const std::string &name) {
+	auto it = me_files.find(util::lower(name));
+	if (it == me_files.end()) return open_ogg("music_effects", name);
+	MeFile &f = it->second;
+	if (f.job) {
+		if (!sys::load_done(f.job)) {   // still queued: read it now instead
+			sys::load_cancel(f.job);
+			f.job = nullptr;
+			return open_ogg("music_effects", name);
+		}
+		if (!sys::load_take(f.job, &f.data, &f.size)) f.data = nullptr;
+		f.job = nullptr;
+	}
+	if (!f.data) return open_ogg("music_effects", name);
+	uint8_t *copy = (uint8_t *)malloc(f.size);   // the stream takes ownership of its copy
+	if (!copy) return nullptr;
+	memcpy(copy, f.data, f.size);
+	return mixer::open_vorbis(copy, (uint32_t)f.size);
+}
+
+// Background music is read on the loader thread and starts playing as soon
+// as the file is in memory (a frame or two later).
+static sys::LoadJob *bgmJob;
+static std::string bgmJobName;
+static uint64_t bgmJobStart;
+static bool bgmPaused;
+
 // ---------------------------------------------------------------- FmodManager state
 static std::string currentSong;           // FmodManager.CurrentSong
 static float currentSongVolume = 0;
@@ -141,6 +174,7 @@ static float bgm_scale() { return bgm_vol_setting / 100.0f; }
 static float sfx_scale() { return sfx_vol_setting / 100.0f; }
 
 static void fm_stop_song() {
+	if (bgmJob) { sys::load_cancel(bgmJob); bgmJob = nullptr; }
 	currentSong.clear();
 	currentSongVolume = 0;
 	if (bgmPlaying) mixer::stop(V_BGM);
@@ -164,11 +198,10 @@ static void fm_play_song(const std::string &title, float fadeIn, float volume, f
 	if (title != currentSong || !bgmPlaying) {
 		fm_stop_song();
 		currentSong = title;
-		mixer::Stream *s = open_ogg("music", title);
-		if (s) {
-			mixer::play_stream(V_BGM, s, 0.0f, pitch, true);
-			bgmPlaying = true;
-		}
+		bgmJobName = "gamedata/music/" + title + ".ogg";
+		bgmJob = sys::load_async(bgmJobName.c_str());
+		bgmJobStart = sys::time_us();
+		bgmPlaying = true;   // the stream is attached when the file arrives
 	}
 	bgmPitch = pitch;
 	mixer::set_pitch(V_BGM, pitch);
@@ -188,6 +221,7 @@ static void fm_play_song(const std::string &title, float fadeIn, float volume, f
 	bool mePlaying = meActive && mixer::is_playing(V_ME);
 	mixer::set_volume(V_BGM, mePlaying ? 0.0f : currentSongVolume * fadeVol * bgm_scale());
 	mixer::set_paused(V_BGM, false);
+	bgmPaused = false;
 }
 
 static void fm_queue_song(const std::string &title, float fadeIn = 0, float vol = 1, float pitch = 1) {
@@ -238,6 +272,13 @@ void preload_sfx() {
 		if (p) { bytes += p->frames * p->channels * 2; n++; }
 	}
 	sys::log("audio: %d sound effects loaded (%.1f MB) in %.0f ms\n", n, bytes / 1048576.0, (sys::time_us() - t0) / 1000.0);
+	std::vector<std::string> me;
+	sys::list_dir("gamedata/music_effects", me);
+	for (auto &f : me) {
+		std::string lf = util::lower(f);
+		if (lf.size() < 5 || lf.compare(lf.size() - 4, 4, ".ogg") != 0) continue;
+		me_files[lf.substr(0, lf.size() - 4)].job = sys::load_async(("gamedata/music_effects/" + f).c_str());
+	}
 }
 
 void play_sound(const char *name, float vol, float pitch) {
@@ -319,7 +360,7 @@ void play_me(const char *name, float vol, float pitch) {
 	TRACE("audio: me %s (%.2f)\n", name, vol);
 	fm_stop_me();
 	if (bgmPlaying) mixer::set_volume(V_BGM, 0.0f);
-	mixer::Stream *s = open_ogg("music_effects", name);
+	mixer::Stream *s = open_me(name);
 	if (!s) return;
 	mixer::play_stream(V_ME, s, vol * sfx_scale(), pitch, false);
 	meActive = true;
@@ -339,6 +380,7 @@ void fade_in_bgm(float targetVolume, float seconds) {
 }
 
 void set_song_paused(bool paused) {
+	bgmPaused = paused;
 	if (bgmPlaying) mixer::set_paused(V_BGM, paused);
 }
 
@@ -353,7 +395,29 @@ void restore_bgm_bgs() {
 	play_bgs(b.c_str(), memBgsVol, memBgsPitch);
 }
 
+static void poll_bgm_load() {
+	if (!bgmJob || !sys::load_done(bgmJob)) return;
+	sys::LoadJob *j = bgmJob;
+	bgmJob = nullptr;
+	uint8_t *d;
+	size_t n;
+	if (!sys::load_take(j, &d, &n)) {
+		sys::log("audio: missing %s\n", bgmJobName.c_str());
+		bgmPlaying = false;
+		return;
+	}
+	mixer::Stream *s = mixer::open_vorbis(d, (uint32_t)n);   // takes ownership of d
+	if (!s) { bgmPlaying = false; return; }
+	mixer::play_stream(V_BGM, s, 0.0f, bgmPitch, true);
+	bool mePlaying = meActive && mixer::is_playing(V_ME);
+	mixer::set_volume(V_BGM, mePlaying ? 0.0f : currentSongVolume * fadeVol * bgm_scale());
+	mixer::set_paused(V_BGM, bgmPaused);
+	sys::log("audio: %s (%.0f KB) playing %.0f ms after it was asked for\n", bgmJobName.c_str(), n / 1024.0,
+	         (sys::time_us() - bgmJobStart) / 1000.0);
+}
+
 void update() {
+	poll_bgm_load();
 	// Heartbeat for the log: proves the output thread is mixing.
 	static unsigned frames, lastMixed;
 	if (++frames % 1800 == 0) {   // every ~30 s

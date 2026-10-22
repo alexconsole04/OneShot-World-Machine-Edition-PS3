@@ -2,7 +2,8 @@
 //
 // Controls (PS3):  d-pad / left stick = walk,  Square (hold) = run,
 //                  Cross = OK / interact,  Circle = cancel,
-//                  SELECT = toggle debug overlay. While the overlay is shown:
+//                  SELECT = toggle debug overlay (hold 1 s: mark the log).
+//                  While the overlay is shown:
 //                  L1 = map switcher, R1 = texture viewer, R2/L2/R3/L3 =
 //                  renderer diagnostics, Circle = plain shader.
 // Host build: env OSPS3_DATA (data dir), OSPS3_MAP, OSPS3_SPAWN="x,y",
@@ -23,10 +24,12 @@
 #include "game/oneshot_window.h"
 #include "game/debug_map_menu.h"
 #include "game/settings.h"
+namespace script_trace { void dump(); }
+static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m9"
+#define OSPS3_VERSION "m10"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -49,6 +52,7 @@ static const float NEW_GAME_X = 17, NEW_GAME_Y = 17;   // OneshotWindow: LoadMap
 
 static void fatal_screen(const char *msg) {
 	sys::log("FATAL: %s\n", msg);
+	sys::log_flush();
 	while (!input::quit_requested()) {
 		input::update();
 		gfx::begin_frame(0xff601818);
@@ -155,7 +159,31 @@ int main(int argc, const char **argv) {
 		prof::mark("input");
 		TileMap *mp = &window().Map();
 		bool mapMenu = debug_map_menu::is_open();
-		if (!mapMenu && input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
+		// SELECT: tap = debug overlay, hold one second = mark the log (a bug
+		// report bookmark with the game state and the last script commands).
+		static int selHeld;
+		if (input::held(input::BTN_SELECT)) {
+			if (mapMenu && selHeld == 0) selHeld = 1000;   // closing the map switcher: neither toggle nor mark
+			if (++selHeld == 60) {
+				static int marks;
+				TileMap &m = window().Map();
+				GameState &st = window().State();
+				Vec2 pp = m.GetPlayer() ? m.GetPlayer()->GetPixelPos() : Vec2();
+				GameTone tn = m.GetScreenTone();
+				sys::log("=== MARK %d === map %d, Niko at tile %d,%d (px %d,%d), play time %lld frames\n", ++marks, m.GetMapID(),
+				         pp.x / 16, pp.y / 16, pp.x, pp.y, st.play_frames);
+				sys::log("  script %s, %d parallel; map transition %s; screen tone %d,%d,%d (set %lld frames ago); %d pictures\n",
+				         m.IsInScript() ? "RUNNING" : "idle", m.ParallelRunnerCount(), m.IsMapTransitioning() ? "running" : "no",
+				         tn.r, tn.g, tn.b, m.FramesSinceToneChange(), pictures().Count());
+				sys::log("  flags 11=%d 22=%d; vars 6=%d 7=%d 8=%d 10=%d 22=%d 23=%d\n", st.flag(11), st.flag(22), st.var(6), st.var(7),
+				         st.var(8), st.var(10), st.var(22), st.var(23));
+				script_trace_dump();
+				sys::log("=== end of mark %d ===\n", marks);
+			}
+		} else {
+			if (selHeld > 0 && selHeld < 60 && !mapMenu) show_overlay = !show_overlay;
+			selHeld = 0;
+		}
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
 		bool dbg = (show_overlay || tex_view) && !mapMenu;
 		if (dbg && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
@@ -240,7 +268,7 @@ int main(int argc, const char **argv) {
 			              gfx::vertex_main_memory() ? "main mem" : "local mem", gfx::texel_coords() ? "texel" : "normalized",
 			              layer_names[map.debugLayers]);
 			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   R1: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
-			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide");
+			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide   hold SELECT: mark the log");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
@@ -279,6 +307,7 @@ int main(int argc, const char **argv) {
 			if (s.frame == frame) gfx::screenshot(s.file.c_str());
 	}
 	sys::log("exit after %d frames\n", frame);
+	sys::log_flush();
 	audio::shutdown();
 	gfx::shutdown();
 	return 0;

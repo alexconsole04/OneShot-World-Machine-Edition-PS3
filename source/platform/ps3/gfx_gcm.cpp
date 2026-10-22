@@ -604,6 +604,27 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	vb_used += 4;
 }
 
+// The command buffer is a 1 MB ring. When a frame's commands reach its end,
+// the toolchain's wrap handler waits until the RSX has executed everything
+// queued, which includes waiting for the previous frame's flip: up to two
+// vblanks (~33 ms) lost every second or two. Wrapping here instead, between
+// frames and well before the end, needs no waiting: the start of the ring
+// was executed long ago.
+static void wrap_fifo_early() {
+	const uintptr_t reserve = 256 * 1024;   // far more than one frame's commands
+	if ((uintptr_t)ctx->end - (uintptr_t)ctx->current > reserve) return;
+	u32 begin_off;
+	if (cellGcmAddressToOffset((void *)ctx->begin, &begin_off) != 0) return;
+	u32 get = cellGcmGetControlRegister()->get;
+	if (get >= begin_off && get < begin_off + reserve) return;   // RSX still in that area: leave it to the handler
+	cellGcmSetJumpCommand(ctx, begin_off);
+	ctx->current = ctx->begin;
+	__asm__ volatile("sync" ::: "memory");
+	cellGcmFlush(ctx);
+	static bool logged;
+	if (!logged) { logged = true; sys::log("gfx: command buffer wrapped between frames\n"); }
+}
+
 void end_frame() {
 	if (cur_rt) set_render_target(nullptr);
 	flush_batch();
@@ -621,6 +642,7 @@ void end_frame() {
 	cellGcmFlush(ctx);
 	if (g_full_sync) cellGcmFinish(ctx, ++finish_ref);   // debug: no CPU/GPU overlap at all
 	while (ppu_too_fast()) usleep(1000);
+	wrap_fifo_early();
 
 	set_draw_env();
 	g_frame_index = (g_frame_index + 1) % COLOR_BUFFER_NUM;

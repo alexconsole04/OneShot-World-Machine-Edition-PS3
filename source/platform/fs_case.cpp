@@ -2,6 +2,7 @@
 // files with mixed case ("DOORS2.xnb") but refers to them in lower case;
 // Windows didn't care, the PS3's file system (and Linux) do.
 #include "sys.h"
+#include "thread.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <string>
@@ -32,7 +33,15 @@ static const std::unordered_map<std::string, std::string> &listing(const std::st
 	return m;
 }
 
+// Files are read from the loader thread too.
+static Monitor *g_lock;
+struct Guard {
+	Guard() { if (!g_lock) g_lock = monitor_create("fs_case"); monitor_lock(g_lock); }
+	~Guard() { monitor_unlock(g_lock); }
+};
+
 bool resolve_case(const char *root, const char *rel, std::string &out) {
+	Guard g;
 	std::string cur = root;
 	std::string r = rel;
 	size_t p = 0;
@@ -55,6 +64,7 @@ bool resolve_case(const char *root, const char *rel, std::string &out) {
 bool list_dir(const char *rel, std::vector<std::string> &out) {
 	std::string real;
 	if (!resolve_case(data_dir(), rel, real)) return false;
+	Guard g;
 	for (auto &kv : listing(real)) out.push_back(kv.second);
 	return true;
 }

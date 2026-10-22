@@ -108,6 +108,9 @@ public:
 	bool IsMapScrolling() const { return scrollDistanceRemaining > 0; }
 	void SetScreenTone(GameTone tone, int shiftTime);
 	void SetAmbientTone(GameTone tone) { ambientTone = tone; }
+	GameTone GetScreenTone() const { return screenTone; }
+	long long FramesSinceToneChange() const;
+	bool IsScreenToneShifting() const { return screenToneShiftTotalTime > 0 && screenToneShiftTimer < screenToneShiftTotalTime; }
 	void ScreenShake(int power, int speed, int duration, bool vibrate);
 	void SetPanorama(const std::string &name);
 	void SetFog(const std::string &name, int hue, float opacity, gfx::Blend blend, int sx, int sy);
@@ -164,7 +167,10 @@ private:
 	std::list<Entity *> entitiesByHeight;
 	std::unordered_map<int, std::vector<Entity *>> hashedEntities;
 	std::unordered_map<int, Entity *> entitiesById;
-	std::unique_ptr<EventFile> eventFile;
+	std::shared_ptr<EventFile> eventFile;
+	// Parsed events of recently visited maps (the data is never modified,
+	// so going back to a map doesn't parse its JSON again).
+	std::list<std::pair<int, std::shared_ptr<EventFile>>> eventCache;
 	std::vector<std::unique_ptr<MapLine>> mapLines;
 	std::unordered_map<int, std::vector<MapLine *>> hashedMapLines;
 	Player *player = nullptr;
@@ -178,6 +184,7 @@ private:
 	int shakePower = 0, shakeSpeed = 0, shakeDuration = 0, shakeDirection = 1;
 	GameTone startScreenTone, targetScreenTone;
 	int screenToneShiftTimer = 0, screenToneShiftTotalTime = 0;
+	long long toneChangeFrame = 0;
 	Direction scrollDirection = Direction::None;
 	int scrollSpeed = 0, scrollDistanceRemaining = 0;
 	int changeMapTimer = 0, totalChangeMapTime = 0;
