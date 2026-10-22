@@ -34,8 +34,12 @@ cd = dict(chunks)
 fmt = bytearray(cd[b'fmt '])
 block = struct.unpack('<H', fmt[12:14])[0]
 struct.pack_into('<II', fmt, 4, 48000, block * 48000 // 1024)   # sample rate, byte rate
-fact = struct.pack('<II', Lb, 2048 - 69)    # Sony: the decoder skips fact[1] + 69 samples
-smpl = struct.pack('<9I', 0, 0, 20833, 60, 0, 0, 0, 1, 0) + struct.pack('<6I', 0, 0, 0, Lb - 1, 0, 0)
+# Sony's decoder skips the fact delay + 69 more samples, so output starts at
+# decoded sample 2048 = B[0]. 12-byte "fact" as in PS3 games: count, base delay, delay.
+skip = 2048 - 69
+fact = struct.pack('<III', Lb, skip, skip)
+# Loop points in "smpl" are absolute: they include the fact delay.
+smpl = struct.pack('<9I', 0, 0, 20833, 60, 0, 0, 0, 1, 0) + struct.pack('<6I', 0, 0, skip, skip + Lb - 1, 0, 0)
 body = b'WAVE'
 for cid, data in ((b'fmt ', bytes(fmt)), (b'fact', fact), (b'smpl', smpl), (b'data', cd[b'data'])):
     body += cid + struct.pack('<I', len(data)) + data + (b'\0' if len(data) & 1 else b'')
