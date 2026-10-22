@@ -1,5 +1,5 @@
 // player.cpp - see player.h. Follows Player.cs (Update / NormalizeWalkRunSpeed).
-// Not yet ported: the roomba (flag 79) branch, footprints and footstep sounds.
+// Not yet ported: the roomba (flag 79) branch.
 #include "player.h"
 #include "tilemap.h"
 #include "menus.h"
@@ -148,6 +148,10 @@ void Player::Update() {
 					frameIndex = (frameIndex + 1) % 4;
 					frameTimer = 0;
 					CheckIfPlayFootstepSound();
+				}
+				if (footprintEmitTimer >= (run ? 8 : 16)) {
+					footprintEmitTimer = 0;
+					EmitFootprint();
 				}
 			}
 		} else {

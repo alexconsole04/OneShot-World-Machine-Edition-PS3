@@ -108,6 +108,8 @@ void TextBox::FeedText(const std::string &in, const std::string &playerName) {
 			else { SetPortrait(t.substr(1)); t.clear(); }
 		}
 		if (lead_nl) t = "\n" + t;
+		// Chosen once per message: "[...]" narration and robots blip differently.
+		scrollSoundName = portrait == "af" ? "cat_2" : (!t.empty() && t[0] == '[') ? "text_robot" : "text";
 		inputText = t;
 		scrollSoundTimer = 4;
 	} else {
@@ -172,8 +174,7 @@ void TextBox::ProcessInputText(bool fastCycle) {
 	if (!fastCycle || (lines.empty() && choices.empty())) {
 		if (++scrollSoundTimer > 4) {
 			scrollSoundTimer = 0;
-			std::string snd = portrait == "af" ? "cat_2" : (!inputText.empty() && inputText[0] == '[') ? "text_robot" : "text";
-			audio::play_sound(snd.c_str(), 0.5f);
+			audio::play_sound(scrollSoundName.c_str(), 0.5f);
 		}
 	}
 	if (lines.empty()) lines.emplace_back();

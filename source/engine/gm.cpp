@@ -51,9 +51,13 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	auto &c = caches[cache];
 	auto it = c.find(key);
 	if (it != c.end()) return it->second;
+	// Remember failures: retrying a missing file every frame means file
+	// system calls every frame, which on the PS3 costs whole frames.
+	if (missing.count(key)) return nullptr;
 	gfx::Texture *t = load(key);
 	if (!t) {
-		if (missing.insert(key).second) sys::log("gm: missing texture '%s'\n", name);
+		missing.insert(key);
+		sys::log("gm: missing texture '%s'\n", name);
 		return nullptr;
 	}
 	c.emplace(key, t);

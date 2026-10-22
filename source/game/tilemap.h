@@ -66,6 +66,7 @@ public:
 
 	// queries used by entities
 	bool IsTileSolid(int x, int y) const;
+	bool IsTileCounter(int x, int y) const;   // 'counter' passage flag: footprints show here
 	bool IsTileSolidId(int tileid) const;
 	void SetTileSolid(int x, int y);
 	uint8_t GetTilePriority(int tileid) const;
@@ -127,6 +128,7 @@ public:
 	class MenuManager *menus = nullptr;   // set by main; Player checks IsMenuOpen
 	int debugLayers = 0;   // 0 all, 1 no entities, 2 no height layers, 3 base layers only
 	int GetMapID() const { return currentMapId; }
+	const std::string &LoadError() const { return loadError; }   // set when a map file can't be loaded
 	Vec2 GetCamPos() const { return camPos; }
 	int EntityCount() const { return (int)entities.size(); }
 	// Debug helper: nearest non-solid tile that has floor drawn on it.
@@ -192,4 +194,5 @@ private:
 	bool hasStepOverride = false;
 	std::unique_ptr<Panorama> panorama;
 	std::unique_ptr<Fog> fog;   // 'bg' script: a panorama drawn instead of the base layers
+	std::string loadError;
 };

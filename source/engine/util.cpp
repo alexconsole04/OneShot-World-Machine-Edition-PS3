@@ -28,3 +28,16 @@ std::string lower(std::string s) {
 bool starts_with(const std::string &s, const char *p) { return s.compare(0, strlen(p), p) == 0; }
 
 } // namespace util
+
+#include "../platform/sys.h"
+namespace prof {
+static uint64_t last, worstUs;
+static const char *worstName = "-";
+void begin() { last = sys::time_us(); worstUs = 0; worstName = "-"; }
+void mark(const char *phase) {
+	uint64_t now = sys::time_us();
+	if (now - last > worstUs) { worstUs = now - last; worstName = phase; }
+	last = now;
+}
+const char *worst(float *ms) { *ms = worstUs / 1000.0f; return worstName; }
+}

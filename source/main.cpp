@@ -12,6 +12,7 @@
 #include "platform/sys.h"
 #include "engine/gm.h"
 #include "engine/font.h"
+#include "engine/util.h"
 #include "engine/overlay.h"
 #include "game/game_state.h"
 #include "game/tilemap.h"
@@ -23,7 +24,7 @@
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m7"
+#define OSPS3_VERSION "m8"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -153,7 +154,9 @@ int main(int argc, const char **argv) {
 	int frame = 0;
 
 	while (!input::quit_requested() && !window().QuitRequested()) {
+		prof::begin();
 		input::update();
+		prof::mark("input");
 		TileMap *mp = &window().Map();
 		if (input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
@@ -185,6 +188,7 @@ int main(int argc, const char **argv) {
 			}
 		}
 
+		prof::mark("input/debug");
 		uint64_t t0 = sys::time_us();
 		if (!tex_view) {
 			modal::update();
@@ -195,7 +199,9 @@ int main(int argc, const char **argv) {
 		mapId = map.GetMapID();
 		uint64_t t1 = sys::time_us();
 
+		prof::mark("game update");
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
+		prof::mark("begin_frame (RSX wait)");
 		uint64_t tb = sys::time_us();
 		if (!tex_view) {
 			gm::clip_to_window();
@@ -252,7 +258,9 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   log file: %s", state.var(55),
 			              sys::log_file_ok() ? "ok" : "NOT WRITABLE");
 		}
+		prof::mark("overlay");
 		gfx::end_frame();
+		prof::mark("end_frame (flip)");
 
 		uint64_t now = sys::time_us();
 		{
@@ -262,8 +270,11 @@ int main(int argc, const char **argv) {
 			float ms = (now - last) / 1000.0f;
 			if (ms > 40.0f && mapId == last_map && now - last_hitch_log > 1000000) {
 				Vec2 pp = map.GetPlayer() ? map.GetPlayer()->GetPixelPos() : Vec2();
-				sys::log("slow frame: %.1f ms (update %.2f, draw %.2f) map %d at %d,%d\n", ms, (t1 - t0) / 1000.0f,
-				         (t2 - tb) / 1000.0f, mapId, pp.x / 16, pp.y / 16);
+				float pms;
+				const char *phase = prof::worst(&pms);
+				sys::log("slow frame: %.1f ms (update %.2f, draw %.2f; longest: %s %.1f ms) map %d at %d,%d\n", ms,
+				         (t1 - t0) / 1000.0f,
+				         (t2 - tb) / 1000.0f, phase, pms, mapId, pp.x / 16, pp.y / 16);
 				last_hitch_log = now;
 			}
 			last_map = mapId;

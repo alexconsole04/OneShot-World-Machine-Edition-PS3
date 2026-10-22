@@ -822,7 +822,74 @@ void Entity::CheckIfPlayFootstepSound() {
 		}
 		audio::play_sound(name.c_str(), v, pitch);
 	}
-	// EmitFootsplash: not ported yet
+	EmitFootsplash();
+}
+
+// ---------------------------------------------------------------- footprints
+void Entity::EmitFootprint() {
+	Vec2 t = GetCurrentTile();
+	if (map->IsTileCounter(t.x, t.y) && !state->flag(101) && !state->flag(111))
+		map->EntityAddEntity(new Footprint(map, state, direction, pos, false));
+}
+
+void Entity::EmitFootsplash() {
+	Vec2 t = GetCurrentTile();
+	if (map->IsTileCounter(t.x, t.y) && state->flag(101) && !state->flag(111))
+		map->EntityAddEntity(new Footprint(map, state, direction, pos, true));
+}
+
+Footprint::Footprint(TileMap *m, GameState *s, Direction d, Vec2 p, bool sp) : Entity(m, s), splash(sp) {
+	eventData = &ownData;
+	id = -1;
+	direction = d;
+	opacity = 255;
+	alwaysOnBottom = true;
+	NeverHash = true;
+	collisionRect = Rect(0, 0, 0, 0);
+	ignoreMapCollision = ignoreNpcCollision = true;
+	pos = p;
+	if (!splash) {
+		oldPos = pos;
+		drawRect = Rect(0, 0, 16, 16);
+		switch (d) {
+		case Direction::Left: drawRect.y = 16; break;
+		case Direction::Right: drawRect.y = 32; break;
+		case Direction::Up: drawRect.y = 64; break;
+		default: break;
+		}
+	} else {
+		frameIndex = 0;
+		oldPos = pos;
+		pos.y += 1536;
+		switch (d) {
+		case Direction::Down: pos.y -= 1024; break;
+		case Direction::Left: pos.x += 1024; break;
+		case Direction::Right: pos.x -= 1024; break;
+		case Direction::Up: pos.y += 1024; break;
+		default: break;
+		}
+	}
+}
+
+void Footprint::Update() {
+	opacity -= splash ? 6 : 4;
+	if (splash) frameIndex = 20 - opacity / 13;
+	if (opacity <= 0) {
+		opacity = 0;
+		KillEntityAfterUpdate = true;
+	}
+}
+
+void Footprint::Draw(Vec2 camPos, GameTone tone) {
+	float a = opacity / 255.0f;
+	if (!splash) {
+		const gfx::Texture *t = gm::texture("footprints/footprints");
+		gm::blit(t, Vec2(pos.x / 256 - camPos.x - 8, pos.y / 256 - camPos.y - 8), drawRect, a, 0, gfx::Blend::Normal, 2, tone);
+	} else {
+		const gfx::Texture *t = gm::texture("footprints/foot_splash");
+		Rect src(frameIndex % 4 * 80, frameIndex / 4 * 80, 80, 80);
+		gm::blit(t, Vec2(pos.x / 256 - camPos.x - 40, pos.y / 256 - camPos.y - 40), src, a, 0, gfx::Blend::Normal, 2, tone);
+	}
 }
 
 // ---------------------------------------------------------------- save data

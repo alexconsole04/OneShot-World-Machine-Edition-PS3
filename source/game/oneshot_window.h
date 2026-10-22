@@ -12,6 +12,7 @@
 #include "tilemap.h"
 #include "title_screen.h"
 #include <memory>
+#include <string>
 
 class OneshotWindow {
 public:
@@ -41,6 +42,7 @@ private:
 	std::unique_ptr<Session> session;
 	TitleScreen title;
 	bool exitRequested = false, quitApp = false;
+	std::string dataWarning;
 };
 
 OneshotWindow &window();

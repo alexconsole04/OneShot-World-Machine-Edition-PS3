@@ -76,7 +76,7 @@ private:
 	State st = State::Opening;
 	int transitionTimer = 0, totalTransitionTime = 6;
 	float alpha = 0;
-	std::string inputText, portrait;
+	std::string inputText, portrait, scrollSoundName = "text";
 	std::vector<std::vector<Glyph>> lines;
 	int lineWidth = 0;           // window px
 	unsigned color = 0xffffff;

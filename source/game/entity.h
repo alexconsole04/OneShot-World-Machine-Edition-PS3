@@ -111,7 +111,8 @@ protected:
 	void StepForwardNoSnap();
 	void MoveDiagonal(Direction vert, Direction horiz);
 	void MoveRandom();
-	void EmitFootprint() {}   // footprints: not ported yet
+	void EmitFootprint();
+	void EmitFootsplash();
 	void CheckIfPlayFootstepSound();
 	bool wheelSqueak = false;
 	void UpdateMovement();
@@ -161,3 +162,16 @@ protected:
 	std::vector<bool> pageThrough;   // per-page 'through' (C# mutates page data)
 	std::vector<bool> pageBottom;    // per-page always_on_bottom overrides
 };
+
+// Footprint / Footsplash (OneShotMG.src.Entities): fading marks left on
+// "counter" tiles (sand, snow) or splashes in shallow water (flag 101).
+class Footprint : public Entity {
+public:
+	Footprint(TileMap *map, GameState *state, Direction d, Vec2 p, bool splash);
+	void Update() override;
+	void Draw(Vec2 camPos, GameTone tone) override;
+private:
+	bool splash;
+	Rect drawRect;
+};
+

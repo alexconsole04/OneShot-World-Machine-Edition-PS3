@@ -366,13 +366,21 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 
 	char rel[128];
 	snprintf(rel, sizeof(rel), "gamedata/maps/map%d.tmx", mapId);
+	// On failure keep the player object alive (events and the camera still
+	// point at it) and leave a message for the window to show.
+	auto fail = [&](const std::string &msg) {
+		sys::log("ERROR: %s\n", msg.c_str());
+		loadError = msg;
+		if (keepPlayer) entities.push_back(std::move(keepPlayer));
+		return false;
+	};
 	uint8_t *data;
 	size_t size;
-	if (!sys::read_file(rel, &data, &size)) { sys::log("cannot read %s\n", rel); return false; }
+	if (!sys::read_file(rel, &data, &size)) return fail(std::string("cannot read ") + rel);
 	std::string err;
 	auto root = xml::parse((const char *)data, &err);
 	free(data);
-	if (!root) { sys::log("%s: %s\n", rel, err.c_str()); return false; }
+	if (!root) return fail(std::string(rel) + ": " + err);
 
 	mapSize = Vec2(root->attr_int("width"), root->attr_int("height"));
 	tileSize = Vec2(root->attr_int("tilewidth", 16), root->attr_int("tileheight", 16));
@@ -384,7 +392,7 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 			if (p->name == "property" && strcmp(p->attr("name", ""), "tileset_id") == 0)
 				currentTilesetId = p->attr_int("value");
 	auto ti = tilesetInfos.find(currentTilesetId);
-	if (ti == tilesetInfos.end()) { sys::log("map %d: unknown tileset_id %d\n", mapId, currentTilesetId); return false; }
+	if (ti == tilesetInfos.end()) return fail(std::string(rel) + ": unknown tileset_id " + std::to_string(currentTilesetId));
 	curInfo = &ti->second;
 
 	std::vector<std::unique_ptr<TileLayer>> list;
@@ -589,6 +597,10 @@ void TileMap::UpdateEntityHeight(Entity *e) {
 bool TileMap::IsTileSolid(int x, int y) const {
 	if (x < 0 || x >= mapSize.x || y < 0 || y >= mapSize.y) return false;
 	return collisionTiles[x + y * mapSize.x];
+}
+bool TileMap::IsTileCounter(int x, int y) const {
+	if (x < 0 || x >= mapSize.x || y < 0 || y >= mapSize.y || counterTiles.empty()) return false;
+	return counterTiles[x + y * mapSize.x];
 }
 bool TileMap::IsTileSolidId(int tileid) const { return (at(curInfo->passages, tileid) & 0xF) == 15; }
 void TileMap::SetTileSolid(int x, int y) {
