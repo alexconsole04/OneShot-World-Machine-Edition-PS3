@@ -32,6 +32,7 @@ public:
 	void Update();
 	void ResolveTexture();
 private:
+	bool ReadTsx(const std::string &fileName);
 	int firstTileId = 0;
 	Vec2 tileSize;
 	int totalTiles = 0, tileColumns = 1;
@@ -61,6 +62,10 @@ public:
 	~TileMap();
 	bool LoadGlobalData();                                  // tilesets.json + common events
 	bool LoadMap(int mapId, float playerTileX, float playerTileY, Direction facing = Direction::Down);
+	// Debug map switcher: stop every running script and screen effect first,
+	// so nothing from the old map (a cutscene, an exit transition, an
+	// elevator ride) carries on running against the new one.
+	bool DebugTeleport(int mapId, float tileX, float tileY, Direction facing);
 	void Update();
 	void Draw();
 

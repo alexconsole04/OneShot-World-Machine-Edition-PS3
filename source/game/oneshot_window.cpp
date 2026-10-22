@@ -71,6 +71,17 @@ void OneshotWindow::StartGame() {
 	session->map.LoadMap(NEW_GAME_MAP, NEW_GAME_X, NEW_GAME_Y, Direction::Down);
 }
 
+bool OneshotWindow::DebugTeleport(int mapId, int x, int y, Direction facing) {
+	if (title.IsOpen()) {
+		title.ForceClose();
+		session->menus.titleOpen = false;
+		audio::fade_out_bgm(0.25f);
+	}
+	pictures().Clear();
+	flash() = FlashManager();
+	return session->map.DebugTeleport(mapId, (float)x, (float)y, facing);
+}
+
 void OneshotWindow::ExitGame() { exitRequested = true; }
 
 void OneshotWindow::CloseGame() {

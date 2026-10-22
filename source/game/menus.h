@@ -92,7 +92,7 @@ public:
 	void Close() override;
 	bool IsOpen() const override { return st != Closed; }
 private:
-	enum Option { Movement, Colorblind, Vibration, ScreenTear, ChromaAberration, Automash, COUNT };
+	enum Option { Movement, Colorblind, Vibration, ScreenTear, ChromaAberration, Scaling, Automash, COUNT };
 	std::string Name(int i) const;
 	std::string Value(int i) const;
 	enum { Closed, Opening, Shown, Closing } st = Closed;

@@ -3,8 +3,8 @@
 // Controls (PS3):  d-pad / left stick = walk,  Square (hold) = run,
 //                  Cross = OK / interact,  Circle = cancel,
 //                  SELECT = toggle debug overlay. While the overlay is shown:
-//                  L1 / R1 = previous / next map, R2/L2/R3/L3 = renderer
-//                  diagnostics, Circle = plain shader, L1+R1 = texture viewer.
+//                  L1 = map switcher, R1 = texture viewer, R2/L2/R3/L3 =
+//                  renderer diagnostics, Circle = plain shader.
 // Host build: env OSPS3_DATA (data dir), OSPS3_MAP, OSPS3_SPAWN="x,y",
 //             OSPS3_INPUT (scripted buttons), OSPS3_SHOTS="frame:file.png,...".
 #include "platform/gfx.h"
@@ -21,10 +21,12 @@
 #include "game/menus.h"
 #include "game/modal.h"
 #include "game/oneshot_window.h"
+#include "game/debug_map_menu.h"
+#include "game/settings.h"
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m8"
+#define OSPS3_VERSION "m9"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -44,12 +46,6 @@ PS3TC_HEAP_SIZE(UINT64_C(128) * 1024 * 1024);
 // CGs and transfers to Niko's room (map 2).
 static const int NEW_GAME_MAP = 1;
 static const float NEW_GAME_X = 17, NEW_GAME_Y = 17;   // OneshotWindow: LoadMap(1, 17, 17)
-
-static bool map_exists(int id) {
-	char rel[96];
-	snprintf(rel, sizeof(rel), "gamedata/maps/map%d.tmx", id);
-	return sys::file_exists(rel);
-}
 
 static void fatal_screen(const char *msg) {
 	sys::log("FATAL: %s\n", msg);
@@ -158,39 +154,27 @@ int main(int argc, const char **argv) {
 		input::update();
 		prof::mark("input");
 		TileMap *mp = &window().Map();
-		if (input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
+		bool mapMenu = debug_map_menu::is_open();
+		if (!mapMenu && input::pressed(input::BTN_SELECT)) show_overlay = !show_overlay;
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
-		bool dbg = show_overlay || tex_view;
+		bool dbg = (show_overlay || tex_view) && !mapMenu;
 		if (dbg && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
 		if (dbg && input::pressed(input::BTN_MASHTEXT)) gfx::set_vertex_main_memory(!gfx::vertex_main_memory());   // L2
 		if (dbg && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
 		if (dbg && input::pressed(input::BTN_L3)) mp->debugLayers = (mp->debugLayers + 1) % 4;
 		if (dbg && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
-		if (dbg && input::pressed(input::BTN_R1) && input::held(input::BTN_L1)) tex_view = !tex_view;  // L1+R1
+		if (dbg && input::pressed(input::BTN_R1)) tex_view = !tex_view;
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
 		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
-		if (dbg && !(input::held(input::BTN_L1) && input::held(input::BTN_R1)) &&
-		    (input::pressed(input::BTN_L1) || input::pressed(input::BTN_R1))) {
-			int dir = input::pressed(input::BTN_R1) ? 1 : -1;
-			int next = mapId;
-			for (int tries = 0; tries < 400; tries++) {
-				next += dir;
-				if (next < 1) next = 400;
-				if (next > 400) next = 1;
-				if (map_exists(next)) break;
-			}
-			if (!window().TitleOpen() && mp->LoadMap(next, 0, 0, Direction::Down)) {
-				mapId = next;
-				Vec2 ms = mp->GetMapSize();
-				mp->GetPlayer()->SetPosTile(mp->FindOpenTileNear(ms.x / 2, ms.y / 2));
-				if (mp->GetPlayer()->GetNPCSheet().empty()) mp->GetPlayer()->SetNPCSheet("niko", 0);
-				mp->Update();
-			}
-		}
+		// The map switcher waits for menus and dialogs to close (they own input).
+		if (dbg && !tex_view && input::pressed(input::BTN_L1) && !modal::is_open() && !window().Menus().IsMenuOpen())
+			debug_map_menu::open(mapId);
 
 		prof::mark("input/debug");
 		uint64_t t0 = sys::time_us();
-		if (!tex_view) {
+		if (mapMenu) {
+			debug_map_menu::update();   // the game is paused underneath
+		} else if (!tex_view) {
 			modal::update();
 			window().Update();   // OneshotWindow.GameLogic
 		}
@@ -204,9 +188,12 @@ int main(int argc, const char **argv) {
 		prof::mark("begin_frame (RSX wait)");
 		uint64_t tb = sys::time_us();
 		if (!tex_view) {
+			gm::set_scaling(settings().scaling);
+			gm::begin_window();  // offscreen at a whole-number scale (gm.h)
 			gm::clip_to_window();
 			window().Draw();     // OneshotWindow.PreDraw
 			gm::clip_off();
+			gm::end_window();
 			modal::draw();
 		} else {
 			// Texture viewer: raw texture over a magenta/grey checkerboard so
@@ -232,12 +219,14 @@ int main(int argc, const char **argv) {
 					}
 				gfx::Shade s;
 				gm::blit_screen(t, x0, y0, w, h, Rect(0, 0, (int)t->w, (int)t->h), s);
-				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   L1+R1: close",
+				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   R1: close",
 				              i + 1, n, names[i], t->w, t->h);
 			}
 		}
 		uint64_t t2 = sys::time_us();
-		if (show_overlay && !tex_view) {
+		if (debug_map_menu::is_open()) {
+			debug_map_menu::draw();
+		} else if (show_overlay && !tex_view) {
 			gfx::Stats st = gfx::last_stats();
 			Vec2 pp = map.GetPlayer() ? map.GetPlayer()->GetPixelPos() : Vec2();
 			overlay::text(16, 16, 2, 0xffffff, "map %d  frame %.2f ms (%.1f fps)", mapId, frame_ms, 1000.0f / frame_ms);
@@ -250,11 +239,12 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 166, 2, 0xff90ff, "L2 vertices: %s   R3 texcoords: %s   L3 layers: %s",
 			              gfx::vertex_main_memory() ? "main mem" : "local mem", gfx::texel_coords() ? "texel" : "normalized",
 			              layer_names[map.debugLayers]);
-			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   L1+R1: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
-			overlay::text(16, 226, 2, 0xa0a0a0, "L1/R1 change map   SELECT hide");
+			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   R1: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
+			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
+			overlay::text(16, 316, 2, 0xa0e0ff, "scaling: %s", gm::scaling_info());
 			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   safe code %06d (var 20)   log file: %s",
 			              state.var(55), state.var(20), sys::log_file_ok() ? "ok" : "NOT WRITABLE");
 		}

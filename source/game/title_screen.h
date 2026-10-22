@@ -13,6 +13,7 @@ public:
 	bool IsOpen() const { return st != Closed; }
 	void Update();
 	void Draw();
+	void ForceClose() { st = Closed; }   // debug map switcher
 	std::function<void(int)> onChosen;   // called once the fade-out ends
 private:
 	void Close();

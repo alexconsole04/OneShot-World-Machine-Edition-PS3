@@ -19,6 +19,7 @@ add_executable(oneshot-ps3
     source/game/entity.cpp
     source/game/player.cpp
     source/game/tilemap.cpp
+    source/game/debug_map_menu.cpp
     source/game/event_runner.cpp
     source/game/message_box.cpp
     source/game/message_boxes.cpp

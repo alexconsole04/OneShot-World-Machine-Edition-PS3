@@ -185,7 +185,15 @@ void EventRunner::Update() {
 		state->set_var(22, 1);   // C# sets variable 22, not buttonInputVarId
 		buttonInputVarId = 0;
 	}
+	// A script looping without a wait would freeze the game for good; after
+	// this many commands in one frame, carry on next frame instead.
+	int budget = 20000;
 	while (commandIndex < count() && !stop) {
+		if (--budget < 0) {
+			static int warned;
+			if (warned++ < 5) sys::log("event runner: %d commands in one frame (event %d), yielding\n", 20000, triggeringEventId);
+			break;
+		}
 		const EventCommand &c = cmd(commandIndex);
 		commandIndex++;
 		switch (c.code) {

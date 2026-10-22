@@ -5,6 +5,7 @@
 #include "../shade_math.h"
 #include "../sys.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -15,16 +16,23 @@
 
 namespace gfx {
 
-static const int W = 1280, H = 720;
+static int W = 1280, H = 720;      // OSPS3_SCREEN=1920x1080 to test other TV modes
 static std::vector<uint32_t> fb;     // 0x00RRGGBB
 static std::vector<uint32_t> shown;  // last completed frame
 static Stats st, cur;
 static uint32_t tex_used;
-static int clip_x0 = 0, clip_y0 = 0, clip_x1 = W, clip_y1 = H;
+static int clip_x0 = 0, clip_y0 = 0, clip_x1 = 1280, clip_y1 = 720;
+// What's being drawn into: the frame buffer or a render target's pixels.
+static uint32_t *tgt;
+static int tw, th;
+static Texture *cur_rt;
 
 bool init() {
+	if (const char *e = getenv("OSPS3_SCREEN")) sscanf(e, "%dx%d", &W, &H);
 	fb.assign(W * H, 0);
 	shown.assign(W * H, 0);
+	tgt = fb.data(); tw = W; th = H;
+	clip_off();
 	return true;
 }
 void shutdown() {}
@@ -41,12 +49,14 @@ Texture *create_texture(uint32_t w, uint32_t h, const uint32_t *argb) {
 }
 void destroy_texture(Texture *t) {
 	if (!t) return;
+	if (t == cur_rt) set_render_target(nullptr);
 	tex_used -= t->bytes;
 	free(t->mem);
 	delete t;
 }
 
 void begin_frame(uint32_t clear_argb) {
+	set_render_target(nullptr);
 	for (auto &p : fb) p = clear_argb & 0xffffff;
 	clip_off();
 	cur = Stats{};
@@ -76,34 +86,56 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	const uint32_t *px = (const uint32_t *)t->mem;
 	const float hue = s.hue * (3.14159265f / 180.0f);
 	const float tr = s.tone_r / 255.0f, tg = s.tone_g / 255.0f, tb = s.tone_b / 255.0f;
+	auto texel = [&](int tx, int ty) {
+		tx = ((tx % (int)t->w) + (int)t->w) % (int)t->w;              // wrap (PointWrap)
+		ty = ((ty % (int)t->h) + (int)t->h) % (int)t->h;
+		return px[ty * t->w + tx];
+	};
+	auto clampi = [](int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); };
 	for (int y = y0; y < y1; y++) {
 		float v = ((y + 0.5f) - dy) / dh;
 		int ty = sy + (int)floorf(v * sh);
-		ty = ((ty % (int)t->h) + (int)t->h) % (int)t->h;          // wrap (PointWrap)
 		for (int x = x0; x < x1; x++) {
 			float u = ((x + 0.5f) - dx) / dw;
 			int tx = sx + (int)floorf(u * sw);
-			tx = ((tx % (int)t->w) + (int)t->w) % (int)t->w;
-			uint32_t p = px[ty * t->w + tx];
+			uint32_t p = texel(tx, ty);
+			if (t->linear) {
+				// Bilinear between the four nearest texel centres (clamped at the edges).
+				float fu = sx + u * sw - 0.5f, fv = sy + v * sh - 0.5f;
+				int ix = (int)floorf(fu), iy = (int)floorf(fv);
+				float ax = fu - ix, ay = fv - iy;
+				int xa = clampi(ix, 0, t->w - 1), xb = clampi(ix + 1, 0, t->w - 1);
+				int ya = clampi(iy, 0, t->h - 1), yb = clampi(iy + 1, 0, t->h - 1);
+				uint32_t q[4] = { px[ya * t->w + xa], px[ya * t->w + xb], px[yb * t->w + xa], px[yb * t->w + xb] };
+				uint32_t o = 0;
+				for (int sh8 = 0; sh8 < 32; sh8 += 8) {
+					float c0 = ((q[0] >> sh8) & 255) * (1 - ax) + ((q[1] >> sh8) & 255) * ax;
+					float c1 = ((q[2] >> sh8) & 255) * (1 - ax) + ((q[3] >> sh8) & 255) * ax;
+					o |= (uint32_t)(c0 * (1 - ay) + c1 * ay + 0.5f) << sh8;
+				}
+				p = o;
+			}
 			shade::RGBA c = { ((p >> 16) & 255) / 255.0f, ((p >> 8) & 255) / 255.0f,
 			                  (p & 255) / 255.0f, t->opaque ? 1.0f : (p >> 24) / 255.0f };
 			c = shade::apply(c, s.r, s.g, s.b, s.a, tr, tg, tb, hue);
 			if (dbg_noblend) { c.a = 1.0f; blend = Blend::Normal; }   // debug: emulate blending disabled
 			if (dbg_partial && c.a > 0.0f) c.a = 1.0f;                // debug: partial alpha -> opaque
 			if (c.a <= 0.0f) continue;
-			uint32_t &d = fb[y * W + x];
+			uint32_t &d = tgt[y * tw + x];
 			float dr = ((d >> 16) & 255) / 255.0f, dg = ((d >> 8) & 255) / 255.0f, db = (d & 255) / 255.0f;
 			if (blend == Blend::Additive) {
 				dr = shade::clamp01(dr + c.r * c.a); dg = shade::clamp01(dg + c.g * c.a); db = shade::clamp01(db + c.b * c.a);
 			} else {
 				dr = c.r * c.a + dr * (1 - c.a); dg = c.g * c.a + dg * (1 - c.a); db = c.b * c.a + db * (1 - c.a);
 			}
-			d = ((uint32_t)(dr * 255 + 0.5f) << 16) | ((uint32_t)(dg * 255 + 0.5f) << 8) | (uint32_t)(db * 255 + 0.5f);
+			d = 0xff000000u | ((uint32_t)(dr * 255 + 0.5f) << 16) | ((uint32_t)(dg * 255 + 0.5f) << 8) | (uint32_t)(db * 255 + 0.5f);
 		}
 	}
 }
 
 void end_frame() {
+	set_render_target(nullptr);
+	for (auto &p : fb) p &= 0xffffffu;
 	shown = fb;
 	st = cur;
 	st.tex_bytes_used = tex_used;
@@ -113,9 +145,25 @@ void end_frame() {
 
 void set_clip(int x, int y, int w, int h) {
 	clip_x0 = x < 0 ? 0 : x; clip_y0 = y < 0 ? 0 : y;
-	clip_x1 = x + w > W ? W : x + w; clip_y1 = y + h > H ? H : y + h;
+	clip_x1 = x + w > tw ? tw : x + w; clip_y1 = y + h > th ? th : y + h;
 }
-void clip_off() { clip_x0 = 0; clip_y0 = 0; clip_x1 = W; clip_y1 = H; }
+void clip_off() { clip_x0 = 0; clip_y0 = 0; clip_x1 = tw; clip_y1 = th; }
+
+Texture *create_render_target(uint32_t w, uint32_t h) {
+	std::vector<uint32_t> blank(w * h, 0xff000000u);
+	Texture *t = create_texture(w, h, blank.data());
+	t->opaque = true;
+	return t;
+}
+
+void set_render_target(Texture *rt) {
+	cur_rt = rt;
+	if (rt) { tgt = (uint32_t *)rt->mem; tw = (int)rt->w; th = (int)rt->h; }
+	else { tgt = fb.data(); tw = W; th = H; }
+	clip_off();
+}
+
+const Texture *capture_texture(const Texture *rt);
 
 void set_draw_mode(int) {}
 int draw_mode() { return 0; }
@@ -150,6 +198,20 @@ const Texture *capture_screen(int x, int y, int w, int h) {
 	uint32_t *dst = (uint32_t *)cap_tex->mem;
 	for (int j = 0; j < h; j++)
 		for (int i = 0; i < w; i++) dst[j * w + i] = 0xff000000u | shown[(y + j) * W + x + i];
+	cap_tex->linear = false;
+	return cap_tex;
+}
+
+const Texture *capture_texture(const Texture *rt) {
+	if (!rt) return nullptr;
+	if (!cap_tex || cap_tex->w != rt->w || cap_tex->h != rt->h) {
+		destroy_texture(cap_tex);
+		std::vector<uint32_t> blank(rt->w * rt->h, 0xff000000u);
+		cap_tex = create_texture(rt->w, rt->h, blank.data());
+		cap_tex->opaque = true;
+	}
+	memcpy(cap_tex->mem, rt->mem, rt->w * rt->h * 4);
+	cap_tex->linear = rt->linear;
 	return cap_tex;
 }
 

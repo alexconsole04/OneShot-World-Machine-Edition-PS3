@@ -343,7 +343,8 @@ void MainMenu::Draw() {
 // ===================================================================== SettingsMenu
 std::string SettingsMenu::Name(int i) const {
 	static const char *k[COUNT] = { "settings_movement", "settings_colorblind", "settings_vibration",
-	                                "settings_screentear", "settings_chromaaberration", "settings_automash" };
+	                                "settings_screentear", "settings_chromaaberration", "settings_ps3_scaling",
+	                                "settings_automash" };
 	return loc::twm(k[i]);
 }
 
@@ -352,6 +353,11 @@ std::string SettingsMenu::Value(int i) const {
 	bool v = false;
 	switch (i) {
 	case Movement: return loc::twm(s.defaultMovementRun ? "settings_run" : "settings_walk");
+	case Scaling: {
+		static const char *m[4] = { "settings_ps3_scaling_sharp", "settings_ps3_scaling_smooth", "settings_ps3_scaling_integer",
+		                            "settings_ps3_scaling_direct" };
+		return loc::twm(m[s.scaling >= 0 && s.scaling < 4 ? s.scaling : 0]);
+	}
 	case Colorblind: v = s.colorblindMode; break;
 	case Vibration: v = s.vibration; break;
 	case ScreenTear: v = s.screenTear; break;
@@ -415,6 +421,7 @@ void SettingsMenu::Update() {
 			audio::play_sound("menu_decision");
 			Settings &s = settings();
 			switch (selected) {
+			case Scaling: s.scaling = (s.scaling + (pressed(BTN_LEFT) ? 3 : 1)) % 4; break;
 			case Movement: s.defaultMovementRun = !s.defaultMovementRun; break;
 			case Colorblind: s.colorblindMode = !s.colorblindMode; break;
 			case Vibration: s.vibration = !s.vibration; break;

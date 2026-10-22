@@ -2,6 +2,8 @@
 #include "../platform/sys.h"
 #include "../xnb.h"
 
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string>
 #include <unordered_map>
@@ -11,11 +13,18 @@
 
 namespace gm {
 
-static std::unordered_map<std::string, gfx::Texture *> caches[CACHE_COUNT];
+struct CacheEntry { gfx::Texture *t; int gen; };
+static std::unordered_map<std::string, CacheEntry> caches[CACHE_COUNT];
+static int generation[CACHE_COUNT];
 static std::unordered_set<std::string> missing;
 static gfx::Texture *white_tex;
 static float S = 1.0f;
 static float OX = 0, OY = 0;
+static float S0 = 1.0f, OX0 = 0, OY0 = 0;   // the window's place on the TV
+// Offscreen window (see begin_window).
+static gfx::Texture *win_rt;
+static int win_k, scaling_mode, rt_failed_k;
+static bool in_window, last_frame_rt;
 
 void init() {
 	int sw = gfx::screen_w(), sh = gfx::screen_h();
@@ -23,6 +32,7 @@ void init() {
 	S = sx < sy ? sx : sy;
 	OX = (sw - 640.0f * S) * 0.5f;
 	OY = (sh - 480.0f * S) * 0.5f;
+	S0 = S; OX0 = OX; OY0 = OY;
 	uint32_t px = 0xffffffffu;
 	white_tex = gfx::create_texture(1, 1, &px);
 	sys::log("gm: window scale %.3f at (%.0f,%.0f)\n", S, OX, OY);
@@ -50,7 +60,10 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	std::string key(name);
 	auto &c = caches[cache];
 	auto it = c.find(key);
-	if (it != c.end()) return it->second;
+	if (it != c.end()) {
+		it->second.gen = generation[cache];
+		return it->second.t;
+	}
 	// Remember failures: retrying a missing file every frame means file
 	// system calls every frame, which on the PS3 costs whole frames.
 	if (missing.count(key)) return nullptr;
@@ -60,7 +73,7 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 		sys::log("gm: missing texture '%s'\n", name);
 		return nullptr;
 	}
-	c.emplace(key, t);
+	c.emplace(key, CacheEntry{ t, generation[cache] });
 	return t;
 }
 
@@ -73,7 +86,7 @@ bool texture_exists(const char *name, CacheType cache) { return texture(name, ca
 
 int cache_list(CacheType cache, const char **names, const gfx::Texture **texs, int max) {
 	std::vector<std::pair<const std::string *, gfx::Texture *>> v;
-	for (auto &kv : caches[cache]) v.push_back({ &kv.first, kv.second });
+	for (auto &kv : caches[cache]) v.push_back({ &kv.first, kv.second.t });
 	std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return *a.first < *b.first; });
 	int n = 0;
 	for (auto &e : v) {
@@ -86,8 +99,27 @@ int cache_list(CacheType cache, const char **names, const gfx::Texture **texs, i
 }
 
 void clear_cache(CacheType cache) {
-	for (auto &kv : caches[cache]) gfx::destroy_texture(kv.second);
+	for (auto &kv : caches[cache]) gfx::destroy_texture(kv.second.t);
 	caches[cache].clear();
+}
+
+void new_generation(CacheType cache, int keep) {
+	static const uint32_t BUDGET = 96u * 1024 * 1024;   // VRAM for cached textures before keeping fewer
+	int g = ++generation[cache];
+	if (gfx::last_stats().tex_bytes_used > BUDGET) keep = 0;
+	auto &c = caches[cache];
+	int evicted = 0, kept = 0;
+	for (auto it = c.begin(); it != c.end();) {
+		if (it->second.gen < g - keep) {
+			gfx::destroy_texture(it->second.t);
+			it = c.erase(it);
+			evicted++;
+		} else {
+			++it;
+			kept++;
+		}
+	}
+	sys::log("gm: texture cache: kept %d, released %d\n", kept, evicted);
 }
 
 void blit(const gfx::Texture *t, Vec2 p, Rect src, float alpha, int hue, gfx::Blend blend,
@@ -136,7 +168,81 @@ void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, 
 static const gfx::Texture *captured;
 
 void capture_window() {
-	captured = gfx::capture_screen((int)(OX + 0.5f), (int)(OY + 0.5f), (int)(640.0f * S + 0.5f), (int)(480.0f * S + 0.5f));
+	// The offscreen window still holds the last frame's game picture, without
+	// the debug overlay or anything else drawn over it on the TV.
+	if (last_frame_rt && win_rt) captured = gfx::capture_texture(win_rt);
+	else captured = gfx::capture_screen((int)(OX0 + 0.5f), (int)(OY0 + 0.5f), (int)(640.0f * S0 + 0.5f), (int)(480.0f * S0 + 0.5f));
+}
+
+void set_scaling(int mode) { scaling_mode = mode >= 0 && mode < SCALE_COUNT ? mode : SCALE_SHARP; }
+
+const char *scaling_info() {
+	static char buf[64];
+	static const char *n[SCALE_COUNT] = { "sharp", "smooth", "integer", "direct" };
+	if (scaling_mode == SCALE_DIRECT || !win_rt) snprintf(buf, sizeof(buf), "%s, straight to the TV at %.2fx", n[scaling_mode], S0);
+	else snprintf(buf, sizeof(buf), "%s, drawn at %dx (%ux%u)", n[scaling_mode], win_k, win_rt->w, win_rt->h);
+	return buf;
+}
+
+// Integer scale the window is drawn at for the current mode.
+static int window_k() {
+	switch (scaling_mode) {
+	case SCALE_SMOOTH: return 1;
+	case SCALE_INTEGER: return S0 < 1.0f ? 1 : (int)(S0 + 0.01f);
+	default: {
+		// Sharp: the nearest whole-number scale, then filtered the rest of the
+		// way: 1080p (2.25x) draws at 2x and stretches by 1.125; 720p (1.5x)
+		// draws at 2x and shrinks by 0.75. Never more pixels than drawing
+		// straight to the TV would cost at 1080p.
+		int f = S0 < 1.0f ? 1 : (int)(S0 + 0.01f);
+		return S0 / f > 1.25f ? f + 1 : f;
+	}
+	}
+}
+
+void begin_window() {
+	if (scaling_mode == SCALE_DIRECT) {   // as before m9: straight onto the TV
+		if (win_rt) { gfx::destroy_texture(win_rt); win_rt = nullptr; win_k = 0; }
+		last_frame_rt = false;
+		return;
+	}
+	int k = window_k();
+	bool linear = scaling_mode != SCALE_INTEGER;
+	if (!win_rt || win_k != k) {
+		gfx::destroy_texture(win_rt);
+		win_rt = nullptr;
+		win_k = k;
+		if (rt_failed_k != k) win_rt = gfx::create_render_target(640 * k, 480 * k);
+		if (!win_rt) rt_failed_k = k;   // don't retry every frame
+	}
+	if (!win_rt) {   // no VRAM: draw straight onto the TV as before
+		last_frame_rt = false;
+		return;
+	}
+	win_rt->linear = linear;
+	gfx::set_render_target(win_rt);
+	S = (float)k;
+	OX = OY = 0;
+	in_window = true;
+	last_frame_rt = true;
+	gfx::Shade black;
+	black.r = black.g = black.b = 0;
+	gfx::draw(white_tex, 0, 0, 640.0f * k, 480.0f * k, 0, 0, 1, 1, black, gfx::Blend::Normal);
+}
+
+void end_window() {
+	if (!in_window) return;
+	in_window = false;
+	gfx::set_render_target(nullptr);
+	S = S0; OX = OX0; OY = OY0;
+	gfx::Shade s;
+	if (scaling_mode == SCALE_INTEGER) {
+		float w = (float)win_rt->w, h = (float)win_rt->h;
+		float x = floorf((gfx::screen_w() - w) * 0.5f), y = floorf((gfx::screen_h() - h) * 0.5f);
+		gfx::draw(win_rt, x, y, w, h, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
+	} else {
+		gfx::draw(win_rt, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
+	}
 }
 
 void draw_captured_window(float alpha) {

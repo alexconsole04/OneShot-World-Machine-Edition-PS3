@@ -977,3 +977,21 @@ void Entity::LoadSaveData(const cJSON *o) {
 	const cJSON *smr = cJSON_GetObjectItemCaseSensitive(o, "storedMoveRoute");
 	storedMoveRoute = cJSON_IsObject(smr) ? route_from_json(smr) : nullptr;
 }
+
+void Entity::DebugResetPlayerState() {
+	if (moveRouteForcing) {
+		moveRoute = storedMoveRoute;
+		moveRouteIndex = storedMoveRouteIndex;
+		moveRouteForcing = false;
+	}
+	locked = false;
+	active = true;
+	opacity = 255;
+	jumping = moving = false;
+	vel = Vec2();
+	moveTarget = pos;
+	waitTimer = moveStuckTimer = 0;
+	directionFix = false;
+	ignoreMapCollision = ignoreNpcCollision = false;
+	blendMode = gfx::Blend::Normal;
+}

@@ -21,6 +21,8 @@ struct Texture {
 	void    *mem = nullptr;  // backend storage (RSX local mem / host heap)
 	uint32_t bytes = 0;
 	bool opaque = false;     // sample alpha as 1 (screen captures)
+	bool linear = false;     // bilinear filtering (scaling the game window); else nearest
+	void *aux = nullptr;     // backend: a render target's depth buffer
 };
 
 // Per-sprite shading parameters, mirroring GraphicsManager.MainBlit:
@@ -73,6 +75,16 @@ bool full_sync();
 // Debug: texture coordinates normalized (false) or in texels (true).
 void set_texel_coords(bool on);
 bool texel_coords();
+
+// Offscreen render target (opaque, usable as a texture once drawn).
+// nullptr if there's no memory for it. Free with destroy_texture.
+Texture *create_render_target(uint32_t w, uint32_t h);
+// Draw into rt from now on (nullptr = the screen). Resets the clip rect.
+// end_frame() switches back to the screen.
+void set_render_target(Texture *rt);
+// Copy a render target's current contents into the capture texture (the
+// same one capture_screen uses). Alpha reads as 1.
+const Texture *capture_texture(const Texture *rt);
 
 // Copy a rectangle of the last presented frame into an internal texture
 // (reused between calls; valid until the next capture). Alpha reads as 1.

@@ -2,7 +2,8 @@
 //
 // OSPS3_INPUT="R30 D20 r40 U10 ."  -> a sequence of steps, each a set of
 // held buttons followed by a frame count. Letters: U D L R (d-pad), r = run
-// + right, x=OK, o=Cancel, s=Run, '.' = idle. Script end => quit.
+// + right, x=OK, o=Cancel, s=Run, i=Triangle, m=Start,
+// e=SELECT, l=L1, k=R1, '.' = idle. Script end => quit.
 #include "../input.h"
 #include <ctype.h>
 #include <stdlib.h>
@@ -36,6 +37,9 @@ void init() {
 			case 's': b |= BTN_RUN; break;
 			case 'i': b |= BTN_INVENTORY; break;   // Triangle
 			case 'm': b |= BTN_MAINMENU; break;    // Start
+			case 'e': b |= BTN_SELECT; break;
+			case 'l': b |= BTN_L1; break;
+			case 'k': b |= BTN_R1; break;
 			case '.': break;
 			}
 			s++;

@@ -19,7 +19,25 @@
 
 // ======================================================================= TileSet
 bool TileSet::Read(int firstId, const std::string &fileName) {
+	// Maps share a few dozen .tsx files: parse each once.
+	static std::unordered_map<std::string, TileSet> parsed;
+	auto pc = parsed.find(fileName);
+	if (pc != parsed.end()) {
+		*this = pc->second;
+		firstTileId = firstId;
+		ResolveTexture();
+		return true;
+	}
+	if (!ReadTsx(fileName)) return false;
+	TileSet proto = *this;
+	proto.tex = nullptr;
+	parsed.emplace(fileName, proto);
 	firstTileId = firstId;
+	ResolveTexture();
+	return true;
+}
+
+bool TileSet::ReadTsx(const std::string &fileName) {
 	size_t num = fileName.find("tilesets/");
 	autotile = false;
 	if (num == std::string::npos) {
@@ -356,7 +374,7 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	hasStepOverride = false;
 	panorama.reset();
 	fog.reset();
-	if (hadMap) gm::clear_cache(gm::Game);   // ChangeMap clears the Game cache
+	if (hadMap) gm::new_generation(gm::Game);   // the PC clears the Game cache here (see gm.h)
 	entityIDcounter = 0;
 	currentMapId = mapId;
 	state->map_id = mapId;
@@ -377,9 +395,11 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	uint8_t *data;
 	size_t size;
 	if (!sys::read_file(rel, &data, &size)) return fail(std::string("cannot read ") + rel);
+	uint64_t tRead = sys::time_us();
 	std::string err;
 	auto root = xml::parse((const char *)data, &err);
 	free(data);
+	uint64_t tXml = sys::time_us();
 	if (!root) return fail(std::string(rel) + ": " + err);
 
 	mapSize = Vec2(root->attr_int("width"), root->attr_int("height"));
@@ -428,7 +448,9 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 		}
 	}
 	if (tilesets.empty()) { sys::log("map %d: no tilesets\n", mapId); return false; }
+	uint64_t tTilesets = sys::time_us();
 	SetPanorama(curInfo->panorama_name);
+	uint64_t tPanorama = sys::time_us();
 
 	const int W = mapSize.x, H = mapSize.y;
 	counterTiles.assign(W * H, false);
@@ -482,8 +504,10 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 
 	for (auto &ml : mapLines) ml->hashIntoTiles(hashedMapLines, tileSize, mapSize);
 
+	uint64_t tLayers = sys::time_us();
 	snprintf(rel, sizeof(rel), "gamedata/maps/events_map%d.json", mapId);
 	eventFile = load_event_file(rel);
+	uint64_t tEvents = sys::time_us();
 	if (eventFile && !eventFile->events.empty()) {
 		entityIDcounter = 0;
 		for (auto &e : eventFile->events) entityIDcounter = std::max(entityIDcounter, e.id);
@@ -493,6 +517,7 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	if (eventFile)
 		for (auto &ed : eventFile->events) AddEntity(new Entity(this, state, &ed));
 
+	uint64_t tEntities = sys::time_us();
 	snprintf(rel, sizeof(rel), "gamedata/maps/music_map%d.json", mapId);
 	{
 		uint8_t *md;
@@ -537,6 +562,32 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	sys::log("map %d loaded: %dx%d, %d tilesets, %d layers, %d entities, %d lines (%.1f ms), heap %d MB used\n",
 	         mapId, W, H, (int)tilesets.size(), nlayers, (int)entities.size(), (int)mapLines.size(),
 	         (sys::time_us() - t0) / 1000.0, sys::heap_used_kb() / 1024);
+	auto ms = [](uint64_t a, uint64_t b) { return (b - a) / 1000.0; };
+	uint64_t tEnd = sys::time_us();
+	sys::log("  load times (ms): read %.1f, xml %.1f, tilesets %.1f, panorama %.1f, layers %.1f, events %.1f, entities %.1f, rest %.1f\n",
+	         ms(t0, tRead), ms(tRead, tXml), ms(tXml, tTilesets), ms(tTilesets, tPanorama), ms(tPanorama, tLayers), ms(tLayers, tEvents),
+	         ms(tEvents, tEntities), ms(tEntities, tEnd));
+	return true;
+}
+
+bool TileMap::DebugTeleport(int mapId, float x, float y, Direction facing) {
+	// Retired, not deleted: released at the start of the next EventRunnerUpdate.
+	if (mainEventRunner) retiredRunners.push_back(std::move(mainEventRunner));
+	for (auto &pr : parallelEventRunners) retiredRunners.push_back(std::move(pr.second));
+	parallelEventRunners.clear();
+	queuedCommonEventId = -1;
+	changeMapTimer = totalChangeMapTime = 0;
+	screenTone = startScreenTone = targetScreenTone = GameTone();
+	screenToneShiftTimer = screenToneShiftTotalTime = 0;
+	shakePower = shakeSpeed = shakeDuration = 0;
+	shakeOffset = 0;
+	camFocusEntity = player;
+	loadError.clear();
+	state->set_flag(11, false);   // "exit transition" (common event 9) in progress
+	if (player) player->DebugResetPlayerState();
+	sys::log("debug teleport: map %d -> %d at (%d,%d)\n", currentMapId, mapId, (int)x, (int)y);
+	if (!LoadMap(mapId, x, y, facing)) return false;
+	if (player->GetNPCSheet().empty()) player->SetNPCSheet("niko", 0);
 	return true;
 }
 

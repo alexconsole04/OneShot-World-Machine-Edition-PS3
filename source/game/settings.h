@@ -1,6 +1,6 @@
 // settings.h - SettingsMenu values (settings.conf), shared by the game.
-// The PC build's window options (fullscreen, scaling, border) have no
-// meaning on a console and are left out.
+// The PC build's window options (fullscreen, border) have no meaning on a
+// console and are left out; "scaling" is this port's own.
 #pragma once
 
 struct Settings {
@@ -10,6 +10,7 @@ struct Settings {
 	bool vibration = true;
 	bool screenTear = true;
 	bool chromaAberration = true;
+	int scaling = 0;                 // gm::SCALE_SHARP / SMOOTH / INTEGER
 	void Load();                     // settings.conf; defaults if missing
 	void Save() const;
 };

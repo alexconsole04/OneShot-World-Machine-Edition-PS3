@@ -20,6 +20,13 @@ const gfx::Texture *texture(const char *name, CacheType cache = Game);
 Vec2 texture_size(const char *name, CacheType cache = Game);
 bool texture_exists(const char *name, CacheType cache = Game);
 void clear_cache(CacheType cache);
+// Start a new "generation" (a map change): textures not used during the last
+// `keep` generations are released. The PC clears the whole Game cache on
+// every map change; keeping the textures the previous maps used means
+// walking between neighbouring maps doesn't reload and re-upload the same
+// tilesets and sprites each time. Falls back to releasing everything unused
+// when VRAM use is high.
+void new_generation(CacheType cache, int keep = 2);
 // Debug: names/textures currently in a cache group (sorted by name).
 int cache_list(CacheType cache, const char **names, const gfx::Texture **texs, int max);
 
@@ -51,6 +58,23 @@ void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha,
 // it over the new map with fading alpha.
 void capture_window();
 void draw_captured_window(float alpha);
+
+// Scaling of the 640x480 window to the TV (1080p is 2.25x, 720p 1.5x):
+//  SHARP   draw at a whole-number scale (2x at both 1080p and 720p), then
+//          filter to the TV size: every game pixel the same size, edges
+//          stay crisp (only their outermost line is blended)
+//  SMOOTH  draw at 1x and filter up: soft, like the PC's linear scaling
+//  INTEGER draw at the largest whole-number scale (2x / 1x), unfiltered and
+//          centred, with a black border
+//  DIRECT  no offscreen pass, nearest-neighbour straight onto the TV (how
+//          builds before m9 drew; uneven pixel sizes at 2.25x / 1.5x)
+enum { SCALE_SHARP = 0, SCALE_SMOOTH = 1, SCALE_INTEGER = 2, SCALE_DIRECT = 3, SCALE_COUNT = 4 };
+void set_scaling(int mode);
+const char *scaling_info();   // for the debug overlay
+// Window drawing goes to an offscreen target between these two calls
+// (window coordinates keep working), then end_window puts it on the TV.
+void begin_window();
+void end_window();
 
 // Screen-space helpers for overlays (raw TV pixels).
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,

@@ -58,6 +58,8 @@ static_assert(sizeof(Vertex) == 48, "vertex layout");
 
 // ---------------------------------------------------------------- state
 static u32 display_width, display_height, color_pitch, depth_pitch;
+static u32 tgt_w, tgt_h;          // size of what's being drawn into (screen or render target)
+static Texture *cur_rt;
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
 static CellGcmContextData *ctx;
 
@@ -100,6 +102,7 @@ static Stats st, cur;
 static bool overflow_warned;
 static uint8_t *staging;          // IO-mapped main memory for texture uploads
 static u32 staging_offset, staging_size;
+static u32 staging_head;   // next free byte of the upload ring
 static u32 finish_ref = 0x100;
 static bool tex_cache_dirty = true;   // set when the PPU uploads texture data
 
@@ -204,7 +207,7 @@ static int ppu_too_fast() {
 	return (((g_frame_index + COLOR_BUFFER_NUM - gpu) % COLOR_BUFFER_NUM) > (u32)MAX_QUEUE_FRAMES);
 }
 
-static void set_render_target(u32 idx) {
+static void bind_color_buffer(u32 idx) {
 	CellGcmSurface sf;
 	memset(&sf, 0, sizeof(sf));
 	sf.colorFormat = GCM_SURFACE_X8R8G8B8;
@@ -237,13 +240,19 @@ static void apply_blend(Blend b) {
 	cellGcmSetBlendEquation(ctx, CELL_GCM_FUNC_ADD, CELL_GCM_FUNC_ADD);
 }
 
+static void set_viewport(u32 w, u32 h) {
+	tgt_w = w;
+	tgt_h = h;
+	float scale[4] = { w * 0.5f, h * -0.5f, 0.5f, 0.0f };
+	float offset[4] = { w * 0.5f, h * 0.5f, 0.5f, 0.0f };
+	cellGcmSetViewport(ctx, 0, 0, (u16)w, (u16)h, 0.0f, 1.0f, scale, offset);
+	rsxSetScissor(ctx, 0, 0, (u16)w, (u16)h);
+}
+
 static void set_draw_env() {
 	cellGcmSetColorMask(ctx, GCM_COLOR_MASK_R | GCM_COLOR_MASK_G | GCM_COLOR_MASK_B | GCM_COLOR_MASK_A);
 	cellGcmSetColorMaskMrt(ctx, 0);
-	float scale[4] = { display_width * 0.5f, display_height * -0.5f, 0.5f, 0.0f };
-	float offset[4] = { display_width * 0.5f, display_height * 0.5f, 0.5f, 0.0f };
-	cellGcmSetViewport(ctx, 0, 0, display_width, display_height, 0.0f, 1.0f, scale, offset);
-	rsxSetScissor(ctx, 0, 0, display_width, display_height);
+	set_viewport(display_width, display_height);
 	cellGcmSetDepthTestEnable(ctx, GCM_FALSE);
 	cellGcmSetCullFaceEnable(ctx, GCM_FALSE);
 	blend_set = false;
@@ -283,8 +292,8 @@ static void bind_texture(const Texture *t) {
 	tx.offset = t->gpu_offset;
 	cellGcmSetTexture(ctx, 0, &tx);
 	cellGcmSetTextureControl(ctx, 0, CELL_GCM_TRUE, 0, 0, CELL_GCM_TEXTURE_MAX_ANISO_1);
-	cellGcmSetTextureFilter(ctx, 0, 0, CELL_GCM_TEXTURE_NEAREST, CELL_GCM_TEXTURE_NEAREST,
-	                        CELL_GCM_TEXTURE_CONVOLUTION_QUINCUNX);
+	u8 filt = t->linear ? CELL_GCM_TEXTURE_LINEAR : CELL_GCM_TEXTURE_NEAREST;
+	cellGcmSetTextureFilter(ctx, 0, 0, filt, filt, CELL_GCM_TEXTURE_CONVOLUTION_QUINCUNX);
 	cellGcmSetTextureAddress(ctx, 0, CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_CLAMP_TO_EDGE,
 	                         CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_UNSIGNED_REMAP_NORMAL,
 	                         CELL_GCM_TEXTURE_ZFUNC_LESS, 0);
@@ -434,7 +443,7 @@ bool init() {
 
 	cellGcmCgUploadInternalConsts(ctx, vpo);
 	set_draw_env();
-	set_render_target(g_frame_index);
+	bind_color_buffer(g_frame_index);
 	cellGcmSetWriteCommandLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_BUSY);
 	return true;
 }
@@ -463,16 +472,38 @@ Texture *create_texture(uint32_t w, uint32_t h, const uint32_t *argb) {
 	// Upload with the RSX's copy engine (main memory -> VRAM) rather than
 	// PPU stores into VRAM: faster on hardware, and RPCS3 sees a GPU-side
 	// write, so stale cached copies of recycled memory get invalidated.
+	//
+	// The staging area is used as a ring: each upload gets its own slice, so
+	// the PPU never has to wait for a copy to finish (cellGcmFinish also
+	// waits for the whole frame queued before it, a few ms each time). Only
+	// when the ring wraps does it wait, once, for every earlier copy.
 	const u32 row = w * 4;
-	const u32 rows_per_chunk = staging_size / t->pitch;
-	for (u32 y0 = 0; y0 < h; y0 += rows_per_chunk) {
-		u32 n = h - y0 < rows_per_chunk ? h - y0 : rows_per_chunk;
-		for (u32 y = 0; y < n; y++)                  // big-endian u32 = A,R,G,B bytes
-			memcpy(staging + y * t->pitch, argb + (y0 + y) * w, row);
+	if (t->bytes <= staging_size) {
+		if (staging_head + t->bytes > staging_size) {
+			cellGcmFinish(ctx, ++finish_ref);
+			staging_head = 0;
+		}
+		uint8_t *dst = staging + staging_head;
+		for (u32 y = 0; y < h; y++)                  // big-endian u32 = A,R,G,B bytes
+			memcpy(dst + y * t->pitch, argb + y * w, row);
 		__asm__ volatile("sync" ::: "memory");
-		cellGcmSetTransferData(ctx, CELL_GCM_TRANSFER_MAIN_TO_LOCAL, t->gpu_offset + y0 * t->pitch, t->pitch,
-		                       staging_offset, t->pitch, row, n);
-		cellGcmFinish(ctx, ++finish_ref);           // staging is reused: wait for the copy
+		cellGcmSetTransferData(ctx, CELL_GCM_TRANSFER_MAIN_TO_LOCAL, t->gpu_offset, t->pitch, staging_offset + staging_head,
+		                       t->pitch, row, h);
+		staging_head = (staging_head + t->bytes + 127) & ~127u;
+	} else {
+		// Larger than the whole staging area: in pieces, waiting for each.
+		cellGcmFinish(ctx, ++finish_ref);
+		const u32 rows_per_chunk = staging_size / t->pitch;
+		for (u32 y0 = 0; y0 < h; y0 += rows_per_chunk) {
+			u32 n = h - y0 < rows_per_chunk ? h - y0 : rows_per_chunk;
+			for (u32 y = 0; y < n; y++)
+				memcpy(staging + y * t->pitch, argb + (y0 + y) * w, row);
+			__asm__ volatile("sync" ::: "memory");
+			cellGcmSetTransferData(ctx, CELL_GCM_TRANSFER_MAIN_TO_LOCAL, t->gpu_offset + y0 * t->pitch, t->pitch,
+			                       staging_offset, t->pitch, row, n);
+			cellGcmFinish(ctx, ++finish_ref);
+		}
+		staging_head = 0;
 	}
 	tex_cache_dirty = true;
 	return t;
@@ -488,6 +519,8 @@ void destroy_texture(Texture *t) {
 	if (!t) return;
 	// Frames up to frame_counter + 1 (the one being built) may reference it.
 	pending_frees.push_back({ t->mem, frame_counter + 1 });
+	if (t->aux) pending_frees.push_back({ t->aux, frame_counter + 1 });
+	if (t == cur_rt) set_render_target(nullptr);
 	delete t;
 }
 
@@ -554,7 +587,7 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 		batch_blend = blend;
 	}
 	cur.quads++;
-	const float sxn = 2.0f / display_width, syn = 2.0f / display_height;
+	const float sxn = 2.0f / tgt_w, syn = 2.0f / tgt_h;
 	float l = dx * sxn - 1.0f, r = (dx + dw) * sxn - 1.0f;
 	float tp = 1.0f - dy * syn, bt = 1.0f - (dy + dh) * syn;
 	float iu = g_texel_coords ? 1.0f : 1.0f / t->w, iv = g_texel_coords ? 1.0f : 1.0f / t->h;
@@ -572,6 +605,7 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 }
 
 void end_frame() {
+	if (cur_rt) set_render_target(nullptr);
 	flush_batch();
 	// Fence: the RSX writes this once it has consumed this frame's vertices.
 	frame_counter++;
@@ -592,14 +626,96 @@ void end_frame() {
 	g_frame_index = (g_frame_index + 1) % COLOR_BUFFER_NUM;
 	cellGcmSetWaitLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_IDLE);
 	cellGcmSetWriteCommandLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_BUSY);
-	set_render_target(g_frame_index);
+	bind_color_buffer(g_frame_index);
 
 	st = cur;
 	st.tex_bytes_used = heap_used;
 	st.tex_bytes_total = heap_total;
 }
 
+Texture *create_render_target(uint32_t w, uint32_t h) {
+	Texture *t = new Texture;
+	t->w = w; t->h = h;
+	t->pitch = (w * 4 + 63) & ~63u;
+	t->bytes = t->pitch * h;
+	t->opaque = true;
+	t->mem = heap_alloc(t->bytes, 4096);
+	u32 dpitch = (w * 2 + 63) & ~63u;
+	t->aux = t->mem ? heap_alloc(dpitch * h, 4096) : nullptr;   // Z16, never tested against
+	if (!t->mem || !t->aux) {
+		sys::log("gfx: no VRAM for a %ux%u render target\n", w, h);
+		if (t->mem) heap_free(t->mem);
+		delete t;
+		return nullptr;
+	}
+	cellGcmAddressToOffset(t->mem, &t->gpu_offset);
+	sys::log("gfx: render target %ux%u (%u KB)\n", w, h, (t->bytes + dpitch * h) / 1024);
+	return t;
+}
+
+void set_render_target(Texture *rt) {
+	if (rt == cur_rt) return;
+	flush_batch();
+	// Let draws that read or write the previous target finish before the
+	// RSX starts on the next one (it may sample what was just drawn).
+	cellGcmSetWaitForIdle(ctx);
+	cur_rt = rt;
+	if (rt) {
+		CellGcmSurface sf;
+		memset(&sf, 0, sizeof(sf));
+		sf.colorFormat = GCM_SURFACE_X8R8G8B8;
+		sf.colorTarget = GCM_SURFACE_TARGET_0;
+		sf.colorLocation[0] = GCM_LOCATION_RSX;
+		sf.colorOffset[0] = rt->gpu_offset;
+		sf.colorPitch[0] = rt->pitch;
+		for (int i = 1; i < 4; i++) { sf.colorLocation[i] = GCM_LOCATION_RSX; sf.colorPitch[i] = 64; }
+		u32 doff;
+		cellGcmAddressToOffset(rt->aux, &doff);
+		sf.depthFormat = GCM_SURFACE_ZETA_Z16;
+		sf.depthLocation = GCM_LOCATION_RSX;
+		sf.depthOffset = doff;
+		sf.depthPitch = (rt->w * 2 + 63) & ~63u;
+		sf.type = GCM_SURFACE_TYPE_LINEAR;
+		sf.antiAlias = GCM_SURFACE_CENTER_1;
+		sf.width = rt->w;
+		sf.height = rt->h;
+		cellGcmSetSurface(ctx, &sf);
+		set_viewport(rt->w, rt->h);
+	} else {
+		bind_color_buffer(g_frame_index);
+		set_viewport(display_width, display_height);
+	}
+	clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
+	tex_cache_dirty = true;   // the target's new pixels must not come from a stale texture cache
+}
+
 static Texture *cap_tex;
+
+static bool ensure_cap_tex(u32 w, u32 h) {
+	if (cap_tex && cap_tex->w == w && cap_tex->h == h) return true;
+	destroy_texture(cap_tex);
+	cap_tex = new Texture;
+	cap_tex->w = w; cap_tex->h = h;
+	cap_tex->pitch = (w * 4 + 63) & ~63u;
+	cap_tex->bytes = cap_tex->pitch * h;
+	cap_tex->mem = heap_alloc(cap_tex->bytes, 128);
+	cap_tex->opaque = true;
+	if (!cap_tex->mem) { delete cap_tex; cap_tex = nullptr; return false; }
+	cellGcmAddressToOffset(cap_tex->mem, &cap_tex->gpu_offset);
+	return true;
+}
+
+const Texture *capture_texture(const Texture *rt) {
+	if (!rt) return nullptr;
+	flush_batch();
+	if (!ensure_cap_tex(rt->w, rt->h)) return nullptr;
+	// Queued behind the draws that filled rt, so it copies finished pixels.
+	cellGcmSetTransferImage(ctx, CELL_GCM_TRANSFER_LOCAL_TO_LOCAL, cap_tex->gpu_offset, cap_tex->pitch, 0, 0,
+	                        rt->gpu_offset, rt->pitch, 0, 0, rt->w, rt->h, 4);
+	tex_cache_dirty = true;
+	cap_tex->linear = rt->linear;
+	return cap_tex;
+}
 
 const Texture *capture_screen(int x, int y, int w, int h) {
 	if (x < 0) { w += x; x = 0; }
@@ -608,17 +724,8 @@ const Texture *capture_screen(int x, int y, int w, int h) {
 	if (y + h > (int)display_height) h = (int)display_height - y;
 	if (w <= 0 || h <= 0) return nullptr;
 	flush_batch();
-	if (!cap_tex || cap_tex->w != (u32)w || cap_tex->h != (u32)h) {
-		destroy_texture(cap_tex);
-		cap_tex = new Texture;
-		cap_tex->w = w; cap_tex->h = h;
-		cap_tex->pitch = (w * 4 + 63) & ~63u;
-		cap_tex->bytes = cap_tex->pitch * h;
-		cap_tex->mem = heap_alloc(cap_tex->bytes, 128);
-		cap_tex->opaque = true;
-		if (!cap_tex->mem) { delete cap_tex; cap_tex = nullptr; return nullptr; }
-		cellGcmAddressToOffset(cap_tex->mem, &cap_tex->gpu_offset);
-	}
+	if (!ensure_cap_tex((u32)w, (u32)h)) return nullptr;
+	cap_tex->linear = false;
 	// The frame presented last; the copy is queued behind its draws in the
 	// command stream, so it reads finished pixels.
 	u32 src = color_offset[(g_frame_index + COLOR_BUFFER_NUM - 1) % COLOR_BUFFER_NUM];
@@ -639,7 +746,7 @@ void set_clip(int x, int y, int w, int h) {
 }
 void clip_off() {
 	flush_batch();
-	rsxSetScissor(ctx, 0, 0, display_width, display_height);
+	rsxSetScissor(ctx, 0, 0, (u16)tgt_w, (u16)tgt_h);
 	clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
 }
 

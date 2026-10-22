@@ -23,6 +23,9 @@ public:
 	void StartGame();          // a new game or, if a save exists, continue it
 	void ExitGame();           // back to the title screen (takes effect next frame)
 	void CloseGame();          // the window's close button / the Quit menu entry
+	// Debug map switcher: leaves the title screen if needed, clears pictures
+	// and flashes, stops all scripts, then loads the map.
+	bool DebugTeleport(int mapId, int tileX, int tileY, Direction facing);
 	bool QuitRequested() const { return quitApp; }
 	bool TitleOpen() const { return title.IsOpen(); }
 

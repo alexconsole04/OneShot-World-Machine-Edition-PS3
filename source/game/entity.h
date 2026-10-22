@@ -52,6 +52,8 @@ public:
 	void SetCollisionDirection(Direction d) { collisionDirection |= CollisionFlagMask(d); }
 	bool isCollisionDirectionSet(Direction d) const { return (collisionDirection & CollisionFlagMask(d)) != 0; }
 
+	// Debug teleport: drop forced move routes, locks, jumps and hiding.
+	void DebugResetPlayerState();
 	void ReloadTextures();   // re-resolve sheet/lightmap after a cache clear
 	// EntitySaveData (save files).
 	struct cJSON *GetSaveData() const;
