@@ -177,6 +177,8 @@ void set_texel_coords(bool) {}
 bool texel_coords() { return false; }
 
 Stats last_stats() { return st; }
+void debug_status(char *buf, int n) { if (n > 0) buf[0] = 0; }
+void system_menu_closed() {}
 static bool vbm = true;
 void set_vertex_main_memory(bool on) { vbm = on; }
 bool vertex_main_memory() { return vbm; }

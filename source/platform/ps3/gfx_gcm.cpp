@@ -182,7 +182,7 @@ static void *bump_alloc(u32 size, u32 align) {
 }
 
 // ---------------------------------------------------------------- flip handling
-static volatile u32 g_flip_wait, g_flip_recovered;
+static volatile u32 g_flip_wait, g_flip_recovered, g_flip_count, g_vblank_count, g_flip_requests, g_flip_fail;
 
 static void finish_flip() {
 	u32 v = g_buffer_flipped;
@@ -194,11 +194,13 @@ static void finish_flip() {
 
 static void on_flip(const u32 head) {
 	(void)head;
+	g_flip_count++;
 	if (g_on_flip) finish_flip();
 }
 
 static void on_vblank(const u32 head) {
 	(void)head;
+	g_vblank_count++;
 	if (g_on_flip) {
 		// While the XMB is open the flip-done handler can be skipped; waiting
 		// for it would stop the game drawing for good (a black screen until
@@ -216,7 +218,8 @@ static void on_vblank(const u32 head) {
 		g_on_flip = 1;
 		g_flip_wait = 0;
 		cellGcmResetFlipStatus();
-		if (cellGcmSetFlipImmediate((u8)index_to_flip) != 0) { g_on_flip = 0; return; }
+		g_flip_requests++;
+		if (cellGcmSetFlipImmediate((u8)index_to_flip) != 0) { g_on_flip = 0; g_flip_fail++; return; }
 		g_buffer_flipped = buffer_to_flip;
 	}
 }
@@ -818,6 +821,22 @@ void set_texel_coords(bool on) { flush_batch(); g_texel_coords = on; }
 bool texel_coords() { return g_texel_coords; }
 
 Stats last_stats() { return st; }
+
+void debug_status(char *buf, int n) {
+	u32 prep = *(volatile u32 *)cellGcmGetLabelAddress(LABEL_PREPARED_BUFFER_OFFSET);
+	snprintf(buf, n, "vblanks %u, flips asked %u (failed %u), flips done %u, recovered %u; showing buffer %u, next prepared %u/%u, "
+	         "drawing into %u, flip status %u, waiting %u",
+	         g_vblank_count, g_flip_requests, g_flip_fail, g_flip_count, g_flip_recovered, g_buffer_on_display, prep >> 8, prep & 7,
+	         g_frame_index, cellGcmGetFlipStatus(), g_on_flip);
+}
+
+void system_menu_closed() {
+	// The XMB may change the display setup while it's open: register the
+	// game's display buffers and flip mode again.
+	for (int i = 0; i < COLOR_BUFFER_NUM; i++)
+		cellGcmSetDisplayBuffer((u8)i, color_offset[i], color_pitch, display_width, display_height);
+	cellGcmSetFlipMode(GCM_FLIP_HSYNC);
+}
 bool screenshot(const char *) { return false; }
 
 } // namespace gfx

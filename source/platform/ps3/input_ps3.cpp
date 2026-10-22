@@ -4,6 +4,8 @@
 #include <math.h>
 #include <io/pad.h>
 #include <cell/sysutil.h>
+#include "../gfx.h"
+#include "../sys.h"
 
 namespace input {
 
@@ -11,9 +13,25 @@ static uint32_t cur, prev;
 static int sx, sy;
 static volatile bool quit;
 
-static void on_sysutil(uint64_t status, uint64_t, void *) {
+static volatile int g_sys_events;
+
+static void on_sysutil(uint64_t status, uint64_t param, void *) {
 	if (status == CELL_SYSUTIL_REQUEST_EXITGAME) quit = true;
+	const char *what = status == CELL_SYSUTIL_REQUEST_EXITGAME ? "quit requested"
+	                 : status == 0x0121 ? "system drawing begins"
+	                 : status == 0x0122 ? "system drawing ends"
+	                 : status == 0x0131 ? "XMB opened"
+	                 : status == 0x0132 ? "XMB closed"
+	                 : status == 0x0133 ? "XMB music started"
+	                 : status == 0x0134 ? "XMB music stopped" : "other";
+	char st[256];
+	gfx::debug_status(st, sizeof(st));
+	sys::log("system event 0x%04x (%s, param %llu): %s\n", (unsigned)status, what, (unsigned long long)param, st);
+	if (status == 0x0132) gfx::system_menu_closed();
+	g_sys_events++;
 }
+
+int system_events() { return g_sys_events; }
 
 void init() {
 	ioPadInit(7);

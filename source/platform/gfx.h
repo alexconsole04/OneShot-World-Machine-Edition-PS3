@@ -61,6 +61,10 @@ struct Stats {
 	uint32_t tex_bytes_used, tex_bytes_total;
 };
 Stats last_stats();
+// Debug: one line describing the display/flip state (PS3; empty on the host).
+void debug_status(char *buf, int n);
+// The PS3's system menu (XMB) closed: restore the display setup.
+void system_menu_closed();
 
 // Debug: RSX submission method (0 indexed triangles, 1 quads, 2 quads <=256 verts/draw).
 void set_draw_mode(int mode);

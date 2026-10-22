@@ -69,5 +69,6 @@ bool pressed(uint32_t b) { return (cur & b) && !(prev & b); }
 int stick_x() { return 0; }
 int stick_y() { return 0; }
 bool quit_requested() { return done; }
+int system_events() { return 0; }
 
 } // namespace input

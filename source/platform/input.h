@@ -25,6 +25,8 @@ bool pressed(uint32_t b);      // went down this frame
 int stick_x();
 int stick_y();
 bool quit_requested();
+// Count of system (XMB) events seen so far (PS3; 0 on the host).
+int system_events();
 // Frames a single button has been held (0 when up). InputManager.holdTime.
 int held_frames(uint32_t b);
 // InputManager.HoldAutoTriggerInput: true every `interval` frames once held
