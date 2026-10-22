@@ -25,12 +25,13 @@
 #include "game/oneshot_window.h"
 #include "game/debug_map_menu.h"
 #include "game/settings.h"
+#include "game/mouse_cursor.h"
 namespace script_trace { void dump(); }
 static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m10b"
+#define OSPS3_VERSION "m10c"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -221,6 +222,26 @@ int main(int argc, const char **argv) {
 		if (dbg && input::pressed(input::BTN_R1)) tex_view = !tex_view;
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
 		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
+		// Cursor test (overlay + R3): the World Machine desktop's cursor on top
+		// of the game. Right stick moves, R2 clicks, L3 changes its shape.
+		static bool cursorTest;
+		static MouseCursor cursor;
+		static int cursorShape;
+		if (dbg && !tex_view && input::pressed(input::BTN_R3)) {
+			cursorTest = !cursorTest;
+			if (cursorTest) cursor.SetMousePos(Vec2(desktop_space().x / 2, desktop_space().y / 2));
+			sys::log("cursor test %s (desktop space %dx%d)\n", cursorTest ? "on" : "off", desktop_space().x, desktop_space().y);
+		}
+		if (cursorTest) {
+			static const MouseCursor::State shapes[6] = { MouseCursor::Normal, MouseCursor::Clickable, MouseCursor::Grabbable,
+			                                              MouseCursor::Holding, MouseCursor::Move, MouseCursor::NotAllowed };
+			if (input::pressed(input::BTN_L3)) cursorShape = (cursorShape + 1) % 6;
+			cursor.forceState = true;
+			cursor.forcedState = shapes[cursorShape];
+			cursor.Update();
+			if (cursor.Clicked()) sys::log("cursor test: click at %d,%d\n", cursor.MousePos().x, cursor.MousePos().y);
+		}
+
 		// The map switcher waits for menus and dialogs to close (they own input).
 		if (dbg && !tex_view && input::pressed(input::BTN_L1) && !modal::is_open() && !window().Menus().IsMenuOpen())
 			debug_map_menu::open(mapId);
@@ -296,13 +317,21 @@ int main(int argc, const char **argv) {
 			              layer_names[map.debugLayers]);
 			overlay::text(16, 196, 2, 0xff90ff, "shader: %s   R1: texture viewer (renderer switches are in there)",
 			              gfx::plain_shader() ? "PLAIN" : "full");
-			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide   hold SELECT: mark the log");
+			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   R3: cursor test   SELECT: hide   hold SELECT: mark the log");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
 			overlay::text(16, 316, 2, 0xa0e0ff, "scaling: %s", gm::scaling_info());
 			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   safe code %06d (var 20)   log file: %s",
 			              state.var(55), state.var(20), sys::log_file_ok() ? "ok" : "NOT WRITABLE");
+		}
+		if (cursorTest) {
+			static const char *names[6] = { "normal", "clickable", "grabbable", "holding", "move", "not allowed" };
+			overlay::text(16, gfx::screen_h() - 50.0f, 2, 0xffffff,
+			              "cursor test: %d,%d of %dx%d  %s  shape: %s   right stick: move  R2: click  L3: shape  overlay+R3: off",
+			              cursor.MousePos().x, cursor.MousePos().y, desktop_space().x, desktop_space().y,
+			              cursor.Held() ? "[HELD]" : "", names[cursorShape]);
+			cursor.Draw();
 		}
 		prof::mark("overlay");
 		gfx::end_frame();

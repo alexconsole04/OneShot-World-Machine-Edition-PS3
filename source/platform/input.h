@@ -24,6 +24,10 @@ bool pressed(uint32_t b);      // went down this frame
 // Already dead-zoned; 0,0 when centred.
 int stick_x();
 int stick_y();
+// Right stick, raw -100..100 (Y down positive), no dead zone: the World
+// Machine desktop's cursor (InputManager.MouseStickPos) applies its own.
+int rstick_x();
+int rstick_y();
 bool quit_requested();
 // Count of system (XMB) events seen so far (PS3; 0 on the host).
 int system_events();

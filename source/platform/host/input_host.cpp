@@ -12,11 +12,12 @@
 
 namespace input {
 
-struct Step { uint32_t buttons; int frames; };
+struct Step { uint32_t buttons; int frames; int rs; };
 static std::vector<Step> steps;
 static size_t step_i;
 static int step_left;
 static uint32_t cur, prev;
+static int cur_rs;
 static bool done;
 
 void init() {
@@ -26,6 +27,7 @@ void init() {
 		while (*s == ' ') s++;
 		if (!*s) break;
 		uint32_t b = 0;
+		int rs = 0;
 		while (*s && !isdigit((unsigned char)*s) && *s != ' ') {
 			switch (*s) {
 			case 'U': b |= BTN_UP; break;
@@ -40,6 +42,13 @@ void init() {
 			case 'e': b |= BTN_SELECT; break;
 			case 'l': b |= BTN_L1; break;
 			case 'k': b |= BTN_R1; break;
+			case 'c': b |= BTN_R2; break;   // desktop click
+			case 'v': b |= BTN_R3; break;
+			case 'z': b |= BTN_L3; break;
+			case 'H': rs |= 1; break;       // right stick left / right / up / down
+			case 'J': rs |= 2; break;
+			case 'Y': rs |= 4; break;
+			case 'N': rs |= 8; break;
 			case '.': break;
 			}
 			s++;
@@ -47,7 +56,7 @@ void init() {
 		while (*s == ' ') s++;
 		int n = atoi(s);
 		while (isdigit((unsigned char)*s)) s++;
-		steps.push_back({ b, n > 0 ? n : 1 });
+		steps.push_back({ b, n > 0 ? n : 1, rs });
 	}
 	step_i = 0;
 	step_left = steps.empty() ? 0 : steps[0].frames;
@@ -55,8 +64,9 @@ void init() {
 
 void update() {
 	prev = cur;
-	if (step_i >= steps.size()) { done = true; cur = 0; tick_hold_counters(cur); return; }
+	if (step_i >= steps.size()) { done = true; cur = 0; cur_rs = 0; tick_hold_counters(cur); return; }
 	cur = steps[step_i].buttons;
+	cur_rs = steps[step_i].rs;
 	tick_hold_counters(cur);
 	if (--step_left <= 0) {
 		step_i++;
@@ -68,6 +78,8 @@ bool held(uint32_t b) { return (cur & b) != 0; }
 bool pressed(uint32_t b) { return (cur & b) && !(prev & b); }
 int stick_x() { return 0; }
 int stick_y() { return 0; }
+int rstick_x() { return (cur_rs & 1) ? -100 : (cur_rs & 2) ? 100 : 0; }
+int rstick_y() { return (cur_rs & 4) ? -100 : (cur_rs & 8) ? 100 : 0; }
 bool quit_requested() { return done; }
 int system_events() { return 0; }
 

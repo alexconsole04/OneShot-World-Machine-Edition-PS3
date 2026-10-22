@@ -10,7 +10,7 @@
 namespace input {
 
 static uint32_t cur, prev;
-static int sx, sy;
+static int sx, sy, rx, ry;
 static volatile bool quit;
 
 static volatile int g_sys_events;
@@ -63,7 +63,7 @@ void update() {
 	cellSysutilCheckCallback();
 	prev = cur;
 	cur = 0;
-	sx = sy = 0;
+	sx = sy = rx = ry = 0;
 	padInfo info;
 	ioPadGetInfo(&info);
 	for (int i = 0; i < MAX_PADS; i++) {
@@ -93,6 +93,10 @@ void update() {
 		if (pd.BTN_L3) cur |= BTN_L3;
 		if (pd.BTN_R3) cur |= BTN_R3;
 		stick(pd, sx, sy);
+		rx = ((int)pd.ANA_R_H - 128) * 100 / 127;
+		ry = ((int)pd.ANA_R_V - 128) * 100 / 127;
+		if (rx > 100) rx = 100;
+		if (ry > 100) ry = 100;
 		break;   // first connected pad drives the game
 	}
 	tick_hold_counters(cur);
@@ -102,6 +106,8 @@ bool held(uint32_t b) { return (cur & b) != 0; }
 bool pressed(uint32_t b) { return (cur & b) && !(prev & b); }
 int stick_x() { return sx; }
 int stick_y() { return sy; }
+int rstick_x() { return rx; }
+int rstick_y() { return ry; }
 bool quit_requested() { return quit; }
 
 } // namespace input
