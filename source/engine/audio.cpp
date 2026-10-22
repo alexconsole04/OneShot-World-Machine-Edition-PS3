@@ -354,6 +354,14 @@ void restore_bgm_bgs() {
 }
 
 void update() {
+	// Heartbeat for the log: proves the output thread is mixing.
+	static unsigned frames, lastMixed;
+	if (++frames % 1800 == 0) {   // every ~30 s
+		unsigned m = audio_out::mixed_blocks();
+		sys::log("audio: %u blocks mixed in the last 30 s, %d voices, mix load %.0f%%\n", m - lastMixed,
+		         mixer::active_voices(), mixer::render_load() * 100.0f);
+		lastMixed = m;
+	}
 	// FmodManager.Update
 	if (fadeTimer < fadeTimeTotal && fadeTimeTotal > 0) {
 		fadeTimer++;

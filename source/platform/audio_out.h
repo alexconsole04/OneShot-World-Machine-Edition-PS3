@@ -8,4 +8,5 @@ namespace audio_out {
 bool start(int rate);
 void stop();
 void pump();   // called from audio::update() every game frame
+unsigned mixed_blocks();   // mixer blocks rendered so far (diagnostics)
 }

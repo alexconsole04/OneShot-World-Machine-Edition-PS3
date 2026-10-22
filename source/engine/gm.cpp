@@ -37,7 +37,8 @@ static gfx::Texture *load(const std::string &name) {
 	int r = xnb_parse_texture(data, size, &xt, nullptr);
 	free(data);
 	if (r != XNB_OK) {
-		sys::log("gm: %s: %s\n", rel.c_str(), xnb_strerror(r));
+		sys::log("gm: %s: %s (file %u KB, heap %d MB in use)\n", rel.c_str(), xnb_strerror(r), (unsigned)(size / 1024),
+		         sys::heap_used_kb() / 1024);
 		return nullptr;
 	}
 	gfx::Texture *t = gfx::create_texture(xt.width, xt.height, xt.argb);

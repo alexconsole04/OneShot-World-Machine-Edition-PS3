@@ -38,7 +38,11 @@ void stop() {
 	if (wav) { header(); fclose(wav); wav = nullptr; }
 }
 
+static unsigned pumps;
+unsigned mixed_blocks() { return pumps; }
+
 void pump() {
+	pumps++;
 	carry += g_rate / 60.0;
 	int frames = (int)carry;
 	carry -= frames;

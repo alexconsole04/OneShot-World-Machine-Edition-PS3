@@ -34,7 +34,7 @@ namespace gfx {
 
 // ---------------------------------------------------------------- config
 static const u32 CB_SIZE = 0x100000;              // 1 MB command buffer
-static const u32 HOST_SIZE = 32 * 1024 * 1024;     // host-mapped IO area
+static const u32 HOST_SIZE = 16 * 1024 * 1024;     // host-mapped IO area (from the malloc arena)
 static const int COLOR_BUFFER_NUM = 2;
 static const int MAX_QUEUE_FRAMES = 1;
 static const int VB_COUNT = 3;
@@ -350,7 +350,12 @@ bool init() {
 	vcfg.pitch = color_pitch;
 	vcfg.aspect = state.displayMode.aspect;
 	if (videoConfigure(0, &vcfg, NULL, 0) != 0) return false;
-	cellGcmSetFlipMode(GCM_FLIP_VSYNC);
+	// The flip is issued from the vblank handler, i.e. already inside the
+	// vertical blank. In VSYNC mode real hardware then waits for the *next*
+	// vsync, so only every second refresh shows a new frame (30 fps; RPCS3
+	// flips at once and hides this). HSYNC flips immediately - still within
+	// the blanking period, so there is no tearing.
+	cellGcmSetFlipMode(GCM_FLIP_HSYNC);
 	ctx = CELL_GCM_CURRENT;
 
 	CellGcmConfig cfg;
@@ -521,9 +526,24 @@ void begin_frame(uint32_t clear_argb) {
 	cellGcmSetClearSurface(ctx, GCM_CLEAR_R | GCM_CLEAR_G | GCM_CLEAR_B | GCM_CLEAR_A);
 }
 
+// Clip rectangle (screen px), applied to every quad on the CPU so drawing
+// never relies on the RSX scissor alone.
+static float clip_x0 = 0, clip_y0 = 0, clip_x1 = 1e9f, clip_y1 = 1e9f;
+
 void draw(const Texture *t, float dx, float dy, float dw, float dh,
           int sx, int sy, int sw, int sh, const Shade &s, Blend blend) {
 	if (!t) return;
+	float u0f = (float)sx, v0f = (float)sy, u1f = (float)(sx + sw), v1f = (float)(sy + sh);
+	if (dw > 0 && dh > 0) {
+		float x0 = dx, y0 = dy, x1 = dx + dw, y1 = dy + dh;
+		if (x1 <= clip_x0 || y1 <= clip_y0 || x0 >= clip_x1 || y0 >= clip_y1) return;
+		float du = (u1f - u0f) / dw, dv = (v1f - v0f) / dh;
+		if (x0 < clip_x0) { u0f += (clip_x0 - x0) * du; x0 = clip_x0; }
+		if (x1 > clip_x1) { u1f -= (x1 - clip_x1) * du; x1 = clip_x1; }
+		if (y0 < clip_y0) { v0f += (clip_y0 - y0) * dv; y0 = clip_y0; }
+		if (y1 > clip_y1) { v1f -= (y1 - clip_y1) * dv; y1 = clip_y1; }
+		dx = x0; dy = y0; dw = x1 - x0; dh = y1 - y0;
+	}
 	if ((vb_used + 4) * sizeof(Vertex) > VB_BYTES) {
 		if (!overflow_warned) { sys::log("gfx: vertex buffer full, sprites dropped\n"); overflow_warned = true; }
 		return;
@@ -538,7 +558,7 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	float l = dx * sxn - 1.0f, r = (dx + dw) * sxn - 1.0f;
 	float tp = 1.0f - dy * syn, bt = 1.0f - (dy + dh) * syn;
 	float iu = g_texel_coords ? 1.0f : 1.0f / t->w, iv = g_texel_coords ? 1.0f : 1.0f / t->h;
-	float u0 = sx * iu, u1 = (sx + sw) * iu, v0 = sy * iv, v1 = (sy + sh) * iv;
+	float u0 = u0f * iu, u1 = u1f * iu, v0 = v0f * iv, v1 = v1f * iv;
 	auto cl = [](float f) { return f <= 0.0f ? 0.0f : (f >= 1.0f ? 1.0f : f); };
 	float cr = cl(s.r), cg = cl(s.g), cb = cl(s.b), ca = cl(s.a);
 	float tr = s.tone_r / 255.0f, tg = s.tone_g / 255.0f, tb = s.tone_b / 255.0f;
@@ -615,10 +635,12 @@ void set_clip(int x, int y, int w, int h) {
 	if (w < 0) w = 0;
 	if (h < 0) h = 0;
 	rsxSetScissor(ctx, (u16)x, (u16)y, (u16)w, (u16)h);
+	clip_x0 = (float)x; clip_y0 = (float)y; clip_x1 = (float)(x + w); clip_y1 = (float)(y + h);
 }
 void clip_off() {
 	flush_batch();
 	rsxSetScissor(ctx, 0, 0, display_width, display_height);
+	clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
 }
 
 void set_draw_mode(int m) { flush_batch(); g_draw_mode = m % 3; }

@@ -526,9 +526,9 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	UpdateCamera();
 	int nlayers = 0;
 	for (auto &kv : heightsToLayers) nlayers += (int)kv.second.size();
-	sys::log("map %d loaded: %dx%d, %d tilesets, %d layers, %d entities, %d lines (%.1f ms)\n",
+	sys::log("map %d loaded: %dx%d, %d tilesets, %d layers, %d entities, %d lines (%.1f ms), heap %d MB used\n",
 	         mapId, W, H, (int)tilesets.size(), nlayers, (int)entities.size(), (int)mapLines.size(),
-	         (sys::time_us() - t0) / 1000.0);
+	         (sys::time_us() - t0) / 1000.0, sys::heap_used_kb() / 1024);
 	return true;
 }
 

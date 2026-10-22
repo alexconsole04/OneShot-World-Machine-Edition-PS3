@@ -23,7 +23,7 @@
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m6"
+#define OSPS3_VERSION "m7"
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -32,6 +32,11 @@
 #ifdef __PPU__
 #include <sys/process.h>
 SYS_PROCESS_PARAM(1001, 0x100000);
+// The toolchain's malloc arena defaults to 64 MB, which the game outgrows
+// (decoded sound effects, music files, the GPU upload area, large tilesets
+// while they are decoded). A PS3 game process has about 213 MB of user
+// memory; 128 MB leaves ample room for the system's own allocations.
+PS3TC_HEAP_SIZE(UINT64_C(128) * 1024 * 1024);
 #endif
 
 // A new game starts on map 1, whose autorun 'init' event shows the wake-up
@@ -76,6 +81,7 @@ int main(int argc, const char **argv) {
 
 	audio::init();
 	audio::preload_sfx();
+	sys::log("heap: %d MB in use after loading sound effects\n", sys::heap_used_kb() / 1024);
 
 	// Debug starts (OSPS3_MAP, or the map browser) skip the title screen.
 	const char *debugMap = getenv("OSPS3_MAP");

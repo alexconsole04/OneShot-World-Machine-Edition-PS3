@@ -7,7 +7,10 @@
 #include <string.h>
 #include <time.h>
 
+#include <malloc.h>
 namespace sys {
+
+int heap_used_kb() { struct mallinfo m = mallinfo(); return (int)(((size_t)m.uordblks + (size_t)m.hblkhd) / 1024); }
 
 static char g_dir[512];
 

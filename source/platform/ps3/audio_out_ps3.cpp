@@ -21,25 +21,40 @@ static sys_event_queue_t queue;
 static sys_ipc_key_t key;
 static sys_ppu_thread_t thread;
 static volatile bool running;
-static uint64_t write_block;
+static uint32_t write_block;      // next ring slot to fill (0..nBlock-1)
+static volatile uint32_t blocks_mixed;
 
-static void fill_block(uint64_t block) {
-	float *dst = (float *)(uintptr_t)cfg.portAddr + (block % cfg.nBlock) * CELL_AUDIO_BLOCK_SAMPLES * 2;
+static void fill_block(uint32_t slot) {
+	float *dst = (float *)(uintptr_t)cfg.portAddr + slot * CELL_AUDIO_BLOCK_SAMPLES * 2;
 	mixer::render(dst, CELL_AUDIO_BLOCK_SAMPLES);
+	blocks_mixed++;
+}
+
+// readIndexAddr holds the ring slot the hardware is playing (0..nBlock-1),
+// not a running count. Keep the slots after it filled, LATENCY deep.
+static void top_up() {
+	const uint32_t n = (uint32_t)cfg.nBlock;
+	uint32_t read = (uint32_t)(*(volatile uint64_t *)(uintptr_t)cfg.readIndexAddr % n);
+	uint32_t ahead = (write_block + n - read) % n;   // slots queued after the playing one, +1
+	if (ahead == 0 || ahead > (uint32_t)LATENCY + 1) write_block = (read + 1) % n;   // fell behind: restart just after it
+	while ((write_block + n - read) % n <= (uint32_t)LATENCY) {
+		fill_block(write_block);
+		write_block = (write_block + 1) % n;
+	}
 }
 
 static void thread_main(uint64_t) {
 	while (running) {
 		sys_event_t ev;
-		if (sys_event_queue_receive(queue, &ev, 100 * 1000) != 0) continue;   // 100 ms timeout keeps shutdown responsive
-		uint64_t read = *(volatile uint64_t *)(uintptr_t)cfg.readIndexAddr;
-		// Catch up if we fell behind (e.g. a long stall), then stay LATENCY ahead.
-		uint64_t target = read + LATENCY;
-		if (write_block < read + 1 || write_block > target + cfg.nBlock) write_block = read + 1;
-		while (write_block < target) fill_block(write_block++);
+		// Woken by the mixer every block (~5.3 ms). On a timeout or error
+		// still top up, so a lost notification never silences the game.
+		sys_event_queue_receive(queue, &ev, 20 * 1000);
+		top_up();
 	}
 	sys_ppu_thread_exit(0);
 }
+
+unsigned mixed_blocks() { return blocks_mixed; }
 
 bool start(int rate) {
 	(void)rate;   // cellAudio always mixes at 48 kHz
@@ -58,9 +73,8 @@ bool start(int rate) {
 	memset((void *)(uintptr_t)cfg.portAddr, 0, cfg.portSize);
 	if ((r = cellAudioCreateNotifyEventQueue(&queue, &key)) != 0) { sys::log("audio: event queue failed 0x%08x\n", r); return false; }
 	if ((r = cellAudioSetNotifyEventQueue(key)) != 0) { sys::log("audio: set event queue failed 0x%08x\n", r); return false; }
-	write_block = 1;
-	for (int i = 1; i <= LATENCY; i++) fill_block(i);
-	write_block = LATENCY + 1;
+	for (int i = 1; i <= LATENCY; i++) fill_block((uint32_t)i % (uint32_t)cfg.nBlock);
+	write_block = (uint32_t)(LATENCY + 1) % (uint32_t)cfg.nBlock;
 	if ((r = cellAudioPortStart(port_num)) != 0) { sys::log("audio: cellAudioPortStart failed 0x%08x\n", r); return false; }
 	running = true;
 	// Priority above the game thread (1001) so mixing preempts game logic.

@@ -40,6 +40,9 @@ const char *user_name();
 // Local wall-clock time (DateTime.Now): fills hour/min/sec and day of year (1..366).
 void local_time(int *hour, int *minute, int *second, int *day_of_year);
 
+// Bytes currently allocated from the malloc arena, in KB.
+int heap_used_kb();
+
 // Save files (save_io.cpp): <save_dir>/<name>, written atomically.
 const char *save_dir();
 bool save_exists(const char *name);
