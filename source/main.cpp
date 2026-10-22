@@ -31,7 +31,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m10h"
+#define OSPS3_VERSION "m10i"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -174,14 +174,14 @@ int main(int argc, const char **argv) {
 				nextLine = sys::time_us() + 1000000;
 			}
 		}
-		// XMB open (or another system overlay): pause the game and leave the
-		// graphics chip to the system until it's done, like most PS3 games.
-		if (input::system_drawing()) {
-			static bool logged;
-			if (!logged) { logged = true; sys::log("paused while the system draws (XMB)\n"); }
-			usleep(16000);
-			last = sys::time_us();
-			continue;
+		// XMB open (or another system overlay): pause the game's logic. Frames
+		// keep being drawn and flipped - the XMB is drawn through the game's
+		// flips, so stopping them froze the XMB itself (m10h).
+		bool systemPause = input::system_drawing();
+		{
+			static bool was;
+			if (systemPause != was) sys::log(systemPause ? "game paused while the XMB is open\n" : "game resumed\n");
+			was = systemPause;
 		}
 		TileMap *mp = &window().Map();
 		bool mapMenu = debug_map_menu::is_open();
@@ -259,7 +259,9 @@ int main(int argc, const char **argv) {
 
 		prof::mark("input/debug");
 		uint64_t t0 = sys::time_us();
-		if (mapMenu) {
+		if (systemPause) {
+			// nothing: the picture stays as it was
+		} else if (mapMenu) {
 			debug_map_menu::update();   // the game is paused underneath
 		} else if (!tex_view) {
 			modal::update();
