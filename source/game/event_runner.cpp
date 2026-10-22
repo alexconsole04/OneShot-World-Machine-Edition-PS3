@@ -619,6 +619,7 @@ bool EventRunner::commandTransferPlayer(const EventCommand &c) {
 	}
 	dir = c.iparam(4);
 	bool fade = c.iparam(5) == 0;
+	sys::log("transfer: map %d -> %d at (%d,%d) by event %d\n", map->GetMapID(), mapId, x, y, triggeringEventId);
 	map->ChangeMap(mapId, (float)x, (float)y, fade ? 0.5f : 0.0f, (Direction)dir);
 	waitForMapTransition = fade;
 	return fade;

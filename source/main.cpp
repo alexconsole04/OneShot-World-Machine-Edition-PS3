@@ -255,8 +255,8 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
-			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   log file: %s", state.var(55),
-			              sys::log_file_ok() ? "ok" : "NOT WRITABLE");
+			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   safe code %06d (var 20)   log file: %s",
+			              state.var(55), state.var(20), sys::log_file_ok() ? "ok" : "NOT WRITABLE");
 		}
 		prof::mark("overlay");
 		gfx::end_frame();

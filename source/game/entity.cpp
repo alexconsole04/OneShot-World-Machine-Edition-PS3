@@ -884,7 +884,13 @@ void Footprint::Draw(Vec2 camPos, GameTone tone) {
 	float a = opacity / 255.0f;
 	if (!splash) {
 		const gfx::Texture *t = gm::texture("footprints/footprints");
-		gm::blit(t, Vec2(pos.x / 256 - camPos.x - 8, pos.y / 256 - camPos.y - 8), drawRect, a, 0, gfx::Blend::Normal, 2, tone);
+		if (!t) return;
+		// The PC asks for row 64 of a 64-px-tall sheet when walking up; its
+		// sampler wraps, so that is row 0 again. Wrap the same way here (the
+		// RSX clamps, which stretched the last pixel row into a long streak).
+		Rect src = drawRect;
+		if (t->h > 0) src.y %= (int)t->h;
+		gm::blit(t, Vec2(pos.x / 256 - camPos.x - 8, pos.y / 256 - camPos.y - 8), src, a, 0, gfx::Blend::Normal, 2, tone);
 	} else {
 		const gfx::Texture *t = gm::texture("footprints/foot_splash");
 		Rect src(frameIndex % 4 * 80, frameIndex / 4 * 80, 80, 80);
