@@ -71,6 +71,7 @@ static Texture *frame_rt, *probe_tex, *probe_white;
 static const u32 PROBE_COPY_RGB = 0x0a141e;   // copied into pixel (1,0)
 static int g_draw_fails, g_checks;
 static bool g_draw_ok = true, g_copy_ok = true, g_checked;
+static bool g_after_system_menu;   // the screen check only acts after the XMB has been open
 static uint8_t *depth_mem;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
@@ -756,7 +757,9 @@ void end_frame() {
 		g_draw_ok = draw_ok;
 		g_copy_ok = copy_ok;
 		g_draw_fails = draw_ok ? 0 : g_draw_fails + 1;
-		if (!g_present_copy && g_draw_fails >= 2 && copy_ok) {
+		// Only after the XMB: emulators (RPCS3) don't write drawn pixels back to
+		// memory where the PPU can read them, so the probe would misfire there.
+		if (!g_present_copy && g_after_system_menu && g_draw_fails >= 2 && copy_ok) {
 			if (!frame_rt) frame_rt = make_rt(display_width, display_height);
 			if (frame_rt) {
 				g_present_copy = true;
@@ -979,6 +982,7 @@ void debug_status(char *buf, int n) {
 }
 
 void system_menu_closed() {
+	g_after_system_menu = true;
 	// The XMB may change the display setup while it's open: register the
 	// game's display buffers and flip mode again.
 	for (int i = 0; i < COLOR_BUFFER_NUM; i++)
