@@ -60,7 +60,8 @@ static_assert(sizeof(Vertex) == 48, "vertex layout");
 static u32 display_width, display_height, color_pitch, depth_pitch;
 static u32 tgt_w, tgt_h;
 static uint8_t *color_mem[COLOR_BUFFER_NUM];   // CPU view of the screen buffers (debug reads)
-static Texture *last_rt;          // size of what's being drawn into (screen or render target)
+static Texture *last_rt;
+static uint8_t *depth_mem;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
 static CellGcmContextData *ctx;
@@ -279,6 +280,33 @@ static void set_draw_env() {
 	set_viewport(display_width, display_height);
 	cellGcmSetDepthTestEnable(ctx, GCM_FALSE);
 	cellGcmSetCullFaceEnable(ctx, GCM_FALSE);
+	// Everything else a 2D sprite renderer relies on, set explicitly every
+	// frame: the XMB draws into the game's screen buffers with the same
+	// graphics chip and can leave its own settings behind (after it closed,
+	// everything drawn to the screen came out black while the off-screen
+	// game window was fine).
+	cellGcmSetDepthMask(ctx, GCM_FALSE);
+	cellGcmSetDepthBoundsTestEnable(ctx, GCM_FALSE);
+	cellGcmSetStencilTestEnable(ctx, GCM_FALSE);
+	cellGcmSetTwoSidedStencilTestEnable(ctx, GCM_FALSE);
+	cellGcmSetZcullEnable(ctx, GCM_FALSE, GCM_FALSE);
+	cellGcmSetAlphaTestEnable(ctx, GCM_FALSE);
+	cellGcmSetLogicOpEnable(ctx, GCM_FALSE);
+	cellGcmSetDitherEnable(ctx, GCM_FALSE);
+	cellGcmSetPolygonOffsetFillEnable(ctx, GCM_FALSE);
+	cellGcmSetLineSmoothEnable(ctx, GCM_FALSE);
+	cellGcmSetPolySmoothEnable(ctx, GCM_FALSE);
+	cellGcmSetFrontPolygonMode(ctx, CELL_GCM_POLYGON_MODE_FILL);
+	cellGcmSetBackPolygonMode(ctx, CELL_GCM_POLYGON_MODE_FILL);
+	cellGcmSetShadeMode(ctx, CELL_GCM_SMOOTH);
+	cellGcmSetFrontFace(ctx, CELL_GCM_CCW);
+	cellGcmSetUserClipPlaneControl(ctx, CELL_GCM_USER_CLIP_PLANE_DISABLE, CELL_GCM_USER_CLIP_PLANE_DISABLE,
+	                               CELL_GCM_USER_CLIP_PLANE_DISABLE, CELL_GCM_USER_CLIP_PLANE_DISABLE,
+	                               CELL_GCM_USER_CLIP_PLANE_DISABLE, CELL_GCM_USER_CLIP_PLANE_DISABLE);
+	cellGcmSetAntiAliasingControl(ctx, GCM_FALSE, GCM_FALSE, GCM_FALSE, 0xffff);
+	cellGcmSetFragmentProgramGammaEnable(ctx, GCM_FALSE);
+	cellGcmSetFrequencyDividerOperation(ctx, 0);
+	cellGcmSetVertexAttribInputMask(ctx, 0xffff);
 	blend_set = false;
 	apply_blend(Blend::Normal);
 	cellGcmSetVertexProgram(ctx, vpo, vp_ucode);
@@ -403,7 +431,8 @@ bool init() {
 		cellGcmAddressToOffset((void *)((uintptr_t)color_base + (u32)i * color_size), &color_offset[i]);
 		cellGcmSetDisplayBuffer((u8)i, color_offset[i], color_pitch, display_width, display_height);
 	}
-	cellGcmAddressToOffset(bump_alloc(depth_pitch * display_height, 64), &depth_offset);
+	depth_mem = (uint8_t *)bump_alloc(depth_pitch * display_height, 64);
+	cellGcmAddressToOffset(depth_mem, &depth_offset);
 
 	for (int i = 0; i < VB_COUNT; i++) {
 		vb_local_mem[i] = (Vertex *)bump_alloc(VB_BYTES, 128);
@@ -581,7 +610,8 @@ void begin_frame(uint32_t clear_argb) {
 	overflow_warned = false;
 	bind_vertex_arrays(vb_cur);
 	cellGcmSetClearColor(ctx, clear_argb);
-	cellGcmSetClearSurface(ctx, GCM_CLEAR_R | GCM_CLEAR_G | GCM_CLEAR_B | GCM_CLEAR_A);
+	cellGcmSetClearDepthStencil(ctx, 0xffffff00);
+	cellGcmSetClearSurface(ctx, GCM_CLEAR_Z | GCM_CLEAR_R | GCM_CLEAR_G | GCM_CLEAR_B | GCM_CLEAR_A);
 }
 
 // Clip rectangle (screen px), applied to every quad on the CPU so drawing
@@ -848,8 +878,9 @@ void debug_status(char *buf, int n) {
 	sample_pixels(color_mem[g_buffer_on_display % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit0, &c0);
 	sample_pixels(color_mem[(g_buffer_on_display + 1) % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit1, &c1);
 	if (last_rt) sample_pixels((const uint8_t *)last_rt->mem, last_rt->pitch, last_rt->w, last_rt->h, &litrt, &crt);
-	int k = snprintf(buf, n, "[pixels lit of 9: shown buffer %d (centre %06x), other buffer %d (%06x), game window %d (%06x)] ",
-	                 lit0, c0, lit1, c1, litrt, crt);
+	u32 zc = depth_mem ? *(volatile const uint16_t *)(depth_mem + (display_height / 2) * depth_pitch + display_width) : 0;
+	int k = snprintf(buf, n, "[pixels lit of 9: shown buffer %d (centre %06x), other buffer %d (%06x), game window %d (%06x); screen depth centre %04x] ",
+	                 lit0, c0, lit1, c1, litrt, crt, zc);
 	if (k < 0 || k >= n) return;
 	buf += k;
 	n -= k;
