@@ -4,8 +4,9 @@
 //                  Cross = OK / interact,  Circle = cancel,
 //                  SELECT = toggle debug overlay (hold 1 s: mark the log).
 //                  While the overlay is shown:
-//                  L1 = map switcher, R1 = texture viewer, R2/L2/R3/L3 =
-//                  renderer diagnostics, Circle = plain shader.
+//                  L1 = map switcher, R1 = texture viewer. In the texture
+//                  viewer: R2/L2/R3/L3 = renderer diagnostics, Circle =
+//                  plain shader.
 // Host build: env OSPS3_DATA (data dir), OSPS3_MAP, OSPS3_SPAWN="x,y",
 //             OSPS3_INPUT (scripted buttons), OSPS3_SHOTS="frame:file.png,...".
 #include "platform/gfx.h"
@@ -186,11 +187,23 @@ int main(int argc, const char **argv) {
 		}
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
 		bool dbg = (show_overlay || tex_view) && !mapMenu;
-		if (dbg && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
-		if (dbg && input::pressed(input::BTN_MASHTEXT)) gfx::set_vertex_main_memory(!gfx::vertex_main_memory());   // L2
-		if (dbg && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
-		if (dbg && input::pressed(input::BTN_L3)) mp->debugLayers = (mp->debugLayers + 1) % 4;
-		if (dbg && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
+		// Renderer diagnostics only in the texture viewer, where the game is
+		// paused: on the overlay, Circle / L2 / L3 are also game buttons, and
+		// Circle once switched the shader that draws screen tones (fades) off.
+		{
+			bool diag = tex_view && !mapMenu;
+			bool changed = true;
+			if (diag && input::pressed(input::BTN_R2)) gfx::set_draw_mode(gfx::draw_mode() + 1);
+			else if (diag && input::pressed(input::BTN_MASHTEXT)) gfx::set_vertex_main_memory(!gfx::vertex_main_memory());   // L2
+			else if (diag && input::pressed(input::BTN_R3)) gfx::set_texel_coords(!gfx::texel_coords());
+			else if (diag && input::pressed(input::BTN_L3)) mp->debugLayers = (mp->debugLayers + 1) % 4;
+			else if (diag && input::pressed(input::BTN_CANCEL)) gfx::set_plain_shader(!gfx::plain_shader());   // Circle
+			else changed = false;
+			if (changed)
+				sys::log("debug: renderer settings now: draw mode %s, vertices %s, texcoords %s, layers %d, shader %s\n",
+				         gfx::draw_mode_name(), gfx::vertex_main_memory() ? "main" : "local", gfx::texel_coords() ? "texel" : "normalized",
+				         mp->debugLayers, gfx::plain_shader() ? "PLAIN" : "full");
+		}
 		if (dbg && input::pressed(input::BTN_R1)) tex_view = !tex_view;
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
 		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
@@ -247,7 +260,7 @@ int main(int argc, const char **argv) {
 					}
 				gfx::Shade s;
 				gm::blit_screen(t, x0, y0, w, h, Rect(0, 0, (int)t->w, (int)t->h), s);
-				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   R1: close",
+				overlay::text(16, 16, 2, 0xffffff, "texture %d/%d: %s (%ux%u)  d-pad L/R: next   R1: close   R2/L2/R3/L3/Circle: renderer switches",
 				              i + 1, n, names[i], t->w, t->h);
 			}
 		}
@@ -262,12 +275,13 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 76, 2, 0xc0e0ff, "draw calls %d  sprites %d  entities %d", st.draw_calls, st.quads, map.EntityCount());
 			overlay::text(16, 106, 2, 0xffe0a0, "vram tex %.1f / %.1f MB  niko px %d,%d", st.tex_bytes_used / 1048576.0f,
 			              st.tex_bytes_total / 1048576.0f, pp.x, pp.y);
-			overlay::text(16, 136, 2, 0xff90ff, "rsx draw mode: %s  (R2 to cycle)", gfx::draw_mode_name());
+			overlay::text(16, 136, 2, 0xff90ff, "rsx draw mode: %s", gfx::draw_mode_name());
 			static const char *layer_names[] = { "all", "no entities", "no upper layers", "base layers only" };
-			overlay::text(16, 166, 2, 0xff90ff, "L2 vertices: %s   R3 texcoords: %s   L3 layers: %s",
+			overlay::text(16, 166, 2, 0xff90ff, "vertices: %s   texcoords: %s   layers: %s",
 			              gfx::vertex_main_memory() ? "main mem" : "local mem", gfx::texel_coords() ? "texel" : "normalized",
 			              layer_names[map.debugLayers]);
-			overlay::text(16, 196, 2, 0xff90ff, "Circle shader: %s   R1: texture viewer", gfx::plain_shader() ? "PLAIN" : "full");
+			overlay::text(16, 196, 2, 0xff90ff, "shader: %s   R1: texture viewer (renderer switches are in there)",
+			              gfx::plain_shader() ? "PLAIN" : "full");
 			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide   hold SELECT: mark the log");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),

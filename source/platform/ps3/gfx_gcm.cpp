@@ -182,8 +182,9 @@ static void *bump_alloc(u32 size, u32 align) {
 }
 
 // ---------------------------------------------------------------- flip handling
-static void on_flip(const u32 head) {
-	(void)head;
+static volatile u32 g_flip_wait, g_flip_recovered;
+
+static void finish_flip() {
 	u32 v = g_buffer_flipped;
 	for (u32 i = g_buffer_on_display; i != v; i = (i + 1) % COLOR_BUFFER_NUM)
 		*(volatile u32 *)cellGcmGetLabelAddress(LABEL_BUFFER_STATUS_OFFSET + i) = BUFFER_IDLE;
@@ -191,12 +192,30 @@ static void on_flip(const u32 head) {
 	g_on_flip = 0;
 }
 
+static void on_flip(const u32 head) {
+	(void)head;
+	if (g_on_flip) finish_flip();
+}
+
 static void on_vblank(const u32 head) {
 	(void)head;
+	if (g_on_flip) {
+		// While the XMB is open the flip-done handler can be skipped; waiting
+		// for it would stop the game drawing for good (a black screen until
+		// the XMB was opened again). Check the flip status directly instead,
+		// and as a last resort give up on that flip after half a second.
+		if (cellGcmGetFlipStatus() == 0 || ++g_flip_wait > 30) {
+			finish_flip();
+			g_flip_recovered++;
+		}
+		return;   // issue the next flip on the next vblank
+	}
 	u32 data = *(volatile u32 *)cellGcmGetLabelAddress(LABEL_PREPARED_BUFFER_OFFSET);
 	u32 buffer_to_flip = data >> 8, index_to_flip = data & 0x7;
-	if (g_on_flip == 0 && buffer_to_flip != g_buffer_on_display) {
+	if (buffer_to_flip != g_buffer_on_display) {
 		g_on_flip = 1;
+		g_flip_wait = 0;
+		cellGcmResetFlipStatus();
 		if (cellGcmSetFlipImmediate((u8)index_to_flip) != 0) { g_on_flip = 0; return; }
 		g_buffer_flipped = buffer_to_flip;
 	}
@@ -650,6 +669,13 @@ void end_frame() {
 	cellGcmSetWriteCommandLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_BUSY);
 	bind_color_buffer(g_frame_index);
 
+	static u32 recovered_logged;
+	static uint64_t recovered_log_time;
+	if (g_flip_recovered != recovered_logged && sys::time_us() - recovered_log_time > 5000000) {
+		recovered_logged = g_flip_recovered;
+		recovered_log_time = sys::time_us();
+		sys::log("gfx: a flip finished without its handler (system menu open?), %u so far\n", recovered_logged);
+	}
 	st = cur;
 	st.tex_bytes_used = heap_used;
 	st.tex_bytes_total = heap_total;
