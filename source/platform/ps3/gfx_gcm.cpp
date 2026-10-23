@@ -76,6 +76,7 @@ static bool g_after_system_menu;   // the screen check only acts after the XMB h
 static volatile bool g_system_drawing;   // the XMB covers the probe pixels: no checks meanwhile
 static uint8_t *depth_mem;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
+static void resend_state();
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
 static CellGcmContextData *ctx;
 
@@ -649,7 +650,12 @@ void begin_frame(uint32_t clear_argb) {
 	batch_first = 0;
 	batch_tex = nullptr;
 	overflow_warned = false;
-	bind_vertex_arrays(vb_cur);
+	// The whole drawing state again, every frame: the XMB draws through the
+	// same RSX and can leave its own state behind. The game screen used to
+	// get this for free from its off-screen window (each target switch sends
+	// it); screens drawn straight to the TV, like the boot sequence, didn't,
+	// and stayed black after the XMB.
+	resend_state();
 	cellGcmSetClearColor(ctx, clear_argb);
 	cellGcmSetClearDepthStencil(ctx, 0xffffff00);
 	cellGcmSetClearSurface(ctx, GCM_CLEAR_Z | GCM_CLEAR_R | GCM_CLEAR_G | GCM_CLEAR_B | GCM_CLEAR_A);
@@ -880,6 +886,16 @@ static void bind_screen() {
 	}
 }
 
+// Shader constants, the full drawing environment, vertex arrays and the
+// current target's surface.
+static void resend_state() {
+	cellGcmCgUploadInternalConsts(ctx, vpo);
+	set_draw_env();
+	bind_vertex_arrays(vb_cur);
+	if (cur_rt) bind_rt_surface(cur_rt);
+	else bind_screen();
+}
+
 void set_render_target(Texture *rt) {
 	if (rt == cur_rt) return;
 	flush_batch();
@@ -891,14 +907,7 @@ void set_render_target(Texture *rt) {
 	// Programs, constants, vertex arrays and switches again with every
 	// target: after the XMB has been open, drawing stopped working after the
 	// first target switch of each frame.
-	cellGcmCgUploadInternalConsts(ctx, vpo);
-	set_draw_env();
-	bind_vertex_arrays(vb_cur);
-	if (rt) {
-		bind_rt_surface(rt);
-	} else {
-		bind_screen();
-	}
+	resend_state();
 	clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
 	tex_cache_dirty = true;   // the target's new pixels must not come from a stale texture cache
 }
