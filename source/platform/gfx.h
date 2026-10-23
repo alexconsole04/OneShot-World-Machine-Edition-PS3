@@ -65,6 +65,8 @@ Stats last_stats();
 void debug_status(char *buf, int n);
 // The PS3's system menu (XMB) closed: restore the display setup.
 void system_menu_closed();
+// The PS3 system is drawing over the game (XMB): the screen check pauses.
+void set_system_drawing(bool on);
 // PS3: draw each frame off-screen and copy it to the screen buffer (switched
 // on automatically if drawing stops reaching the screen after the XMB).
 void set_present_copy(bool on);

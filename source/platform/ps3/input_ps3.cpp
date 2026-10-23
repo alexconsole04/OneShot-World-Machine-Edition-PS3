@@ -16,21 +16,25 @@ static volatile bool quit;
 static volatile int g_sys_events;
 static volatile bool g_sys_drawing;   // between system drawing begin / end (XMB, system dialogs)
 
+static uint64_t g_menu_opened_at;
+
 static void on_sysutil(uint64_t status, uint64_t param, void *) {
-	if (status == CELL_SYSUTIL_REQUEST_EXITGAME) quit = true;
-	const char *what = status == CELL_SYSUTIL_REQUEST_EXITGAME ? "quit requested"
-	                 : status == 0x0121 ? "system drawing begins"
-	                 : status == 0x0122 ? "system drawing ends"
-	                 : status == 0x0131 ? "XMB opened"
-	                 : status == 0x0132 ? "XMB closed"
-	                 : status == 0x0133 ? "XMB music started"
-	                 : status == 0x0134 ? "XMB music stopped" : "other";
-	char st[512];
-	gfx::debug_status(st, sizeof(st));
-	sys::log("system event 0x%04x (%s, param %llu): %s\n", (unsigned)status, what, (unsigned long long)param, st);
-	if (status == 0x0121) g_sys_drawing = true;
-	if (status == 0x0122) { g_sys_drawing = false; gfx::system_menu_closed(); }
-	if (status == 0x0132) gfx::system_menu_closed();
+	(void)param;
+	switch (status) {
+	case CELL_SYSUTIL_REQUEST_EXITGAME: quit = true; sys::log("system: quit requested\n"); break;
+	case 0x0121: g_sys_drawing = true; gfx::set_system_drawing(true); break;      // system drawing begins
+	case 0x0122: g_sys_drawing = false; gfx::set_system_drawing(false); gfx::system_menu_closed(); break;
+	case 0x0131: g_menu_opened_at = sys::time_us(); sys::log("system: XMB opened\n"); break;
+	case 0x0132: {
+		char st[256];
+		gfx::debug_status(st, sizeof(st));
+		sys::log("system: XMB closed after %.1f s (%s)\n", (sys::time_us() - g_menu_opened_at) / 1e6, st);
+		gfx::system_menu_closed();
+		break;
+	}
+	case 0x0133: case 0x0134: break;   // XMB music started / stopped
+	default: sys::log("system: event 0x%04x\n", (unsigned)status); break;
+	}
 	g_sys_events++;
 }
 

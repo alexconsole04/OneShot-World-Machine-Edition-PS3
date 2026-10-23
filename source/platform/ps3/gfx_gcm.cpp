@@ -72,6 +72,7 @@ static const u32 PROBE_COPY_RGB = 0x0a141e;   // copied into pixel (1,0)
 static int g_draw_fails, g_checks;
 static bool g_draw_ok = true, g_copy_ok = true, g_checked;
 static bool g_after_system_menu;   // the screen check only acts after the XMB has been open
+static volatile bool g_system_drawing;   // the XMB covers the probe pixels: no checks meanwhile
 static uint8_t *depth_mem;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
 static u32 color_offset[COLOR_BUFFER_NUM], depth_offset;
@@ -741,7 +742,7 @@ void end_frame() {
 	cellGcmSetWriteCommandLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_BUSY);
 
 	// Every half second: did the probes reach the frame now on screen?
-	if (++g_checks % 30 == 0 && frame_counter > 10) {
+	if (++g_checks % 30 == 0 && frame_counter > 10 && !g_system_drawing) {
 		const uint8_t *m = color_mem[g_buffer_on_display % COLOR_BUFFER_NUM];
 		u32 p0 = *(volatile const u32 *)m & 0xffffff, p1 = *(volatile const u32 *)(m + 4) & 0xffffff;
 		auto near = [](u32 c, int r, int g, int b) {
@@ -949,43 +950,12 @@ bool texel_coords() { return g_texel_coords; }
 
 Stats last_stats() { return st; }
 
-// Debug: how many of 9 sample points (a 3x3 grid) in a buffer aren't black,
-// and the centre pixel. Read by the PPU straight from video memory.
-static void sample_pixels(const uint8_t *mem, u32 pitch, u32 w, u32 h, int *lit, u32 *centre) {
-	*lit = 0;
-	*centre = 0;
-	if (!mem) return;
-	for (int j = 1; j <= 3; j++)
-		for (int i = 1; i <= 3; i++) {
-			u32 x = w * i / 4, y = h * j / 4;
-			u32 px = *(volatile const u32 *)(mem + y * pitch + x * 4) & 0xffffff;
-			if (px) (*lit)++;
-			if (i == 2 && j == 2) *centre = px;
-		}
+void debug_status(char *buf, int n) {
+	snprintf(buf, n, "presenting by %s, %u frames shown, %u flip%s recovered", g_present_copy ? "copy" : "drawing",
+	         g_flip_count, g_flip_recovered, g_flip_recovered == 1 ? "" : "s");
 }
 
-void debug_status(char *buf, int n) {
-	u32 prep = *(volatile u32 *)cellGcmGetLabelAddress(LABEL_PREPARED_BUFFER_OFFSET);
-	int lit0, lit1, litrt = 0;
-	u32 c0, c1, crt = 0;
-	sample_pixels(color_mem[g_buffer_on_display % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit0, &c0);
-	sample_pixels(color_mem[(g_buffer_on_display + 1) % COLOR_BUFFER_NUM], color_pitch, display_width, display_height, &lit1, &c1);
-	if (last_rt) sample_pixels((const uint8_t *)last_rt->mem, last_rt->pitch, last_rt->w, last_rt->h, &litrt, &crt);
-	u32 zc = depth_mem ? *(volatile const uint16_t *)(depth_mem + (display_height / 2) * depth_pitch + display_width) : 0;
-	int k0 = snprintf(buf, n, "[presenting by %s] ", g_present_copy ? "copy" : "drawing");
-	if (k0 < 0 || k0 >= n) return;
-	buf += k0;
-	n -= k0;
-	int k = snprintf(buf, n, "[pixels lit of 9: shown buffer %d (centre %06x), other buffer %d (%06x), game window %d (%06x); screen depth centre %04x] ",
-	                 lit0, c0, lit1, c1, litrt, crt, zc);
-	if (k < 0 || k >= n) return;
-	buf += k;
-	n -= k;
-	snprintf(buf, n, "vblanks %u, flips asked %u (failed %u), flips done %u, recovered %u; showing buffer %u, next prepared %u/%u, "
-	         "drawing into %u, flip status %u, waiting %u",
-	         g_vblank_count, g_flip_requests, g_flip_fail, g_flip_count, g_flip_recovered, g_buffer_on_display, prep >> 8, prep & 7,
-	         g_frame_index, cellGcmGetFlipStatus(), g_on_flip);
-}
+void set_system_drawing(bool on) { g_system_drawing = on; g_draw_fails = 0; }
 
 void system_menu_closed() {
 	g_after_system_menu = true;

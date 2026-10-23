@@ -31,7 +31,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m10i"
+#define OSPS3_VERSION "m11"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -160,20 +160,6 @@ int main(int argc, const char **argv) {
 		prof::begin();
 		input::update();
 		prof::mark("input");
-		{
-			// After a system (XMB) event, log the display state once a second
-			// for ten seconds.
-			static int lastEvents, linesLeft;
-			static uint64_t nextLine;
-			if (input::system_events() != lastEvents) { lastEvents = input::system_events(); linesLeft = 10; nextLine = 0; }
-			if (linesLeft > 0 && sys::time_us() >= nextLine) {
-				char st[512];
-				gfx::debug_status(st, sizeof(st));
-				sys::log("display: frame %d, %s\n", frame, st);
-				linesLeft--;
-				nextLine = sys::time_us() + 1000000;
-			}
-		}
 		// XMB open (or another system overlay): pause the game's logic. Frames
 		// keep being drawn and flipped - the XMB is drawn through the game's
 		// flips, so stopping them froze the XMB itself (m10h).

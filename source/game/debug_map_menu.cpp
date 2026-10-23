@@ -7,6 +7,7 @@
 #include "../platform/gfx.h"
 #include "../platform/input.h"
 #include "../platform/sys.h"
+#include "../platform/thread.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,7 +75,9 @@ static MapInfo *find_map(int id) {
 // Transfer Player (code 201) with a direct destination (parameter 0 == 0):
 // [0, map, x, y, direction, fade]. Parameters may be strings or numbers.
 // A plain text scan is many times faster than parsing 14 MB of JSON.
-static void scan_transfers(const char *s, int from) {
+struct RawEntry { int target, x, y, dir, from; };
+
+static void scan_transfers(const char *s, int from, std::vector<RawEntry> &out) {
 	const char *p = s;
 	while ((p = strstr(p, "\"code\"")) != nullptr) {
 		p += 6;
@@ -97,14 +100,94 @@ static void scan_transfers(const char *s, int from) {
 			if (*q != ',') { if (i < 4) v[0] = -1; break; }
 			q++;
 		}
-		if (v[0] != 0) continue;
-		MapInfo *m = find_map(v[1]);
+		if (v[0] == 0) out.push_back({ v[1], v[2], v[3], v[4], from });
+	}
+}
+
+static void apply_entries(const std::vector<RawEntry> &raw) {
+	for (auto &m : maps) m.entries.clear();
+	for (const RawEntry &r : raw) {
+		MapInfo *m = find_map(r.target);
 		if (!m || m->entries.size() >= 24) continue;
 		bool dup = false;
 		for (auto &e : m->entries)
-			if (e.x == v[2] && e.y == v[3]) { dup = true; break; }
-		if (!dup) m->entries.push_back({ v[2], v[3], v[4], from });
+			if (e.x == r.x && e.y == r.y) { dup = true; break; }
+		if (!dup) m->entries.push_back({ r.x, r.y, r.dir, r.from });
 	}
+}
+
+// Scanning all 263 event files takes ~5 s on the PS3's hard drive (about
+// 30 ms to open each), so it runs on its own thread and the result is kept
+// in the save folder; later sessions read that one file instead.
+static const char *CACHE_FILE = "map_entries.txt";
+static std::vector<std::string> scan_files;   // event files, set before the thread starts
+static std::vector<RawEntry> scan_out;        // written only by the scan thread until scan_state == 2
+static int scan_state;                        // 0 idle, 1 scanning, 2 finished (atomic)
+static uint64_t scan_ms;
+static bool entries_ready;
+
+static void scan_all(void *) {
+	uint64_t t0 = sys::time_us();
+	for (auto &f : scan_files) {
+		int id;
+		if (sscanf(f.c_str(), "events_map%d.json", &id) != 1) continue;
+		uint8_t *d;
+		size_t n;
+		std::string rel = "gamedata/maps/" + f;
+		if (!sys::read_file(rel.c_str(), &d, &n)) continue;
+		scan_transfers((const char *)d, id, scan_out);
+		free(d);
+	}
+	uint8_t *d;
+	size_t n;
+	if (sys::read_file("gamedata/oneshot_common_events.json", &d, &n)) {
+		scan_transfers((const char *)d, 0, scan_out);
+		free(d);
+	}
+	scan_ms = (sys::time_us() - t0) / 1000;
+	__atomic_store_n(&scan_state, 2, __ATOMIC_RELEASE);
+}
+
+static bool load_cache(int fileCount) {
+	std::string text;
+	if (!sys::save_read(CACHE_FILE, text)) return false;
+	int ver = 0, count = -1, pos = 0;
+	if (sscanf(text.c_str(), "v%d %d\n%n", &ver, &count, &pos) < 2 || ver != 1 || count != fileCount) return false;
+	std::vector<RawEntry> raw;
+	const char *p = text.c_str() + pos;
+	RawEntry r;
+	int used;
+	while (sscanf(p, "%d %d %d %d %d\n%n", &r.target, &r.x, &r.y, &r.dir, &r.from, &used) == 5) {
+		raw.push_back(r);
+		p += used;
+	}
+	apply_entries(raw);
+	return true;
+}
+
+static void save_cache(int fileCount, const std::vector<RawEntry> &raw) {
+	std::string out = "v1 " + std::to_string(fileCount) + "\n";
+	char line[64];
+	for (const RawEntry &r : raw) {
+		snprintf(line, sizeof(line), "%d %d %d %d %d\n", r.target, r.x, r.y, r.dir, r.from);
+		out += line;
+	}
+	sys::save_write(CACHE_FILE, out);
+}
+
+static int event_file_count;
+
+static void poll_scan() {
+	if (entries_ready || __atomic_load_n(&scan_state, __ATOMIC_ACQUIRE) != 2) return;
+	apply_entries(scan_out);
+	save_cache(event_file_count, scan_out);
+	int withEntries = 0;
+	for (auto &m : maps) withEntries += !m.entries.empty();
+	sys::log("map switcher: entry points found in the background (%d event files, %d maps with entries, %u ms); saved\n",
+	         event_file_count, withEntries, (unsigned)scan_ms);
+	scan_out.clear();
+	scan_out.shrink_to_fit();
+	entries_ready = true;
 }
 
 static void load() {
@@ -170,28 +253,23 @@ static void load() {
 		tabs[maps[i].group].maps.push_back((int)i);
 	}
 
-	int scanned = 0;
+	uint64_t t1 = sys::time_us();
+	scan_files.clear();
 	for (auto &f : files) {
 		int id;
-		if (sscanf(f.c_str(), "events_map%d.json", &id) != 1) continue;
-		uint8_t *d;
-		size_t n;
-		std::string rel = "gamedata/maps/" + f;
-		if (!sys::read_file(rel.c_str(), &d, &n)) continue;
-		scan_transfers((const char *)d, id);
-		free(d);
-		scanned++;
+		if (sscanf(f.c_str(), "events_map%d.json", &id) == 1) scan_files.push_back(f);
 	}
-	uint8_t *d;
-	size_t n;
-	if (sys::read_file("gamedata/oneshot_common_events.json", &d, &n)) {
-		scan_transfers((const char *)d, 0);
-		free(d);
+	event_file_count = (int)scan_files.size();
+	if (load_cache(event_file_count)) {
+		entries_ready = true;
+		sys::log("map switcher: %d maps, entry points from %s (%.0f ms)\n", (int)maps.size(), CACHE_FILE,
+		         (sys::time_us() - t0) / 1000.0);
+	} else {
+		scan_state = 1;
+		if (!sys::thread_start(scan_all, nullptr, "map scan", -1)) scan_all(nullptr);   // no thread: scan now
+		sys::log("map switcher: %d maps listed in %.0f ms; finding entry points in the background\n", (int)maps.size(),
+		         (t1 - t0) / 1000.0);
 	}
-	int withEntries = 0;
-	for (auto &m : maps) withEntries += !m.entries.empty();
-	sys::log("map switcher: %d maps, %d event files scanned, %d maps with entry points (%.0f ms)\n", (int)maps.size(), scanned,
-	         withEntries, (sys::time_us() - t0) / 1000.0);
 	loaded = true;
 }
 
@@ -249,6 +327,7 @@ void update() {
 		keep_visible();
 		return;
 	}
+	poll_scan();
 	using namespace input;
 	if (pressed(BTN_CANCEL) || pressed(BTN_SELECT)) { opened = false; return; }
 	int nt = (int)tabs.size();
@@ -343,7 +422,8 @@ void draw() {
 		if (m.id == currentMap) nm += "   <- you are here";
 		overlay::text_plain(x0 + 70 * s, y, s, col, nm.c_str());
 		char e[32];
-		snprintf(e, sizeof(e), "%d entr%s", (int)m.entries.size(), m.entries.size() == 1 ? "y" : "ies");
+		if (entries_ready) snprintf(e, sizeof(e), "%d entr%s", (int)m.entries.size(), m.entries.size() == 1 ? "y" : "ies");
+		else snprintf(e, sizeof(e), "...");
 		overlay::text_plain(W - x0 - overlay::text_width(e) * s, y, s, m.entries.empty() ? 0x808080 : 0xa0d0a0, e);
 	}
 	if (t.maps.size() > (size_t)rows)
@@ -357,7 +437,8 @@ void draw() {
 			              (int)m->entries.size(), e.x, e.y, e.from ? "map" : "common events", e.from ? e.from : 0);
 		} else {
 			overlay::text(x0, fy, s, 0xffe0a0, "Arrive at: an open tile near the middle of the map%s",
-			              m->entries.empty() ? "  (no Transfer Player leads here)" : "");
+			              !entries_ready ? "  (still finding entry points in the background...)"
+			              : m->entries.empty() ? "  (no Transfer Player leads here)" : "");
 		}
 	}
 	overlay::text(x0, fy + lh * 1.2f, s, 0xa0a0a0,
