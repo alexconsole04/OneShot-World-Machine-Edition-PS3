@@ -225,6 +225,7 @@ protected:
 // Draws the 640x480 game window with its top-left at TV (x, y), scale TV
 // pixels per window pixel (OneshotWindow.PreDraw + DrawOneshotTexture).
 static void draw_game_at(float x, float y, float scale) {
+	prof::mark("desktop draw");
 	gm::end_space();
 	gm::set_window_placement(x, y, scale);
 	gm::set_scaling(settings().scaling);
@@ -234,6 +235,7 @@ static void draw_game_at(float x, float y, float scale) {
 	gm::clip_off();
 	gm::end_window();
 	gm::begin_space(g_space);
+	prof::mark("game draw");
 }
 
 // OneshotWindow (the TWM window around the game).
@@ -317,7 +319,19 @@ static int &slot(int gx, int gy) { return g_grid[gx * g_rows + gy]; }
 struct IconText { std::string l1, l2; Rect r1, r2; int height; };
 
 // FileIcon.processFileName: one or two lines under the icon, centred.
+static IconText make_icon_text(const FileNode &f);
 static IconText icon_text(const FileNode &f) {
+	// Laid out once per language (word wrapping measures every character).
+	static std::vector<std::pair<std::string, IconText>> cache;
+	static int gen = -1;
+	if (gen != loc::generation()) { cache.clear(); gen = loc::generation(); }
+	for (auto &c : cache)
+		if (c.first == f.name) return c.second;
+	cache.emplace_back(f.name, make_icon_text(f));
+	return cache.back().second;
+}
+
+static IconText make_icon_text(const FileNode &f) {
 	IconText t;
 	std::string name = loc::twm(f.name.c_str());
 	std::vector<std::string> lines = font::word_wrap(font::OS, name, 76);
@@ -773,8 +787,9 @@ void update() {
 	// The game runs inside its window (OneshotWindow.Update -> GameLogic),
 	// even while minimized; system dialogs pause it.
 	if (gw && window().IsOpen() && !g_systemModal) {
+		prof::mark("desktop ui");
 		window().Update();
-		prof::mark("game update");
+		prof::mark("game logic");
 	}
 	std::vector<Window *> order;
 	for (auto &w : g_windows) order.push_back(w.get());
@@ -831,14 +846,29 @@ static void draw_taskbar(Window *active) {
 		p.x += b.w + 2;
 	}
 	// The clock (DateTime.Now.ToShortTimeString), in the console's format.
-	int h, m, s, yd;
-	static bool logged;
-	if (!logged) sys::log("desktop: reading the clock\n");
-	sys::local_time(&h, &m, &s, &yd);
-	if (!logged) { logged = true; sys::log("desktop: clock reads %d:%02d (%s)\n", h, m, sys::clock_24h() ? "24-hour" : "AM/PM"); }
-	char clock[16];
-	if (sys::clock_24h()) snprintf(clock, sizeof(clock), "%d:%02d", h, m);
-	else snprintf(clock, sizeof(clock), "%d:%02d %s", h % 12 == 0 ? 12 : h % 12, m, h < 12 ? "AM" : "PM");
+	// Read once a second: the system calls behind it aren't free.
+	static char clock[16];
+	static uint64_t nextRead;
+	uint64_t now = sys::time_us();
+	if (now >= nextRead) {
+		static bool logged;
+		int h, m, s, yd;
+		sys::local_time(&h, &m, &s, &yd);
+		uint64_t t1 = sys::time_us();
+		static bool h24;
+		static uint64_t nextFormat;
+		if (now >= nextFormat) { h24 = sys::clock_24h(); nextFormat = now + 30000000; }
+		uint64_t t2 = sys::time_us();
+		static int timingLogs;
+		if (timingLogs < 3) {   // how much these cost (m13 read them every frame)
+			timingLogs++;
+			sys::log("desktop: reading the clock took %.2f ms, its 12/24-hour setting %.2f ms\n", (t1 - now) / 1000.0, (t2 - t1) / 1000.0);
+		}
+		if (h24) snprintf(clock, sizeof(clock), "%d:%02d", h, m);
+		else snprintf(clock, sizeof(clock), "%d:%02d %s", h % 12 == 0 ? 12 : h % 12, m, h < 12 ? "AM" : "PM");
+		if (!logged) { logged = true; sys::log("desktop: clock reads %s\n", clock); }
+		nextRead = now + 1000000;
+	}
 	text(Vec2(a.x + a.w - text_w(clock) - 26, a.y + 4), clock, th.Primary());
 	g_minimizeAll->Draw(Vec2(0, 0), th, 255);
 }
@@ -871,6 +901,7 @@ void draw() {
 	}
 	if (g_systemModal) box(Rect(0, 0, g_screen.x, g_screen.y), Color(0, 0, 0, 128));
 	gm::end_space();
+	prof::mark("desktop draw");
 }
 
 void draw_cursor() {

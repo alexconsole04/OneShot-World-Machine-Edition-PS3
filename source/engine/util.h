@@ -18,4 +18,5 @@ namespace prof {
 void begin();                    // start of a frame
 void mark(const char *phase);    // end of a phase (string literal)
 const char *worst(float *ms);    // longest phase of the frame
+void report(const char *what);   // every 10 s: fps, missed vblanks, biggest phases (log)
 }

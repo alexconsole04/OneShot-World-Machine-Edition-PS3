@@ -34,7 +34,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m13b"
+#define OSPS3_VERSION "m13c"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -271,7 +271,7 @@ int main(int argc, const char **argv) {
 		mapId = map.GetMapID();
 		uint64_t t1 = sys::time_us();
 
-		prof::mark("game update");
+		prof::mark(booting ? "boot update" : "desktop update");
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
 		prof::mark("begin_frame (RSX wait)");
 		uint64_t tb = sys::time_us();
@@ -285,6 +285,7 @@ int main(int argc, const char **argv) {
 			desktop::draw();      // wallpaper, icons, windows (the game inside its own), taskbar
 			modal::draw();
 			desktop::draw_cursor();
+			prof::mark("dialogs + cursor");
 		} else {
 			// Texture viewer: raw texture over a magenta/grey checkerboard so
 			// transparent texels are obvious. Integer scale, centred.
@@ -343,6 +344,10 @@ int main(int argc, const char **argv) {
 		prof::mark("overlay");
 		gfx::end_frame();
 		prof::mark("end_frame (flip)");
+		{
+			const char *what = booting ? "boot" : !desktop::game_window_open() ? "desktop" : "game window";
+			prof::report(what);
+		}
 
 		uint64_t now = sys::time_us();
 		{
