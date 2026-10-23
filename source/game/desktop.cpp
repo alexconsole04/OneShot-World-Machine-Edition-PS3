@@ -224,11 +224,20 @@ protected:
 
 // Draws the 640x480 game window with its top-left at TV (x, y), scale TV
 // pixels per window pixel (OneshotWindow.PreDraw + DrawOneshotTexture).
+static bool g_windowedDraw;
+static Rect g_gameRect;   // the game's picture this frame, desktop draw-space pixels (w 0: none)
+
 static void draw_game_at(float x, float y, float scale) {
 	prof::mark("desktop draw");
 	gm::end_space();
 	gm::set_window_placement(x, y, scale);
-	gm::set_scaling(settings().scaling);
+	// In a window the game is drawn at 1x and scaled up smoothly, like the
+	// PC's 720p desktop on a bigger screen: a quarter of the pixels of the
+	// 2x drawing used fullscreen, which kept big maps from holding 60 fps
+	// with the desktop around them. Maximized follows the Scaling setting.
+	int mode = settings().scaling;
+	if (g_windowedDraw && mode != gm::SCALE_DIRECT) mode = gm::SCALE_SMOOTH;
+	gm::set_scaling(mode);
 	gm::begin_window();
 	gm::clip_to_window();
 	window().Draw();
@@ -280,12 +289,14 @@ public:
 		if (!maximized) { Window::Draw(th); return; }
 		box(Rect(0, 0, g_screen.x, g_screen.y), Color(0, 0, 0));
 		Rect fr = FullscreenRect();
+		g_windowedDraw = false;
 		float k;
 		Vec2 tv = gm::space_to_tv(g_space, (float)fr.x, (float)fr.y, &k);
 		draw_game_at((float)tv.x, (float)tv.y, k * fr.h / 480.0f);
 		Find(Maximize)->Draw(Vec2(0, 0), th, 255);
 	}
 	void DrawContents(const Theme &, Vec2 screenPos) override {
+		g_windowedDraw = true;
 		float k;
 		Vec2 tv = gm::space_to_tv(g_space, (float)screenPos.x * 2, (float)screenPos.y * 2, &k);
 		draw_game_at((float)tv.x, (float)tv.y, k);
@@ -808,11 +819,28 @@ void update() {
 // ===================================================================== draw
 
 static void draw_wallpaper() {
-	// The default wallpaper (STRETCH): the whole screen, smoothly scaled.
+	// The default wallpaper (STRETCH): the whole screen. Where the game's
+	// picture will cover it, it isn't drawn at all (fill rate is what the
+	// RSX runs out of first).
 	const gfx::Texture *t = gm::texture("the_world_machine/wallpaper/default", gm::DesktopWallpaper);
 	if (!t) { box(Rect(0, 0, g_screen.x, g_screen.y), Color(0, 0, 0)); return; }
-	const_cast<gfx::Texture *>(t)->linear = true;
-	gm::blit_scaled(t, Vec2(0, 0), Rect(0, 0, (int)t->w, (int)t->h), (float)g_space.x / t->w, (float)g_space.y / t->h);
+	// Exactly one texel per TV pixel (1080p): no filtering needed.
+	const_cast<gfx::Texture *>(t)->linear = !((int)t->w == gfx::screen_w() && (int)t->h == gfx::screen_h());
+	float sx = (float)t->w / g_space.x, sy = (float)t->h / g_space.y;
+	auto part = [&](int x, int y, int w, int h) {
+		if (w <= 0 || h <= 0) return;
+		Rect src((int)(x * sx), (int)(y * sy), (int)(w * sx), (int)(h * sy));
+		gm::blit_scaled(t, Vec2(x, y), src, (float)w / src.w, (float)h / src.h);
+	};
+	Rect g = g_gameRect;
+	if (g.w <= 0 || g.x < 0 || g.y < 0 || g.x + g.w > g_space.x || g.y + g.h > g_space.y) {
+		part(0, 0, g_space.x, g_space.y);
+		return;
+	}
+	part(0, 0, g_space.x, g.y);                                   // above
+	part(0, g.y + g.h, g_space.x, g_space.y - g.y - g.h);         // below
+	part(0, g.y, g.x, g.h);                                       // left
+	part(g.x + g.w, g.y, g_space.x - g.x - g.w, g.h);             // right
 }
 
 static void draw_taskbar(Window *active) {
@@ -880,6 +908,10 @@ void draw() {
 	for (auto &w : g_windows)
 		if (w->maximized) { maxed = w.get(); break; }
 	if (!maxed) {
+		g_gameRect = Rect();
+		if (GameWindow *gw = game_window())
+			if (!gw->minimized && gw->minimizedFrames == 0)
+				g_gameRect = Rect((gw->pos.x + 2) * 2, (gw->pos.y + 26) * 2, 640, 480);
 		draw_wallpaper();
 		for (int x = 0; x < g_cols; x++)
 			for (int y = 0; y < g_rows; y++) {

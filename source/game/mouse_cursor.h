@@ -17,7 +17,7 @@ public:
 	bool Held() const { return held; }
 	bool hidden = false;
 	int speed = 5;          // InputManager.MouseCursorSpeed (settings: 1..10)
-	int deadZone = 10;      // InputManager.MouseStickDeadZone
+	int deadZone = 20;      // InputManager.MouseStickDeadZone (PC default 10; DualShock 3 sticks need more)
 	// Debug cursor test: keep this state instead of resetting to Normal each frame.
 	State forcedState = Normal;
 	bool forceState = false;
