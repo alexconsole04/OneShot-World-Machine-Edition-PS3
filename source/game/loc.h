@@ -45,6 +45,12 @@ std::string map_name(int mapId, const std::string &original);
 std::string zone(const std::string &zoneId, const std::string &original);
 std::string music(const std::string &trackId, const std::string &original);
 std::string cg_name(const std::string &imageId, const std::string &original);
+// GetContactLocString ("id:title"...), GetThemesLocString, GetWallpaperLocString,
+// GetAchievementLocString ("id:title"...).
+std::string contact(const std::string &key, const std::string &original);
+std::string theme_name(const std::string &id, const std::string &original);
+std::string wallpaper_name(const std::string &id, const std::string &original);
+std::string achievement(const std::string &key, const std::string &original);
 
 // gamedata/loc/<code>/<rel>, or the English one if the language lacks it
 // (BootManager.SetSrcText, DocumentWindow).

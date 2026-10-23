@@ -5,6 +5,9 @@
 #include "player.h"
 #include "save.h"
 #include "settings.h"
+#include "json_file.h"
+#include "twm/wm.h"
+#include <math.h>
 #include "../engine/audio.h"
 #include "../engine/font.h"
 #include "../engine/gm.h"
@@ -24,6 +27,12 @@ static const float NEW_GAME_X = 17, NEW_GAME_Y = 17;
 
 bool OneshotWindow::NewSession() {
 	session.reset();   // tear the old one down first (it may hold big textures/streams)
+	film.active = false;
+	if (shake.total > 0) twm::set_game_window_pos(shake.start);   // mid-shake: back where it was
+	shake.total = shake.timer = 0;
+	glitchTimer = 0;
+	border.mapId = -1;
+	border.shifting = false;
 	pictures().Clear();
 	flash() = FlashManager();
 	audio::stop_all();
@@ -117,7 +126,7 @@ void OneshotWindow::CloseGame() {
 	} else if (!session->map.IsInScript()) {
 		session->map.StartCommonEvent(35);   // QUIT GAME: "Quit and record your progress?"
 	} else if (!modal::is_open()) {
-		modal::show(modal::Type::Info, loc::twm("oneshot_window_no_close_during_cutscene"));
+		modal::show(modal::Type::Info, "oneshot_window_no_close_during_cutscene", true);
 	}
 }
 
@@ -128,6 +137,7 @@ void OneshotWindow::Update() {
 			// OneshotWindow.ExitGame: music off, the game's textures freed, the
 			// window closes.
 			sys::log("exit game: the OneShot window closes\n");
+			twm::restore_wallpaper();
 			if (title.IsOpen()) title.ForceClose();
 			if (!NewSession()) { quitApp = true; return; }
 			session->menus.titleOpen = false;
@@ -152,9 +162,15 @@ void OneshotWindow::Update() {
 	s.menus.titleOpen = title.IsOpen();
 	s.menus.Update();
 	s.menus.itemMenu.UpdateSelectedItemIcon();
+	if (glitchTimer > 0) {
+		glitchTimer--;
+		if (++glitchCycle >= 5) { glitchCycle = 0; GenerateGlitch(); }
+	}
+	UpdateBorder();
 	prof::mark("menus update");
 	if (!title.IsOpen()) {
 		s.map.Update();
+		UpdateWindowEffects();
 		prof::mark("map update");
 		s.map.EventRunnerUpdate();
 		prof::mark("events");
@@ -184,6 +200,11 @@ void OneshotWindow::Draw() {
 		s.menus.Draw();
 		prof::mark("menus draw");
 		pictures().Draw();
+		if (film.active) {   // FilmPuzzleManager.Draw: what's left of the number sheet
+			Rect src(film.left * 2, film.up * 2, (film.right - film.left) * 2, (film.down - film.up) * 2);
+			if (src.w > 0 && src.h > 0)
+				gm::blit(gm::texture("pictures/numbersheet"), Vec2(film.left * 2, film.up * 2), src, 1.0f, 0, gfx::Blend::Normal, 1);
+		}
 		flash().Draw();
 		s.map.DrawEventRunners();
 		prof::mark("events draw");
@@ -193,5 +214,160 @@ void OneshotWindow::Draw() {
 		s.menus.Draw();
 		prof::mark("title draw");
 		if (!dataWarning.empty()) font::draw(font::Game, Vec2(16, 448), dataWarning, 0xff8080, 1.0f, 1);
+	}
+}
+
+// ===================================================================== window effects
+
+void OneshotWindow::Shake(int frames) {
+	shake.timer = 0;
+	shake.total = frames;
+	shake.start = twm::game_window_pos();
+}
+
+void OneshotWindow::FilmPuzzleBegin() {
+	film.left = film.up = 0;
+	film.right = 320;
+	film.down = 240;
+	film.active = true;
+}
+
+bool OneshotWindow::FilmPuzzleCleared() const {
+	return film.right - film.left <= 0 || film.down - film.up <= 0;
+}
+
+void OneshotWindow::UpdateWindowEffects() {
+	if (film.active) {
+		// The parts of the picture that have been off the screen are gone.
+		Vec2 p = twm::game_window_pos() + Vec2(2, 26), sz = twm::screen_size();
+		if (-p.x > film.left) film.left = -p.x;
+		if (-p.y > film.up) film.up = -p.y;
+		if (sz.x - p.x < film.right) film.right = sz.x - p.x;
+		if (sz.y - 30 - p.y < film.down) film.down = sz.y - 30 - p.y;
+	}
+	if (shake.total > 0) {
+		if (++shake.timer >= shake.total) {
+			twm::set_game_window_pos(shake.start);
+			shake.timer = shake.total = 0;
+		} else {
+			int n = (shake.total - shake.timer) / 2;
+			twm::set_game_window_pos(Vec2(shake.start.x + util::random(-n, n), shake.start.y + util::random(-n, n)));
+		}
+	}
+}
+
+static float frand(float a, float b) { return a + (b - a) * (util::random(0, 1000000) / 1000000.0f); }
+
+// MathHelper.ApplyHue
+static void apply_hue(float c[3], float h) {
+	const float k = 0.57735f;
+	float cs = cosf(h), sn = sinf(h), d = k * (c[0] + c[1] + c[2]) * (1 - cs);
+	float x = c[0], y = c[1], z = c[2];
+	float cx = k * z - k * y, cy = k * x - k * z, cz = k * y - k * x;   // cross((k,k,k), c)
+	c[0] = x * cs + cx * sn + k * d;
+	c[1] = y * cs + cy * sn + k * d;
+	c[2] = z * cs + cz * sn + k * d;
+	for (int i = 0; i < 3; i++) c[i] = c[i] < 0 ? 0 : c[i] > 1 ? 1 : c[i];
+}
+
+void OneshotWindow::StartGlitch(int frames, float strength) {
+	if (!settings().screenTear) return;
+	glitchTimer = frames;
+	glitchCycle = 0;
+	glitchStrength = strength;
+	GenerateGlitch();
+}
+
+void OneshotWindow::GenerateGlitch() {
+	glitch.clear();
+	for (int left = 480; left > 0;) {
+		gm::GlitchSegment g;
+		g.shift = (int)((util::random(-160, 160) * 2) * glitchStrength);
+		if (g.shift < 0) g.shift += 640;
+		g.height = std::min(util::random(15, 120) * 2, left);
+		float c[3] = { 1.0f, frand(1.0f - 0.5f * glitchStrength, 1.0f), 1.0f };
+		apply_hue(c, frand(0, 6.2831853f));
+		g.r = (uint8_t)(c[0] * 255);
+		g.g = (uint8_t)(c[1] * 255);
+		g.b = (uint8_t)(c[2] * 255);
+		glitch.push_back(g);
+		left -= g.height;
+	}
+}
+
+uint32_t OneshotWindow::Border::For(int id) const {
+	uint32_t first = 0x8541d1;
+	for (auto &c : colors) {
+		if (c.first == id) return c.second;
+		if (c.first == 1) first = c.second;
+	}
+	return first;
+}
+
+static int approach(int target, int start, float ratio) {   // MathHelper.ApproachInt
+	int d = target - start, step = (int)(d * ratio);
+	if (step == 0) step = d >= 0 ? 1 : -1;
+	if (d == 0) return target;
+	return start + step;
+}
+
+void OneshotWindow::UpdateBorder() {
+	if (!border.loaded) {
+		border.loaded = true;
+		if (cJSON *j = parse_json_file("gamedata/oneshot_map_colors.json")) {
+			const cJSON *it;
+			cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(j, "mapColors")) {
+				const cJSON *c = cJSON_GetObjectItemCaseSensitive(it, "color");
+				uint32_t rgb = (uint32_t)cJSON_GetNumberValue(cJSON_GetObjectItemCaseSensitive(c, "r")) << 16 |
+				               (uint32_t)cJSON_GetNumberValue(cJSON_GetObjectItemCaseSensitive(c, "g")) << 8 |
+				               (uint32_t)cJSON_GetNumberValue(cJSON_GetObjectItemCaseSensitive(c, "b"));
+				const cJSON *m;
+				cJSON_ArrayForEach(m, cJSON_GetObjectItemCaseSensitive(it, "maps")) {
+					bool found = false;
+					for (auto &e : border.colors)
+						if (e.first == (int)m->valuedouble) { e.second = rgb; found = true; }
+					if (!found) border.colors.push_back({ (int)m->valuedouble, rgb });
+				}
+			}
+			cJSON_Delete(j);
+		} else {
+			sys::log("gamedata/oneshot_map_colors.json missing: the fullscreen border stays purple\n");
+		}
+	}
+	int id = session->map.GetMapID();
+	if (border.mapId < 0) {
+		border.mapId = id;
+		border.current = border.For(id);
+	}
+	if (border.mapId != id) {
+		border.mapId = id;
+		border.next = border.For(id);
+		if (border.current != border.next) {
+			border.prev = border.current;
+			border.timer = 0;
+			border.shifting = true;
+		}
+	}
+	if (border.shifting) {
+		if (++border.timer >= 120) {
+			border.current = border.next;
+			border.shifting = false;
+		} else {
+			float f = border.timer / 120.0f;
+			auto ch = [&](int sh) { return (uint32_t)approach((int)(border.next >> sh & 255), (int)(border.prev >> sh & 255), f) << sh; };
+			border.current = ch(16) | ch(8) | ch(0);
+		}
+	}
+}
+
+void OneshotWindow::ShiftBorderColorInstantly() {
+	int id = session->map.GetMapID();
+	if (border.mapId != id) {
+		border.mapId = id;
+		border.current = border.For(id);
+	}
+	if (border.shifting) {
+		border.current = border.next;
+		border.shifting = false;
 	}
 }

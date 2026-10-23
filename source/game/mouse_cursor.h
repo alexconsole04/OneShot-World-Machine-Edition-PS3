@@ -30,5 +30,7 @@ private:
 	Vec2 offset;
 };
 
-// Desktop space size (DrawScreenSize / 2): 640x360 on a 16:9 TV.
+// Desktop space size (DrawScreenSize / 2): 640x360 on a 720p TV, 960x540
+// at 1080p. set_desktop_space takes the draw size (the boot space until set).
 Vec2 desktop_space();
+void set_desktop_space(Vec2 drawSize);

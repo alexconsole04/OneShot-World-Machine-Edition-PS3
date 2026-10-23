@@ -17,8 +17,10 @@ void Make(TileMap *map, GameState *state);
 // LoadSave: applies save.dat, then the permanent data. False if the file
 // is unreadable (the caller clears it, like ClearCorruptSave).
 bool Load(TileMap *map, GameState *state);
-// EraseSave: deletes save.dat (the journal is part of the desktop port).
+// EraseSave: deletes save.dat and the journal on the desktop.
 void Erase();
+// Whether save.dat has that flag set (JournalWindow.CheckForSaveInstructions).
+bool SavedFlag(int id);
 void ClearCorrupt();
 // LoadPermaSave / KillPermaFlags.
 bool LoadPerma(GameState *state);

@@ -49,7 +49,8 @@ static Language g_cur;
 static bool g_setOnStartup = true;
 static int g_generation;
 
-static Table twmStrs, commonEventStrs, itemStrs, mapNameStrs, zoneStrs, musicStrs, cgNameStrs;
+static Table twmStrs, commonEventStrs, itemStrs, mapNameStrs, zoneStrs, musicStrs, cgNameStrs, contactsStrs, themesStrs,
+	wallpaperStrs, achievementStrs;
 static Table builtin;   // the port's own strings (English), under the .po ones
 static std::set<int> mapFiles;            // maps the language has an eventstrs file for
 static std::map<int, Table> mapCache;     // recently loaded map files
@@ -236,6 +237,10 @@ void set(const std::string &c, bool save) {
 	read_po(base + "/twm/cg_name_strs.po", cgNameStrs, true);
 	read_po(base + "/music/music_strs.po", musicStrs, true);
 	read_po(base + "/twm/twm_strs.po", twmStrs, true);
+	read_po(base + "/twm/contacts_strs.po", contactsStrs, true);
+	read_po(base + "/twm/themes_strs.po", themesStrs, true);
+	read_po(base + "/twm/wallpaper_strs.po", wallpaperStrs, true);
+	read_po(base + "/twm/achievements_strs.po", achievementStrs, true);
 	mapFiles.clear();
 	{
 		std::vector<std::string> names;
@@ -324,6 +329,10 @@ std::string map_name(int mapId, const std::string &o) { return get(mapNameStrs, 
 std::string zone(const std::string &z, const std::string &o) { return get(zoneStrs, z, o); }
 std::string music(const std::string &t, const std::string &o) { return get(musicStrs, t, o); }
 std::string cg_name(const std::string &i, const std::string &o) { return get(cgNameStrs, i, o); }
+std::string contact(const std::string &key, const std::string &o) { return get(contactsStrs, key, o); }
+std::string theme_name(const std::string &id, const std::string &o) { return get(themesStrs, id, o); }
+std::string wallpaper_name(const std::string &id, const std::string &o) { return get(wallpaperStrs, id, o); }
+std::string achievement(const std::string &key, const std::string &o) { return get(achievementStrs, key, o); }
 
 std::string localized_path(const char *rel) {
 	std::string p = "gamedata/loc/" + g_cur.code + "/" + rel;

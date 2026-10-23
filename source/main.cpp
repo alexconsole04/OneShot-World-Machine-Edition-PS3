@@ -28,13 +28,14 @@
 #include "game/mouse_cursor.h"
 #include "game/boot_sequence.h"
 #include "game/desktop.h"
+#include "game/twm/wm.h"
 #include "game/loc.h"
 namespace script_trace { void dump(); }
 static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m13d"
+#define OSPS3_VERSION "m14"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -103,7 +104,10 @@ int main(int argc, const char **argv) {
 		desktop::init();
 		if (debugMap) desktop::ensure_game_window(true);
 		else if (getenv("OSPS3_LAUNCH")) desktop::ensure_game_window(false);   // host testing
-		if (getenv("OSPS3_LAUNCH") && !debugMap) window().Launch(true);
+		if (getenv("OSPS3_LAUNCH") && !debugMap) {
+			window().Launch(true);
+			if (settings().fullscreen) twm::set_game_maximized(true);
+		}
 	}
 	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
 	{
@@ -262,7 +266,6 @@ int main(int argc, const char **argv) {
 		} else if (mapMenu) {
 			debug_map_menu::update();   // the game is paused underneath
 		} else if (!tex_view) {
-			modal::update();
 			desktop::update();   // WindowManager.Update: the game runs inside its window
 		}
 		if (!systemPause) audio::update();
@@ -283,7 +286,6 @@ int main(int argc, const char **argv) {
 			boot::draw();
 		} else if (!tex_view) {
 			desktop::draw();      // wallpaper, icons, windows (the game inside its own), taskbar
-			modal::draw();
 			desktop::draw_cursor();
 			prof::mark("dialogs + cursor");
 		} else {

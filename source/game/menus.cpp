@@ -9,6 +9,8 @@
 #include "modal.h"
 #include "boot_sequence.h"
 #include "settings.h"
+#include "twm/wm.h"
+#include <algorithm>
 #include "../platform/input.h"
 #include "../platform/sys.h"
 #include "cJSON.h"
@@ -344,10 +346,16 @@ void MainMenu::Draw() {
 }
 
 // ===================================================================== SettingsMenu
+bool SettingsMenu::Shown_(int i) const {
+	if (i == Language) return allowLanguage;
+	if (i == Scaling || i == Border) return twm::game_maximized();   // skipFullscreenRelatedSettings
+	return true;
+}
+
 std::string SettingsMenu::Name(int i) const {
-	static const char *k[COUNT] = { "settings_movement", "settings_colorblind", "settings_vibration",
-	                                "settings_screentear", "settings_chromaaberration", "settings_ps3_scaling",
-	                                "change_language_button", "settings_automash" };
+	static const char *k[COUNT] = { "settings_fullscreen", "settings_movement", "settings_colorblind", "settings_vibration",
+	                                "settings_screentear", "settings_chromaaberration", "settings_fullscreen_scaling",
+	                                "settings_fullscreen_border", "change_language_button", "settings_automash" };
 	return loc::twm(k[i]);
 }
 
@@ -356,11 +364,9 @@ std::string SettingsMenu::Value(int i) const {
 	bool v = false;
 	switch (i) {
 	case Movement: return loc::twm(s.defaultMovementRun ? "settings_run" : "settings_walk");
-	case Scaling: {
-		static const char *m[4] = { "settings_ps3_scaling_sharp", "settings_ps3_scaling_smooth", "settings_ps3_scaling_integer",
-		                            "settings_ps3_scaling_direct" };
-		return loc::twm(m[s.scaling >= 0 && s.scaling < 4 ? s.scaling : 0]);
-	}
+	case Scaling: return loc::twm(s.scaling == 1 ? "settings_fullscreen_scaling_smooth" : "settings_fullscreen_scaling_sharp");
+	case Fullscreen: v = twm::game_maximized(); break;
+	case Border: v = s.fullscreenBorder; break;
 	case Language: {
 		const auto &l = loc::languages();
 		return langIndex >= 0 && langIndex < (int)l.size() ? l[langIndex].displayName : std::string();
@@ -423,6 +429,7 @@ void SettingsMenu::Update() {
 			break;   // the button that closed the question isn't ours
 		}
 		if (modal::is_open()) break;
+		while (!Shown_(selected)) selected = (selected + 1) % COUNT;   // the window was un-maximized
 		if (pressed(BTN_UP)) {
 			audio::play_sound("menu_cursor");
 			do { if (--selected < 0) selected = COUNT - 1; } while (!Shown_(selected));
@@ -456,7 +463,9 @@ void SettingsMenu::Update() {
 			audio::play_sound("menu_decision");
 			Settings &s = settings();
 			switch (selected) {
-			case Scaling: s.scaling = (s.scaling + (pressed(BTN_LEFT) ? 3 : 1)) % 4; break;
+			case Fullscreen: twm::set_game_maximized(!twm::game_maximized()); break;
+			case Scaling: s.scaling = s.scaling == 1 ? 0 : 1; break;
+			case Border: s.fullscreenBorder = !s.fullscreenBorder; break;
 			case Movement: s.defaultMovementRun = !s.defaultMovementRun; break;
 			case Colorblind: s.colorblindMode = !s.colorblindMode; break;
 			case Vibration: s.vibration = !s.vibration; break;
@@ -482,7 +491,9 @@ void SettingsMenu::Draw() {
 	gm::color_box(Rect(0, 0, 320, 240), 0, 0, 0, (uint8_t)(opacity * 180 / 255));
 	// The title texture is the Game font blitted at game scale (doubled).
 	font::draw(font::Game, Vec2(13, 24), loc::twm("settings_title"), 0xffffff, a, 2);
-	int y = 118;
+	int rows = 1;   // the gap before Automash
+	for (int i = 0; i < COUNT; i++) rows += Shown_(i);
+	int y = 118 - std::max(0, rows - 10) * 32;   // all rows shown: start higher to fit
 	for (int i = 0; i < COUNT; i++) {
 		if (!Shown_(i)) continue;
 		float oa = optOpacity[i] / 255.0f * a;

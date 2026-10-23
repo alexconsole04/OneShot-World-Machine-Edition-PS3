@@ -2,9 +2,8 @@
 // script snippets as exact strings; this keeps the same strings.
 //
 // Desktop (TWM) side effects - files written into the World Machine's file
-// system, wallpapers, profiles, achievements - are recorded/logged only
-// until the desktop is ported. Glitch effects, particles and lights are
-// stubs for now (logged once).
+// system, wallpapers, profiles, badges, the window - go through twm/wm.h.
+// Particles and lights are stubs for now (logged once).
 #include "script_parser.h"
 #include "event_runner.h"
 #include "entity.h"
@@ -17,7 +16,10 @@
 #include "oneshot_window.h"
 #include "save.h"
 #include "settings.h"
+#include "twm/fs.h"
+#include "twm/wm.h"
 #include "../engine/audio.h"
+#include "../engine/util.h"
 #include "../platform/input.h"
 #include "../platform/sys.h"
 
@@ -109,7 +111,21 @@ static void HandleEdText(Ctx &c, std::string s, int pageId) {
 	while (!text.empty() && text.back() == ' ') text.pop_back();
 	text = loc::map_text(pageId, text);
 	while ((p = text.find("\\p")) != std::string::npos) text.replace(p, 2, c.st->player_name);
-	modal::show(t, text);
+	modal::show(t, text, true);
+}
+
+static std::string quoted_arg(const std::string &s) {   // Regex ".+?['\"](.+?)['\"]"
+	size_t a = s.find_first_of("'\"");
+	if (a == std::string::npos) return "";
+	size_t b = s.find_first_of("'\"", a + 1);
+	return b == std::string::npos ? "" : s.substr(a + 1, b - a - 1);
+}
+
+static void write_files(const char *path, std::initializer_list<std::shared_ptr<twm::File>> files) {
+	for (auto &f : files) {
+		f->deleteRestricted = true;
+		twm::filesystem().WriteFile(path, f);
+	}
 }
 
 static void UnlockMap(Ctx &c, std::string s) {
@@ -183,10 +199,31 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	};
 
 	t["demo_end_check"] = none;
-	t["create_author_prof_file"] = [](Ctx &) { note("desktop (not ported)", "create_author_prof_file"); return false; };
-	for (const char *g : { "GlitchPixelEffect()", "GlitchPixelEffectLong()", "GlitchPixelEffectWeak()",
-	                       "GlitchPixelEffectWeakest()", "GlitchPixelEffectWeakLong()" })
-		t[g] = [g](Ctx &) { note("glitch effect (not ported)", g); return false; };
+	t["create_author_prof_file"] = [](Ctx &) {
+		using namespace twm;
+		Filesystem &fs = filesystem();
+		if (!profile_unlocked("author") && !fs.FileTypeExists(PROG_AUTHOR_PROFILE)) {
+			auto f = make_file("contacts", "author_prof_filename", PROG_AUTHOR_PROFILE);
+			f->deleteRestricted = true;
+			fs.WriteFile(Filesystem::MYGAMESONESHOT, f);
+		}
+		if (!profile_unlocked("niko") && !fs.FileTypeExists(PROG_NIKO_PROFILE)) {
+			auto f = make_file("contacts", "niko_prof_filename", PROG_NIKO_PROFILE);
+			f->deleteRestricted = true;
+			fs.WriteFile(Filesystem::MYDOCUMENTS, f);
+		}
+		if (!wallpaper_unlocked("from_niko") && !fs.FileTypeExists(PROG_FROMNIKO_WALLPAPER)) {
+			auto f = make_file("photo", "fromniko_wallpaper_filename", PROG_FROMNIKO_WALLPAPER);
+			f->deleteRestricted = true;
+			fs.WriteFile(Filesystem::MYDOCUMENTS, f);
+		}
+		return false;
+	};
+	t["GlitchPixelEffect()"] = [](Ctx &) { window().StartGlitch(20); return false; };
+	t["GlitchPixelEffectLong()"] = [](Ctx &) { window().StartGlitch(40); return false; };
+	t["GlitchPixelEffectWeak()"] = [](Ctx &) { window().StartGlitch(20, 0.1f); return false; };
+	t["GlitchPixelEffectWeakest()"] = [](Ctx &) { window().StartGlitch(40, 0.02f); return false; };
+	t["GlitchPixelEffectWeakLong()"] = [](Ctx &) { window().StartGlitch(40, 0.1f); return false; };
 	t["watcher_tell_time"] = [](Ctx &c) {
 		int h, m, s, yd;
 		sys::local_time(&h, &m, &s, &yd);
@@ -284,16 +321,76 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 		return false;
 	};
 	t["safe_puzzle_write"] = [](Ctx &c) {
-		// The PC writes the safe code into a document on the desktop.
-		sys::log("script: safe code document -> %d (desktop not ported)\n", c.st->var(20));
+		twm::filesystem().WriteFile(twm::Filesystem::MYDOCUMENTS,
+		                            twm::make_file("doc", "app_safe_document", twm::PROG_DOCUMENT, { "document", std::to_string(c.st->var(20)) }));
 		return false;
 	};
-	t["safe_puzzle_postgame_write"] = t["safe_puzzle_write"];
-	for (const char *s : { "Script.copy_journal", "Script.create_boxes", "Script.clear_boxes", "Script.put_key_in_box(1)",
-	                       "Script.put_key_in_box(2)", "Script.put_key_in_box(3)", "Script.password1", "Script.password2",
-	                       "Wallpaper.reset_persistent", "Niko.do_your_thing", "set_wallpaper_black",
-	                       "stop_speedrun_timer" })
-		t[s] = [s](Ctx &) { note("desktop/save (not ported)", s); return false; };
+	t["safe_puzzle_postgame_write"] = [](Ctx &c) {
+		twm::filesystem().WriteFile(twm::Filesystem::MYDOCUMENTS,
+		                            twm::make_file("doc", "app_safe_document", twm::PROG_DOCUMENT, { "document_postgame", std::to_string(c.st->var(20)) }));
+		return false;
+	};
+	t["Script.copy_journal"] = [](Ctx &) {
+		twm::filesystem().AddDir(twm::Filesystem::MYGAMESONESHOT);
+		auto f = twm::make_file("clover", "app_journal", twm::PROG_JOURNAL);
+		f->deleteRestricted = f->moveRestricted = true;
+		twm::filesystem().WriteFile(twm::Filesystem::MYGAMESONESHOT, f);
+		return false;
+	};
+	t["Script.create_boxes"] = [](Ctx &) {
+		for (const char *d : { "portal_1_foldername/", "portal_2_foldername/", "portal_3_foldername/", "big_portal_foldername/" })
+			twm::filesystem().AddDir(std::string(twm::Filesystem::PORTALS) + d);
+		return false;
+	};
+	t["Script.clear_boxes"] = [](Ctx &) {
+		for (const char *f : { "portal_1_foldername/prototype_npcsheet_filename", "portal_1_foldername/prototype_facepic_filename",
+		                       "portal_1_foldername/key_b_filename", "portal_2_foldername/cedric_npcsheet_filename",
+		                       "portal_2_foldername/cedric_facepic_filename", "portal_2_foldername/key_g_filename",
+		                       "portal_3_foldername/rue_npcsheet_filename", "portal_3_foldername/rue_facepic_filename",
+		                       "portal_3_foldername/key_r_filename", "big_portal_foldername/key_b_filename",
+		                       "big_portal_foldername/key_g_filename", "big_portal_foldername/key_r_filename" })
+			twm::filesystem().Delete(std::string(twm::Filesystem::PORTALS) + f);
+		return false;
+	};
+	t["Script.put_key_in_box(1)"] = [](Ctx &) {
+		using twm::make_file;
+		write_files("/portals_foldername/portal_1_foldername/",
+		            { make_file("photo", "prototype_npcsheet_filename", twm::PROG_PHOTO, { "blue_npc_prototype", "2" }),
+		              make_file("photo", "prototype_facepic_filename", twm::PROG_PHOTO, { "proto1", "2" }),
+		              make_file("doc", "key_b_filename", twm::PROG_DOCUMENT, { "keyB" }) });
+		return false;
+	};
+	t["Script.put_key_in_box(2)"] = [](Ctx &) {
+		using twm::make_file;
+		write_files("/portals_foldername/portal_2_foldername/",
+		            { make_file("photo", "cedric_npcsheet_filename", twm::PROG_PHOTO, { "green_npc_cedric", "2" }),
+		              make_file("photo", "cedric_facepic_filename", twm::PROG_PHOTO, { "cedric", "2" }),
+		              make_file("doc", "key_g_filename", twm::PROG_DOCUMENT, { "keyG" }) });
+		return false;
+	};
+	t["Script.put_key_in_box(3)"] = [](Ctx &) {
+		using twm::make_file;
+		write_files("/portals_foldername/portal_3_foldername/",
+		            { make_file("photo", "rue_npcsheet_filename", twm::PROG_PHOTO, { "red_rue", "2" }),
+		              make_file("photo", "rue_facepic_filename", twm::PROG_PHOTO, { "rue", "2" }),
+		              make_file("doc", "key_r_filename", twm::PROG_DOCUMENT, { "keyR" }) });
+		return false;
+	};
+	auto passwords = [](const char *scenario) {
+		return Fn([scenario](Ctx &) {
+			for (int i = 1; i <= 4; i++)
+				twm::filesystem().WriteFile(twm::Filesystem::MYDOCUMENTS,
+				                            twm::make_file("photo", "oneshot_password_image_" + std::to_string(i) + "_filename",
+				                                           twm::PROG_PHOTO, { std::string(scenario) + "/pw" + std::to_string(i) }));
+			return false;
+		});
+	};
+	t["Script.password1"] = passwords("scenario1");
+	t["Script.password2"] = passwords("scenario2");
+	t["Wallpaper.reset_persistent"] = [](Ctx &) { twm::restore_wallpaper(); return false; };
+	t["Niko.do_your_thing"] = [](Ctx &c) { twm::deploy_niko(c.map->GetMapID() == 255, c.st->flag(160)); return false; };
+	t["set_wallpaper_black"] = [](Ctx &) { twm::set_wallpaper("black"); return false; };
+	t["stop_speedrun_timer"] = [](Ctx &) { note("speedrun timer (the Timer app comes later)", "stop_speedrun_timer"); return false; };
 	t["Script.fadein_bgm(90,5)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 5.0f); return false; };
 	t["Script.fadein_bgm(90,3)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 3.0f); return false; };
 	t["particles :fireflies"] = [](Ctx &) { note("particles (not ported)", "fireflies"); return false; };
@@ -327,10 +424,15 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 		return false;
 	};
 	t["pan_offset_y -64\nwrap_map"] = [](Ctx &c) { c.map->EnableWrapping(); return false; };
-	for (const char *s : { "film_puzzle_begin", "Graphics.fullscreen = false\nfilm_puzzle_begin", "film_puzzle_end" })
-		t[s] = [s](Ctx &) { note("film puzzle (not ported)", s); return false; };
-	t["Graphics.fullscreen = true"] = [](Ctx &c) { c.st->window_maximized = true; return false; };
-	t["Graphics.fullscreen = false"] = [](Ctx &c) { c.st->window_maximized = false; return false; };
+	t["film_puzzle_begin"] = [](Ctx &) { window().FilmPuzzleBegin(); return false; };
+	t["Graphics.fullscreen = false\nfilm_puzzle_begin"] = [](Ctx &) {
+		twm::set_game_maximized(false);
+		window().FilmPuzzleBegin();
+		return false;
+	};
+	t["film_puzzle_end"] = [](Ctx &) { window().FilmPuzzleEnd(); return false; };
+	t["Graphics.fullscreen = true"] = [](Ctx &) { twm::set_game_maximized(true); return false; };
+	t["Graphics.fullscreen = false"] = [](Ctx &) { twm::set_game_maximized(false); return false; };
 	t["Interpreter.take_a_chill_pill"] = [](Ctx &) { return true; };
 	t["Script.start_bruteforce"] = [](Ctx &c) { c.st->bruteforce_start = c.st->play_frames; return false; };
 	t["Script.bruteforce_vars"] = [](Ctx &c) {
@@ -383,7 +485,7 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 		if (p.x < 5 || p.x > 15 || p.y < 2 || p.y > 13) c.player()->SetPosTile(Vec2(10, 13));
 		return false;
 	};
-	t["Oneshot.shake"] = [](Ctx &) { note("window shake (not ported)", "Oneshot.shake"); return false; };
+	t["Oneshot.shake"] = [](Ctx &) { window().Shake(60); return false; };
 	t["$scene = Scene_Load.new"] = none;   // debug menus
 	t["open_debug_flag_menu"] = none;
 	t["open_var_flag_menu"] = none;
@@ -427,13 +529,18 @@ bool HandleScript(TileMap *map, const std::string &script, EventRunner *caller, 
 	if (starts(script, "EdText")) { HandleEdText(c, script, pageId); return true; }
 	if (starts(script, "UnlockProfile") || starts(script, "UnlockWallpaper") || starts(script, "UnlockTheme") ||
 	    starts(script, "Steam.unlock")) {
-		note("unlock (desktop/achievements not in the PS3 build)", script);
+		std::string id = quoted_arg(script);
+		if (id.empty()) sys::log("script: failed to match unlock: %s\n", script.c_str());
+		else if (starts(script, "UnlockProfile")) twm::unlock_profile(id);
+		else if (starts(script, "UnlockWallpaper")) twm::unlock_wallpaper(id);
+		else if (starts(script, "UnlockTheme")) twm::unlock_theme(id);
+		else twm::unlock_achievement(id);
 		return false;
 	}
 	if (starts(script, "unlock_map ")) { UnlockMap(c, script); return false; }
 	if (starts(script, "Journal.set ")) {
 		std::string s = script.substr(12);
-		c.st->journal_page = s.size() >= 2 ? s.substr(1, s.size() - 2) : s;
+		twm::set_journal_page(s.size() >= 2 ? s.substr(1, s.size() - 2) : s);
 		return false;
 	}
 	if (starts(script, "Script.fix_footsplashes(")) return false;   // footsplashes: not ported
@@ -454,6 +561,20 @@ bool HandleScript(TileMap *map, const std::string &script, EventRunner *caller, 
 	auto it = t.find(script);
 	if (it != t.end()) return it->second(c);
 	note("unrecognized script command", script);
+	return false;
+}
+
+// The namecheck strings are space-separated lists of names.
+static bool name_in(const std::string &lname, const char *key) {
+	const std::string &list = loc::twm(key);
+	size_t a = 0;
+	while (a <= list.size()) {
+		size_t b = list.find(' ', a);
+		std::string w = list.substr(a, b == std::string::npos ? std::string::npos : b - a);
+		if (!w.empty() && util::lower(w) == lname) return true;
+		if (b == std::string::npos) break;
+		a = b + 1;
+	}
 	return false;
 }
 
@@ -483,20 +604,28 @@ CondResult HandleScriptConditional(TileMap *map, const std::string &script, Even
 	else if (s == "$persistent.langcode == 'ja'") r = false;
 	else if (s == "$game_player.y == 17") r = c.ptile().y == 17;
 	else if (s == "Game_Oneshot.get_user_name == $game_oneshot.player_name") r = name == sys::user_name();
-	else if (s == "Script.is_name_swear" || s == "Script.is_name_like_mom_dad" || s == "Script.is_name_gross") r = false;
+	else if (s == "Script.is_name_swear") r = name_in(lname, "namecheck_is_name_swear");
+	else if (s == "Script.is_name_like_mom_dad") r = name_in(lname, "namecheck_is_name_like_mom_or_dad");
+	else if (s == "Script.is_name_gross") r = name_in(lname, "namecheck_is_name_gross");
 	else if (s == "Script.is_name_niko") r = lname == "niko";
-	else if (s == "Script.is_name_like_niko") r = lname == "niko";
-	else if (s == "$console") r = c.st->window_maximized;
-	else if (s == "Wallpaper.set_persistent('desktop', 0x1a041f)" || s == "Wallpaper.set_persistent('save_w32', 0x0)") r = true;
+	else if (s == "Script.is_name_like_niko") r = name_in(lname, "namecheck_is_name_like_niko");
+	else if (s == "$console") r = twm::game_maximized();
+	else if (s == "Wallpaper.set_persistent('desktop', 0x1a041f)") {
+		r = true;
+		twm::override_wallpaper("desktop", 0 /* CENTERED */, 26, 4, 31);
+	} else if (s == "Wallpaper.set_persistent('save_w32', 0x0)") {
+		r = true;
+		twm::override_wallpaper("save_w32", 0 /* CENTERED */, 0, 0, 0);
+	}
 	else if (s == "activate_balcony? 17")
 		r = c.player()->PlayerHasControl() && c.ptile().y == 17 && c.player()->GetDirection() == Direction::Up &&
 		    input::pressed(input::BTN_OK);
-	else if (s == "Oneshot.obscured_cleared?") r = false;
+	else if (s == "Oneshot.obscured_cleared?") r = window().FilmPuzzleCleared();
 	else if (s == "button_pressed?") r = input::pressed(input::BTN_OK) || input::pressed(input::BTN_CANCEL);
 	else if (s == "Script.check_bruteforce") {
 		if (c.st->bruteforce_start < 0) c.st->bruteforce_start = c.st->play_frames;
 		r = c.st->play_frames - c.st->bruteforce_start > 7561680;
-	} else if (s == "Journal.active?") r = false;
+	} else if (s == "Journal.active?") r = twm::journal_open();
 	else if (s == "fake_save_exists") r = true;
 	else if (s == "$game_temp.countdown_password.downcase == \"solstice\"" ||
 	         s == "$game_temp.countdown_password.downcase == \"hello penguin\"") {
@@ -513,8 +642,16 @@ CondResult HandleScriptConditional(TileMap *map, const std::string &script, Even
 			if (c.st->var(101 + i) != v[i]) { c.st->set_var(101 + i, v[i]); r = true; }
 	} else if (s == "Script.countdown_over == true") r = true;
 	else if (starts(s, "Script.is_key_in_bigbox(") || starts(s, "Script.is_key_in_box(")) {
-		note("desktop file check (not ported)", s);
-		r = false;
+		bool big = starts(s, "Script.is_key_in_bigbox(");
+		char n = s[s.find('(') + 1];
+		static const char *keys[3] = { "key_b_filename", "key_g_filename", "key_r_filename" };
+		int i = n - '1';
+		if (i >= 0 && i < 3) {
+			// 1 blue, 2 green, 3 red, in the big box as in the small ones.
+			std::string dir = big ? "/portals_foldername/big_portal_foldername/"
+			                      : std::string("/portals_foldername/portal_") + n + "_foldername/";
+			r = twm::filesystem().FileExists(dir + keys[i]);
+		}
 	} else note("unimplemented conditional", s);
 	return r ? CondResult::Yes : CondResult::No;
 }

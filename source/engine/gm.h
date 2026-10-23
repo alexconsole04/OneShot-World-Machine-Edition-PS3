@@ -4,6 +4,7 @@
 #pragma once
 #include "types.h"
 #include <string>
+#include <vector>
 #include "../platform/gfx.h"
 
 namespace gm {
@@ -21,6 +22,8 @@ const gfx::Texture *texture(const char *name, CacheType cache = Game);
 Vec2 texture_size(const char *name, CacheType cache = Game);
 bool texture_exists(const char *name, CacheType cache = Game);
 void clear_cache(CacheType cache);
+// IsPixelSolid: that texel's alpha is over 128 (false outside the texture).
+bool pixel_solid(const char *name, Vec2 texel, CacheType cache = Game);
 // Maps a texture name to the current language's version of it (set by the
 // language manager; content/<dir>/<lang>/<name>).
 void set_texture_redirect(std::string (*fn)(const std::string &));
@@ -68,11 +71,8 @@ void draw_captured_window(float alpha);
 //          filter to the TV size: every game pixel the same size, edges
 //          stay crisp (only their outermost line is blended)
 //  SMOOTH  draw at 1x and filter up: soft, like the PC's linear scaling
-//  INTEGER draw at the largest whole-number scale (2x / 1x), unfiltered and
-//          centred, with a black border
-//  DIRECT  no offscreen pass, nearest-neighbour straight onto the TV (how
-//          builds before m9 drew; uneven pixel sizes at 2.25x / 1.5x)
-enum { SCALE_SHARP = 0, SCALE_SMOOTH = 1, SCALE_INTEGER = 2, SCALE_DIRECT = 3, SCALE_COUNT = 4 };
+// (m14 dropped INTEGER and DIRECT; saved values of those read as SHARP.)
+enum { SCALE_SHARP = 0, SCALE_SMOOTH = 1, SCALE_COUNT = 2 };
 void set_scaling(int mode);
 // Where the 640x480 game window lands on the TV (TV pixels, TV pixels per
 // window pixel): the desktop moves it with the OneShot window. reset puts
@@ -86,6 +86,11 @@ const char *scaling_info();   // for the debug overlay
 // (window coordinates keep working), then end_window puts it on the TV.
 void begin_window();
 void end_window();
+// GlitchEffectManager / DrawGlitchSegments: the next end_window draws the
+// picture in horizontal bands, each shifted left by `shift` window pixels
+// (wrapping round) and tinted. Bands go down from the top; nullptr: off.
+struct GlitchSegment { int shift, height; uint8_t r, g, b; };
+void set_window_glitch(const std::vector<GlitchSegment> *segments);
 
 // Screen-space helpers for overlays (raw TV pixels).
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,

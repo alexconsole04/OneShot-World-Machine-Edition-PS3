@@ -29,7 +29,10 @@ void Settings::Load() {
 	get_bool(root, "isScreenTearEnabled", screenTear);
 	get_bool(root, "isChromaticAberrationEnabled", chromaAberration);
 	const cJSON *sc = cJSON_GetObjectItemCaseSensitive(root, "ps3ScalingMode");
-	if (cJSON_IsNumber(sc) && sc->valueint >= 0 && sc->valueint < 4) scaling = sc->valueint;
+	// 2 (integer) and 3 (direct) were dropped in m14: they read as sharp.
+	if (cJSON_IsNumber(sc)) scaling = sc->valueint == 1 ? 1 : 0;
+	get_bool(root, "fullscreen", fullscreen);
+	get_bool(root, "isFullscreenBorderEnabled", fullscreenBorder);
 	cJSON_Delete(root);
 }
 
@@ -42,6 +45,11 @@ void Settings::Save() const {
 	cJSON_AddBoolToObject(root, "isScreenTearEnabled", screenTear);
 	cJSON_AddBoolToObject(root, "isChromaticAberrationEnabled", chromaAberration);
 	cJSON_AddNumberToObject(root, "ps3ScalingMode", scaling);
+	cJSON_AddBoolToObject(root, "fullscreen", fullscreen);
+	cJSON_AddBoolToObject(root, "isFullscreenBorderEnabled", fullscreenBorder);
+	// The PC's own scaling fields (SettingsMenu.ScalingMode: 1 smooth, 2 sharp).
+	cJSON_AddNumberToObject(root, "fullscreenScaling", scaling == 1 ? 1 : 2);
+	cJSON_AddBoolToObject(root, "isFullscreenScalingSmooth", scaling == 1);
 	char *s = cJSON_PrintUnformatted(root);
 	if (s) {
 		sys::save_write("settings.conf", s);

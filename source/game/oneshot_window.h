@@ -11,6 +11,7 @@
 #include "menus.h"
 #include "tilemap.h"
 #include "title_screen.h"
+#include "../engine/gm.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -43,6 +44,18 @@ public:
 	void ResetForBoot();
 	bool TitleOpen() const { return title.IsOpen(); }
 
+	// The parts of the game that act on its World Machine window.
+	void Shake(int frames);                      // WindowShakeManager ("Oneshot.shake")
+	void FilmPuzzleBegin();                      // FilmPuzzleManager
+	void FilmPuzzleEnd() { film.active = false; }
+	bool FilmPuzzleCleared() const;
+	void StartGlitch(int frames, float strength = 1.0f);   // GlitchEffectManager
+	// The glitch bands for this frame's picture, or nullptr.
+	const std::vector<gm::GlitchSegment> *GlitchSegments() const { return glitchTimer > 0 ? &glitch : nullptr; }
+	uint32_t BorderColor() const { return border.current; }   // FullscreenBorderManager (0xRRGGBB)
+	void ShiftBorderColorInstantly();
+	bool CloverEquipped() const { return session && session->state.var(1) == 58; }
+
 	GameState &State() { return session->state; }
 	TileMap &Map() { return session->map; }
 	MenuManager &Menus() { return session->menus; }
@@ -59,6 +72,21 @@ private:
 	std::unique_ptr<Session> session;
 	TitleScreen title;
 	bool exitRequested = false, quitApp = false, open = false;
+	struct { bool active = false; int left = 0, up = 0, right = 320, down = 240; } film;
+	struct { int total = 0, timer = 0; Vec2 start; } shake;
+	std::vector<gm::GlitchSegment> glitch;
+	int glitchTimer = 0, glitchCycle = 0;
+	float glitchStrength = 1.0f;
+	void GenerateGlitch();
+	struct Border {
+		std::vector<std::pair<int, uint32_t>> colors;   // map id -> colour
+		bool loaded = false, shifting = false;
+		int mapId = -1, timer = 0;
+		uint32_t current = 0x000000, prev = 0, next = 0;
+		uint32_t For(int id) const;
+	} border;
+	void UpdateBorder();
+	void UpdateWindowEffects();   // film puzzle and window shake
 	std::string dataWarning;
 };
 

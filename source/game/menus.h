@@ -92,10 +92,13 @@ public:
 	void Close() override;
 	bool IsOpen() const override { return st != Closed; }
 private:
-	enum Option { Movement, Colorblind, Vibration, ScreenTear, ChromaAberration, Scaling, Language, Automash, COUNT };
+	// The PC's order (Fullscreen first; scaling and border only while
+	// maximized), plus this port's Language row.
+	enum Option { Fullscreen, Movement, Colorblind, Vibration, ScreenTear, ChromaAberration, Scaling, Border, Language, Automash,
+	              COUNT };
 	std::string Name(int i) const;
 	std::string Value(int i) const;
-	bool Shown_(int i) const { return i != Language || allowLanguage; }
+	bool Shown_(int i) const;
 	int langIndex = 0;              // language picked in the Language row
 	bool confirmingLanguage = false;   // the "restart?" question is up
 public:

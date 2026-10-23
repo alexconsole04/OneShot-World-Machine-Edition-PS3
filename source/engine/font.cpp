@@ -96,6 +96,8 @@ void set_language_fonts(const char *os, const char *game, const char *small, int
 
 int os_scale() { return osScale; }
 
+void set_squeeze(float sq, float anchorX) { squeeze = sq; squeezeX0 = anchorX; }
+
 // getFontForChar: main font, then backup 1, then backup 2. May return a
 // font that lacks c (then its default character is used).
 static SpriteFont *font_for(Type t, uint32_t c) {

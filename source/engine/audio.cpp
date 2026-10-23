@@ -367,8 +367,12 @@ void play_sound(const char *name, float vol, float pitch) {
 	mixer::play_pcm(v, p, vol * sfx_scale(), pitch, false);
 }
 
+static void (*g_songHook)(const char *);
+void set_song_hook(void (*hook)(const char *)) { g_songHook = hook; }
+
 void play_song(const char *name, float fadeIn, float vol, float pitch) {
 	TRACE("audio: bgm %s (%.2f)\n", name, vol);
+	if (g_songHook && name && *name) g_songHook(name);
 	smSongName = name;
 	smSongVol = vol;
 	smSongPitch = pitch;
@@ -379,6 +383,7 @@ void play_song(const char *name, float fadeIn, float vol, float pitch) {
 
 void queue_song(const char *name, float fadeIn, float vol, float pitch) {
 	TRACE("audio: queue bgm %s (%.2f)\n", name, vol);
+	if (g_songHook && name && *name) g_songHook(name);
 	smSongName = name;
 	smSongVol = vol;
 	smSongPitch = pitch;

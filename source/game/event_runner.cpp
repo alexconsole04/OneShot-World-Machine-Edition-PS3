@@ -598,7 +598,7 @@ bool EventRunner::commandControlSwitches(const EventCommand &c) {
 	int first = c.iparam(0), last = c.iparam(1);
 	bool on = c.iparam(2) == 0;
 	for (int i = first; i <= last; i++) state->set_flag(i, on);
-	// Desktop.inSolstice: the World Machine desktop is not ported yet.
+	twm::set_in_solstice(state->solstice_glitch_time());   // Desktop.inSolstice
 	return false;
 }
 

@@ -19,6 +19,8 @@ void update();
 
 void play_sound(const char *name, float vol = 1.0f, float pitch = 1.0f);
 void play_song(const char *name, float fadeIn, float vol, float pitch);
+// Told the name of every song played or queued (the desktop's music unlocks).
+void set_song_hook(void (*hook)(const char *name));
 void queue_song(const char *name, float fadeIn, float vol, float pitch);
 void play_bgs(const char *name, float vol, float pitch);
 void stop_bgs();

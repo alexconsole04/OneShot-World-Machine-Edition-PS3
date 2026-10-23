@@ -2,7 +2,11 @@
 #include "game_state.h"
 #include "pictures.h"
 #include "settings.h"
+#include "twm/fs.h"
+#include "twm/wm.h"
+#include "desktop.h"
 #include "tilemap.h"
+#include "oneshot_window.h"
 #include "../engine/audio.h"
 #include "../platform/sys.h"
 #include "cJSON.h"
@@ -48,7 +52,25 @@ static cJSON *read_json(const char *name) {
 	return root;
 }
 
-bool Exists() { return sys::save_exists(SAVE_FILE); }
+static const char *FAKESAVE = "/docs_foldername/mygames_foldername/oneshot_foldername/fakesave_filename";
+
+// SaveExists: the playthrough's file on the desktop is the save - delete
+// it there and the save goes too.
+bool Exists() {
+	if (desktop::ready() && !twm::filesystem().FileExists(FAKESAVE)) Erase();
+	return sys::save_exists(SAVE_FILE);
+}
+
+bool SavedFlag(int id) {
+	cJSON *root = read_json(SAVE_FILE);
+	if (!root) return false;
+	bool r = false;
+	const cJSON *it;
+	cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "flags"))
+		if (cJSON_IsNumber(it) && (int)it->valuedouble == id) r = true;
+	cJSON_Delete(root);
+	return r;
+}
 
 // ---------------------------------------------------------------- permanent data
 static void WritePerma(const GameState *s) {
@@ -121,11 +143,25 @@ void Make(TileMap *map, GameState *s) {
 		cJSON_AddNumberToObject(o, "direction", l.direction);
 		cJSON_AddItemToArray(locs, o);
 	}
-	cJSON_AddStringToObject(root, "journalPage", s->journal_page.c_str());
 	cJSON_AddNumberToObject(root, "plightTimeStart", s->plight_timer_start);
 	cJSON_AddNumberToObject(root, "playTimeFrameCount", (double)s->play_frames);
 	cJSON_AddNumberToObject(root, "plightBruteForceStartFrame", (double)s->bruteforce_start);
-	cJSON_AddBoolToObject(root, "windowMaximized", s->window_maximized);
+	{
+		std::string img, name;
+		int mode;
+		uint8_t r, g, b;
+		if (twm::overriding_wallpaper(img, name, mode, r, g, b)) {   // currentOverridingWallpaper
+			cJSON *w = cJSON_AddObjectToObject(root, "currentOverridingWallpaper");
+			cJSON_AddStringToObject(w, "imageFile", img.c_str());
+			cJSON_AddStringToObject(w, "displayName", name.c_str());
+			cJSON_AddNumberToObject(w, "mode", mode);
+			cJSON *c = cJSON_AddObjectToObject(w, "bgColor");
+			cJSON_AddNumberToObject(c, "r", r);
+			cJSON_AddNumberToObject(c, "g", g);
+			cJSON_AddNumberToObject(c, "b", b);
+			cJSON_AddNumberToObject(c, "a", 255);
+		}
+	}
 	cJSON_AddItemToObject(root, "pictureData", pictures().GetSaveData());
 	audio::SaveData sd = audio::get_save_data();
 	cJSON *snd = cJSON_AddObjectToObject(root, "soundSaveData");
@@ -139,6 +175,12 @@ void Make(TileMap *map, GameState *s) {
 	bool ok = write_json(SAVE_FILE, root);
 	WritePerma(s);
 	settings().Save();
+	if (!twm::filesystem().FileExists(FAKESAVE)) {
+		auto f = twm::make_file("save", "fakesave_filename", twm::PROG_DOCUMENT, { "save_progress_text" });
+		f->moveRestricted = true;
+		twm::filesystem().WriteFile(twm::Filesystem::MYGAMESONESHOT, f);
+	}
+	twm::save_desktop_and_fs();
 	sys::log(ok ? "Game Saved! (map %d)\n" : "SAVE FAILED (map %d)\n", map->GetMapID());
 }
 
@@ -178,8 +220,11 @@ bool Load(TileMap *map, GameState *s) {
 	s->plight_timer_start = jint(root, "plightTimeStart", 0);
 	s->bruteforce_start = (long long)jdbl(root, "plightBruteForceStartFrame", -1);
 	s->play_frames = (long long)jdbl(root, "playTimeFrameCount", 0);
-	s->window_maximized = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "windowMaximized"));
-	s->journal_page = jstr(root, "journalPage");
+	if (const cJSON *w = cJSON_GetObjectItemCaseSensitive(root, "currentOverridingWallpaper")) {
+		const cJSON *c = cJSON_GetObjectItemCaseSensitive(w, "bgColor");
+		twm::override_wallpaper(jstr(w, "imageFile"), jint(w, "mode", 0), (uint8_t)jint(c, "r", 0), (uint8_t)jint(c, "g", 0),
+		                        (uint8_t)jint(c, "b", 0));
+	}
 	std::fill(s->inventory.begin(), s->inventory.end(), false);
 	cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "inventory"))
 		if (cJSON_IsNumber(it)) s->add_item((int)it->valuedouble);
@@ -202,14 +247,19 @@ bool Load(TileMap *map, GameState *s) {
 		}
 	}
 	if (!s->flag(198)) map->StartCommonEvent(42);   // "Load Save": welcome back / dreams
+	window().ShiftBorderColorInstantly();
+	twm::set_in_solstice(s->solstice_glitch_time());
 	cJSON_Delete(root);
 	sys::log("Save Loaded! (map %d)\n", map->GetMapID());
 	return LoadPerma(s) || !sys::save_exists(PERMA_FILE);
 }
 
 void Erase() {
-	sys::save_delete(SAVE_FILE);
-	sys::log("save erased\n");
+	if (sys::save_exists(SAVE_FILE)) {
+		sys::save_delete(SAVE_FILE);
+		sys::log("save erased\n");
+	}
+	if (desktop::ready()) twm::filesystem().Delete("/docs_foldername/mygames_foldername/oneshot_foldername/app_journal");
 }
 
 void ClearCorrupt() {

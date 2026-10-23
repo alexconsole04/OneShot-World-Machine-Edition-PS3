@@ -1,3 +1,4 @@
+#include "twm/wm.h"
 #include "pictures.h"
 #include "../engine/gm.h"
 #include "../engine/util.h"
@@ -7,6 +8,7 @@ FlashManager &flash() { static FlashManager m; return m; }
 
 void PictureManager::ShowPicture(int slot, const std::string &name, bool isPosCenter, Vec2 pos, float xs, float ys,
                                  int opacity, gfx::Blend blend) {
+	twm::unlock_cg(name);   // UnlockCg
 	pictures.erase(slot);
 	Picture p;
 	p.name = name;

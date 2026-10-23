@@ -5,8 +5,14 @@
 #include "../platform/input.h"
 #include <math.h>
 
+static Vec2 g_drawSize;
+
+void set_desktop_space(Vec2 d) { g_drawSize = d; }
+
+static Vec2 draw_size() { return g_drawSize.x > 0 ? g_drawSize : gm::boot_space(); }
+
 Vec2 desktop_space() {
-	Vec2 b = gm::boot_space();   // the desktop's draw size (1280x720 on a 16:9 TV)
+	Vec2 b = draw_size();
 	return Vec2(b.x / 2, b.y / 2);
 }
 
@@ -58,7 +64,7 @@ void MouseCursor::Draw() const {
 	if (!t) return;
 	// MainBlit at scale 2 in the desktop's draw space: the black outline
 	// rows, then the white fill.
-	gm::begin_space(gm::boot_space());
+	gm::begin_space(draw_size());
 	Vec2 p(pos.x + offset.x, pos.y + offset.y);
 	Rect outline = frameRect, fill = frameRect;
 	outline.y += 16;

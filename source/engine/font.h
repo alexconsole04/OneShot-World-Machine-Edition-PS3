@@ -50,6 +50,9 @@ int draw_fit(Type t, Vec2 windowPos, const std::string &s, unsigned rgb, float a
 // resolution font drawn as is).
 void set_language_fonts(const char *os, const char *game, const char *small, int osFontScale);
 int os_scale();
+// Horizontal squeeze for text drawn until reset (1): x positions are
+// scaled about anchorX (current window/space pixels), glyphs narrowed.
+void set_squeeze(float sq, float anchorX);
 
 // GraphicsManager.GlobalFrameCounter, for animated glyphs.
 void tick();

@@ -56,6 +56,15 @@ static gfx::Texture *load(const std::string &name) {
 	return t;
 }
 
+bool pixel_solid(const char *name, Vec2 p, CacheType cache) {
+	const gfx::Texture *t = texture(name, cache);
+	if (!t || !t->mem || p.x < 0 || p.y < 0 || p.x >= (int)t->w || p.y >= (int)t->h) return false;
+	// Textures are stored as rows of 32-bit ARGB words (in VRAM on the PS3,
+	// which the PPU can read: slow, but this is one texel).
+	uint32_t px = ((const volatile uint32_t *)((const uint8_t *)t->mem + (size_t)p.y * t->pitch))[p.x];
+	return (px >> 24) > 128;
+}
+
 static std::string (*g_redirect)(const std::string &);
 void set_texture_redirect(std::string (*fn)(const std::string &)) { g_redirect = fn; }
 
@@ -206,12 +215,15 @@ Vec2 space_to_tv(Vec2 size, float x, float y, float *scale) {
 	return Vec2((int)(ox + x * k + 0.5f), (int)(oy + y * k + 0.5f));
 }
 
-void set_scaling(int mode) { scaling_mode = mode >= 0 && mode < SCALE_COUNT ? mode : SCALE_SHARP; }
+void set_scaling(int mode) { scaling_mode = mode == SCALE_SMOOTH ? SCALE_SMOOTH : SCALE_SHARP; }
+
+static const std::vector<GlitchSegment> *g_glitch;
+void set_window_glitch(const std::vector<GlitchSegment> *segments) { g_glitch = segments; }
 
 const char *scaling_info() {
 	static char buf[64];
-	static const char *n[SCALE_COUNT] = { "sharp", "smooth", "integer", "direct" };
-	if (scaling_mode == SCALE_DIRECT || !win_rt) snprintf(buf, sizeof(buf), "%s, straight to the TV at %.2fx", n[scaling_mode], S0);
+	static const char *n[SCALE_COUNT] = { "sharp", "smooth" };
+	if (!win_rt) snprintf(buf, sizeof(buf), "%s, straight to the TV at %.2fx", n[scaling_mode], S0);
 	else snprintf(buf, sizeof(buf), "%s, drawn at %dx (%ux%u)", n[scaling_mode], win_k, win_rt->w, win_rt->h);
 	return buf;
 }
@@ -220,7 +232,6 @@ const char *scaling_info() {
 static int window_k() {
 	switch (scaling_mode) {
 	case SCALE_SMOOTH: return 1;
-	case SCALE_INTEGER: return S0 < 1.0f ? 1 : (int)(S0 + 0.01f);
 	default: {
 		// Sharp: the nearest whole-number scale, then filtered the rest of the
 		// way: 1080p (2.25x) draws at 2x and stretches by 1.125; 720p (1.5x)
@@ -233,13 +244,10 @@ static int window_k() {
 }
 
 void begin_window() {
-	if (scaling_mode == SCALE_DIRECT) {   // as before m9: straight onto the TV
-		if (win_rt) { gfx::destroy_texture(win_rt); win_rt = nullptr; win_k = 0; }
-		last_frame_rt = false;
-		return;
-	}
 	int k = window_k();
-	bool linear = scaling_mode != SCALE_INTEGER;
+	// Exactly k TV pixels per drawn pixel (a 1080p desktop's window at 1x):
+	// no filtering.
+	bool linear = fabsf(S0 - (float)k) > 0.001f;
 	if (!win_rt || win_k != k) {
 		gfx::destroy_texture(win_rt);
 		win_rt = nullptr;
@@ -268,14 +276,27 @@ void end_window() {
 	gfx::set_render_target(nullptr);
 	S = S0; OX = OX0; OY = OY0;
 	gfx::Shade s;
-	if (scaling_mode == SCALE_INTEGER) {
-		float w = (float)win_rt->w, h = (float)win_rt->h;
-		// Centred in the window's place (the whole TV when maximized).
-		float x = floorf(OX + (640.0f * S - w) * 0.5f), y = floorf(OY + (480.0f * S - h) * 0.5f);
-		gfx::draw(win_rt, x, y, w, h, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
-	} else {
-		gfx::draw(win_rt, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
+	if (g_glitch && !g_glitch->empty()) {
+		// Bands of the picture, each moved left by its shift and wrapped.
+		float k = (float)win_k;
+		int y = 0;
+		for (const GlitchSegment &g : *g_glitch) {
+			if (y >= 480) break;
+			int h = std::min(g.height, 480 - y), x = g.shift;
+			if (h <= 0) continue;
+			gfx::Shade t;
+			t.r = g.r / 255.0f; t.g = g.g / 255.0f; t.b = g.b / 255.0f;
+			gfx::draw(win_rt, OX, OY + y * S, (640 - x) * S, h * S, (int)(x * k), (int)(y * k), (int)((640 - x) * k),
+			          (int)(h * k), t, gfx::Blend::Normal);
+			if (x > 0)
+				gfx::draw(win_rt, OX + (640 - x) * S, OY + y * S, x * S, h * S, 0, (int)(y * k), (int)(x * k), (int)(h * k), t,
+				          gfx::Blend::Normal);
+			y += h;
+		}
+		g_glitch = nullptr;
+		return;
 	}
+	gfx::draw(win_rt, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
 }
 
 void draw_captured_window(float alpha) {
