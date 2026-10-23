@@ -1,5 +1,6 @@
 // sys_ps3.cpp - PS3 implementation of sys.h.
 #include "../sys.h"
+#include <cell/sysutil_sysparam.h>
 #include <string>
 #include <stdarg.h>
 #include <stdio.h>
@@ -117,6 +118,25 @@ bool file_exists(const char *rel) {
 	// Directory listings are cached, so repeated checks cost no file-system calls.
 	std::string real;
 	return resolve_case(g_dir, rel, real);
+}
+
+const char *system_language() {
+	// The console's language, as a game language code (GetDefaultLanguageCode).
+	int v = -1;
+	if (cellSysutilGetSystemParamInt(CELL_SYSUTIL_SYSTEMPARAM_ID_LANG, &v) != 0) return "en";
+	switch (v) {
+	case CELL_SYSUTIL_LANG_JAPANESE: return "ja";
+	case CELL_SYSUTIL_LANG_FRENCH: return "fr";
+	case CELL_SYSUTIL_LANG_SPANISH: return "es";
+	case CELL_SYSUTIL_LANG_ITALIAN: return "it";
+	case CELL_SYSUTIL_LANG_PORTUGUESE_PT:
+	case CELL_SYSUTIL_LANG_PORTUGUESE_BR: return "pt_br";
+	case CELL_SYSUTIL_LANG_RUSSIAN: return "ru";
+	case CELL_SYSUTIL_LANG_KOREAN: return "ko";
+	case CELL_SYSUTIL_LANG_CHINESE_T: return "zh_cht";
+	case CELL_SYSUTIL_LANG_CHINESE_S: return "zh_cn";
+	default: return "en";
+	}
 }
 
 const char *user_name() {

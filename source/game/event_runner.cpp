@@ -1,6 +1,7 @@
 // event_runner.cpp - see event_runner.h. Follows EventRunner.cs command by
 // command; differences are noted inline.
 #include "event_runner.h"
+#include "loc.h"
 #include "entity.h"
 #include "player.h"
 #include "tilemap.h"
@@ -387,7 +388,7 @@ bool EventRunner::commandInputNumber(const EventCommand &c) {
 bool EventRunner::commandShowText(const EventCommand &c) {
 	std::string text = c.param(0);
 	if (text.empty()) return false;
-	// LanguageManager.GetMapLocString: English text is used as-is.
+	text = loc::map_text(triggeringEventPageNumber, text);
 	std::string low = util::lower(text);
 	if (util::starts_with(low, "@ed ")) {
 		text = text.substr(4);
@@ -407,7 +408,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 		while (commandIndex < count() &&
 		       ((cmd(commandIndex).code == ShowText && util::starts_with(cmd(commandIndex).param(0), "@tut ")) ||
 		        cmd(commandIndex).code == MoreText)) {
-			std::string s = cmd(commandIndex).param(0);
+			std::string s = loc::map_text(triggeringEventPageNumber, cmd(commandIndex).param(0));
 			if (cmd(commandIndex).code == ShowText) s = s.substr(tut2 ? 6 : 5);
 			text += s;
 			commandIndex++;
@@ -417,7 +418,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 		text = text.substr(1);
 		while (commandIndex < count() && cmd(commandIndex).code == ShowText &&
 		       util::starts_with(cmd(commandIndex).param(0), "$")) {
-			text += "\n\n" + cmd(commandIndex).param(0).substr(1);
+			text += "\n\n" + loc::map_text(triggeringEventPageNumber, cmd(commandIndex).param(0)).substr(1);
 			commandIndex++;
 		}
 		messageBox.reset(new DocBox(state));
@@ -429,7 +430,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 			const EventCommand &n = cmd(i);
 			i++;
 			if (n.code == MoreText) {
-				text += " " + n.param(0);
+				text += " " + loc::map_text(triggeringEventPageNumber, n.param(0));
 				commandIndex = i;
 				continue;
 			}
@@ -453,7 +454,7 @@ bool EventRunner::commandShowText(const EventCommand &c) {
 }
 
 bool EventRunner::commandShowChoices(const EventCommand &c) {
-	std::vector<std::string> list = parse_string_list(c.param(0));
+	std::vector<std::string> list = parse_string_list(loc::map_text(triggeringEventPageNumber, c.param(0)));
 	TextBox *tb = textBox();
 	if (!messageBox || !tb || tb->CurrentStyle() != currentStyle ||
 	    tb->CurrentArea() != currentArea) {

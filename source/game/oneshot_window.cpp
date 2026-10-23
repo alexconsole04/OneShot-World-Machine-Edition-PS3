@@ -84,6 +84,13 @@ bool OneshotWindow::DebugTeleport(int mapId, int x, int y, Direction facing) {
 
 void OneshotWindow::ExitGame() { exitRequested = true; }
 
+void OneshotWindow::ResetForBoot() {
+	if (title.IsOpen()) title.ForceClose();
+	exitRequested = false;
+	if (!NewSession()) quitApp = true;
+	session->menus.titleOpen = false;
+}
+
 void OneshotWindow::CloseGame() {
 	if (title.IsOpen()) {
 		quitApp = true;

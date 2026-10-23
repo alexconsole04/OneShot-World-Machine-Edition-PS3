@@ -153,7 +153,7 @@ public:
 	void ClearText() override { lines.clear(); }
 	void InputNumberSetup(int, int) override {}
 private:
-	int LineHeight() const { return rightAligned ? 15 : 13; }
+	int LineHeight() const;   // 13, 17 for Japanese / Korean / Chinese, 15 right-aligned
 	int LineLength(size_t i) const;
 	bool rightAligned;
 	BoxFade fade;

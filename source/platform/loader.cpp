@@ -38,6 +38,7 @@ static void worker(void *) {
 			j->size = n;
 			j->ok = ok;
 			j->done = true;
+			monitor_notify(g_mon);   // load_wait
 		}
 		monitor_unlock(g_mon);
 	}
@@ -68,6 +69,12 @@ bool load_done(LoadJob *j) {
 	if (!g_thread_ok) return true;
 	MonitorLock l(g_mon);
 	return j->done;
+}
+
+void load_wait(LoadJob *j) {
+	if (!g_thread_ok) return;
+	MonitorLock l(g_mon);
+	while (!j->done) monitor_wait(g_mon, 5000);
 }
 
 bool load_take(LoadJob *j, uint8_t **data, size_t *size) {

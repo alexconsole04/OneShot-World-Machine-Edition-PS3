@@ -37,6 +37,9 @@ void log_flush();
 // Names of the entries in <data_dir>/<rel> (case as on disk).
 bool list_dir(const char *rel, std::vector<std::string> &out);
 
+// The console's language as a game language code ("en", "ja", ...).
+const char *system_language();
+
 // The console's / OS's user name (OneShot addresses the player by it).
 const char *user_name();
 // Local wall-clock time (DateTime.Now): fills hour/min/sec and day of year (1..366).

@@ -66,6 +66,12 @@ void begin_frame(uint32_t clear_argb) {
 static const Texture *batch_tex;
 static Blend batch_blend;
 
+static float d_ox, d_oy, d_cell = 4, d_line;
+static const Texture *d_bayer;
+void set_dither(float ox, float oy, float cell, float line, const Texture *bayer) {
+	d_ox = ox; d_oy = oy; d_cell = cell > 0 ? cell : 1; d_line = line; d_bayer = bayer;
+}
+
 void draw(const Texture *t, float dx, float dy, float dw, float dh,
           int sx, int sy, int sw, int sh, const Shade &s, Blend blend) {
 	if (!t || dw <= 0 || dh <= 0) return;
@@ -117,7 +123,18 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 			}
 			shade::RGBA c = { ((p >> 16) & 255) / 255.0f, ((p >> 8) & 255) / 255.0f,
 			                  (p & 255) / 255.0f, t->opaque ? 1.0f : (p >> 24) / 255.0f };
-			c = shade::apply(c, s.r, s.g, s.b, s.a, tr, tg, tb, hue);
+			if (blend == Blend::Dither && d_bayer) {
+				// dither_fp.fcg
+				float cx = floorf((x + 0.5f - d_ox) / d_cell) + 0.5f, cy = floorf((y + 0.5f - d_oy) / d_cell) + 0.5f;
+				int mx = ((int)cx % 8 + 8) % 8, my = ((int)cy % 8 + 8) % 8;
+				float b = ((((const uint32_t *)d_bayer->mem)[my * d_bayer->w + mx] >> 16) & 255) / 255.0f;
+				float k = (d_line - cy) * 0.02f;
+				k = k < -1.1f ? -1.1f : k > 0.1f ? 0.1f : k;
+				if (k + b < 0.0f) continue;
+				c.r *= s.r; c.g *= s.g; c.b *= s.b; c.a = 1.0f;
+			} else {
+				c = shade::apply(c, s.r, s.g, s.b, s.a, tr, tg, tb, hue);
+			}
 			if (dbg_noblend) { c.a = 1.0f; blend = Blend::Normal; }   // debug: emulate blending disabled
 			if (dbg_partial && c.a > 0.0f) c.a = 1.0f;                // debug: partial alpha -> opaque
 			if (c.a <= 0.0f) continue;

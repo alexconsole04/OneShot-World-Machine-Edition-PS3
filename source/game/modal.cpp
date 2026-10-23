@@ -1,8 +1,9 @@
 #include "modal.h"
 #include "settings.h"
+#include "loc.h"
+#include "../engine/font.h"
 #include "../engine/audio.h"
 #include "../engine/gm.h"
-#include "../engine/overlay.h"
 #include "../platform/gfx.h"
 #include "../platform/input.h"
 #include "../platform/sys.h"
@@ -50,63 +51,38 @@ void update() {
 	}
 }
 
-static std::vector<std::string> wrap(const std::string &s, int maxw, float sc) {
-	std::vector<std::string> out;
-	std::string line, word;
-	auto w = [&](const std::string &x) { return (int)(overlay::text_width(x.c_str()) * sc); };
-	auto flush = [&]() {
-		if (word.empty()) return;
-		std::string cand = line.empty() ? word : line + " " + word;
-		if (!line.empty() && w(cand) > maxw) { out.push_back(line); line = word; } else line = cand;
-		word.clear();
-	};
-	for (char c : s) {
-		if (c == ' ') flush();
-		else if (c == '\n') { flush(); out.push_back(line); line.clear(); }
-		else word += c;
-	}
-	flush();
-	out.push_back(line);
-	return out;
-}
-
-static void box(float x, float y, float w, float h, float r, float g, float b, float a = 1.0f) {
-	gfx::Shade s;
-	s.r = r; s.g = g; s.b = b; s.a = a;
-	gfx::draw(gm::white(), x, y, w, h, 0, 0, 1, 1, s, gfx::Blend::Normal);
-}
-
 void draw() {
+	// A stand-in for the World Machine's ModalWindow until the desktop's
+	// windows exist: drawn in desktop space with the language's OS font, so
+	// every translation shows.
 	if (!open_) return;
-	float sw = (float)gfx::screen_w(), sh = (float)gfx::screen_h();
-	float sc = sh / 360.0f;             // ~2 at 720p
-	float W = 300 * sc;
-	auto lines = wrap(text_, (int)(W - 70 * sc), sc * 1.3f);
-	float lh = 12 * sc * 1.3f;
-	float H = 46 * sc + lines.size() * lh + 22 * sc;
-	float x = (sw - W) / 2, y = (sh - H) / 2;
-	box(x - 2, y - 2, W + 4, H + 4, 0.1f, 0.05f, 0.15f);
-	box(x, y, W, H, 0.85f, 0.85f, 0.88f);
-	box(x, y, W, 16 * sc, 0.35f, 0.15f, 0.5f);   // title bar
-	overlay::text_plain(x + 6 * sc, y + 4 * sc, sc, 0xffffff, type_ == Type::Error ? "Error" : "Message");
-	// icon
-	box(x + 12 * sc, y + 26 * sc, 24 * sc, 24 * sc, type_ == Type::Error ? 0.8f : 0.3f, type_ == Type::Error ? 0.2f : 0.4f,
-	    type_ == Type::Error ? 0.2f : 0.85f);
-	overlay::text_plain(x + 21 * sc, y + 30 * sc, sc * 2, 0xffffff, type_ == Type::Error ? "x" : "i");
-	float ty = y + 26 * sc;
-	for (auto &l : lines) { overlay::text_plain(x + 48 * sc, ty, sc * 1.3f, 0x101010, l.c_str()); ty += lh; }
-	float by = y + H - 22 * sc;
-	auto button = [&](float bx, const char *label, bool sel) {
-		box(bx, by, 50 * sc, 16 * sc, sel ? 0.35f : 0.6f, sel ? 0.15f : 0.6f, sel ? 0.5f : 0.65f);
-		float tw = overlay::text_width(label) * sc;
-		overlay::text_plain(bx + (50 * sc - tw) / 2, by + 4 * sc, sc, 0xffffff, label);
+	Vec2 sp = gm::boot_space();
+	gm::begin_space(sp);
+	const int W = 300;   // desktop pixels (the boot space is 2x these)
+	std::vector<std::string> lines = font::word_wrap(font::OS, text_, W - 70);
+	int lh = 14;
+	int H = 46 + (int)lines.size() * lh + 22;
+	int x = (sp.x / 2 - W) / 2, y = (sp.y / 2 - H) / 2;
+	gm::color_box(Rect(x - 1, y - 1, W + 2, H + 2), 26, 13, 38, 255);
+	gm::color_box(Rect(x, y, W, H), 217, 217, 224, 255);
+	gm::color_box(Rect(x, y, W, 16), 89, 38, 128, 255);   // title bar
+	bool err = type_ == Type::Error;
+	gm::color_box(Rect(x + 12, y + 26, 24, 24), err ? 204 : 77, err ? 51 : 102, err ? 51 : 217, 255);
+	font::draw_centered(font::OS, Vec2(x + 24, y + 30), err ? "x" : "i", 0xffffff, 1.0f, 2);
+	int ty = y + 26;
+	for (auto &l : lines) { font::draw(font::OS, Vec2(x + 48, ty), l, 0x101010, 1.0f, 2); ty += lh; }
+	int by = y + H - 22;
+	auto button = [&](int bx, const std::string &label, bool sel) {
+		gm::color_box(Rect(bx, by, 50, 16), sel ? 89 : 153, sel ? 38 : 153, sel ? 128 : 166, 255);
+		font::draw_centered(font::OS, Vec2(bx + 25, by + 3), label, 0xffffff, 1.0f, 2);
 	};
 	if (type_ == Type::YesNo) {
-		button(x + W / 2 - 56 * sc, "Yes", cursor == 0);
-		button(x + W / 2 + 6 * sc, "No", cursor == 1);
+		button(x + W / 2 - 56, loc::twm("dialog_yes"), cursor == 0);
+		button(x + W / 2 + 6, loc::twm("dialog_no"), cursor == 1);
 	} else {
-		button(x + W / 2 - 25 * sc, "OK", true);
+		button(x + W / 2 - 25, loc::twm("dialog_ok"), true);
 	}
+	gm::end_space();
 }
 
 } // namespace modal

@@ -257,21 +257,22 @@ bool init() {
 
 void shutdown() { audio_out::stop(); }
 
-void preload_sfx() {
-	// The PC version loads every sfx/*.wav at boot; we do the same so the
-	// first use of a sound never hitches.
-	uint64_t t0 = sys::time_us();
-	std::vector<std::string> names;
-	sys::list_dir("gamedata/sfx", names);
-	size_t bytes = 0;
-	int n = 0;
-	for (auto &f : names) {
-		std::string lf = util::lower(f);
-		if (lf.size() < 5 || lf.compare(lf.size() - 4, 4, ".wav") != 0) continue;
-		mixer::Pcm *p = get_sfx(lf.substr(0, lf.size() - 4));
-		if (p) { bytes += p->frames * p->channels * 2; n++; }
-	}
-	sys::log("audio: %d sound effects loaded (%.1f MB) in %.0f ms\n", n, bytes / 1048576.0, (sys::time_us() - t0) / 1000.0);
+// ------------------------------------------------------------------ boot loading
+// The boot console lists the sound effects and loads them one per frame
+// (SoundManager.LoadSoundList / LoadNextSound). The files are read on the
+// loader thread as soon as they are listed, so the console only waits when
+// the hard drive is behind.
+struct PendingSfx { std::string name; sys::LoadJob *job; };
+static std::vector<PendingSfx> sfxQueue;
+static size_t sfxQueueNext;
+static int sfxCount = -1;
+static uint64_t sfxLoadStart;
+static size_t sfxBytes;
+
+static void queue_music_effects() {
+	static bool done;
+	if (done) return;
+	done = true;
 	std::vector<std::string> me;
 	sys::list_dir("gamedata/music_effects", me);
 	for (auto &f : me) {
@@ -279,6 +280,75 @@ void preload_sfx() {
 		if (lf.size() < 5 || lf.compare(lf.size() - 4, 4, ".ogg") != 0) continue;
 		me_files[lf.substr(0, lf.size() - 4)].job = sys::load_async(("gamedata/music_effects/" + f).c_str());
 	}
+}
+
+int scan_sounds() {
+	for (size_t i = sfxQueueNext; i < sfxQueue.size(); i++) sys::load_cancel(sfxQueue[i].job);
+	sfxQueue.clear();
+	sfxQueueNext = 0;
+	std::vector<std::string> names;
+	sys::list_dir("gamedata/sfx", names);
+	for (auto &f : names) {
+		std::string lf = util::lower(f);
+		if (lf.find(".wav") == std::string::npos) continue;   // LoadSoundList: Contains(".wav")
+		sfxQueue.push_back({ f, sys::load_async(("gamedata/sfx/" + f).c_str()) });
+	}
+	sfxCount = (int)sfxQueue.size();
+	sfxLoadStart = sys::time_us();
+	sfxBytes = 0;
+	queue_music_effects();
+	return sfxCount;
+}
+
+int sound_count() { return sfxCount < 0 ? 0 : sfxCount; }
+bool has_more_sounds() { return sfxQueueNext < sfxQueue.size(); }
+const char *next_sound_name() { return has_more_sounds() ? sfxQueue[sfxQueueNext].name.c_str() : ""; }
+
+static void finish_sound(PendingSfx &p, bool wait) {
+	std::string lf = util::lower(p.name);
+	std::string key = lf.size() > 4 ? lf.substr(0, lf.size() - 4) : lf;
+	if (wait) sys::load_wait(p.job);
+	uint8_t *d = nullptr;
+	size_t n = 0;
+	bool ok = sys::load_take(p.job, &d, &n);
+	p.job = nullptr;
+	if (sfx.count(key)) { free(d); return; }   // already loaded on demand
+	mixer::Pcm *pcm = ok ? parse_wav(d, n, key.c_str()) : nullptr;
+	free(d);
+	if (!pcm) {
+		sfx_missing[key] = true;
+		sys::log("audio: sound effect '%s' missing or unreadable\n", key.c_str());
+		return;
+	}
+	sfx[key] = pcm;
+	sfxBytes += pcm->frames * pcm->channels * 2;
+}
+
+bool load_next_sound() {
+	if (!has_more_sounds()) return true;
+	PendingSfx &p = sfxQueue[sfxQueueNext];
+	if (!sys::load_done(p.job)) return false;   // still on its way from the hard drive
+	finish_sound(p, false);
+	sfxQueueNext++;
+	if (!has_more_sounds())
+		sys::log("audio: %d sound effects loaded (%.1f MB) in %.0f ms\n", sfxCount, sfxBytes / 1048576.0,
+		         (sys::time_us() - sfxLoadStart) / 1000.0);
+	return true;
+}
+
+void load_all_sounds() {
+	if (sfxCount < 0) scan_sounds();
+	bool any = has_more_sounds();
+	while (has_more_sounds()) finish_sound(sfxQueue[sfxQueueNext++], true);
+	if (any)
+		sys::log("audio: %d sound effects loaded (%.1f MB) in %.0f ms\n", sfxCount, sfxBytes / 1048576.0,
+		         (sys::time_us() - sfxLoadStart) / 1000.0);
+}
+
+void preload_sfx() {
+	// Debug starts skip the boot console: load everything now.
+	if (sfxCount < 0) scan_sounds();
+	load_all_sounds();
 }
 
 void play_sound(const char *name, float vol, float pitch) {

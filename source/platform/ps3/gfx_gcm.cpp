@@ -29,6 +29,7 @@
 #include "sprite_vp_vpo.h"
 #include "sprite_fp_fpo.h"
 #include "plain_fp_fpo.h"
+#include "dither_fp_fpo.h"
 
 namespace gfx {
 
@@ -82,7 +83,11 @@ static volatile u32 g_buffer_on_display, g_buffer_flipped, g_on_flip;
 static u32 g_frame_index;
 
 static CGprogram vpo, fpo, fpo_plain;
-static u32 fp_plain_offset;
+static u32 fp_plain_offset, fp_dither_offset;
+static CGprogram fpo_dither;
+static bool g_fp_dither;           // the dither program is bound
+static float g_dither_ox, g_dither_oy, g_dither_cell = 4, g_dither_line;
+static const Texture *g_dither_bayer;
 static bool g_plain_fp;
 static void *vp_ucode;
 static u32 fp_offset;
@@ -324,6 +329,7 @@ static void set_draw_env() {
 	cellGcmSetVertexProgram(ctx, vpo, vp_ucode);
 	if (g_plain_fp) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
 	else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
+	g_fp_dither = false;
 }
 
 static void bind_vertex_arrays(int i) {
@@ -335,10 +341,10 @@ static void bind_vertex_arrays(int i) {
 	cellGcmSetVertexDataArray(ctx, attr_tone, 0, sizeof(Vertex), 4, CELL_GCM_VERTEX_F, loc, base + 32);
 }
 
-static void bind_texture(const Texture *t) {
+static void bind_texture(const Texture *t, u8 unit = 0, bool normalized = false) {
 	CellGcmTexture tx;
 	memset(&tx, 0, sizeof(tx));
-	tx.format = CELL_GCM_TEXTURE_A8R8G8B8 | CELL_GCM_TEXTURE_LN | (g_texel_coords ? CELL_GCM_TEXTURE_UN : CELL_GCM_TEXTURE_NR);
+	tx.format = CELL_GCM_TEXTURE_A8R8G8B8 | CELL_GCM_TEXTURE_LN | (g_texel_coords && !normalized ? CELL_GCM_TEXTURE_UN : CELL_GCM_TEXTURE_NR);
 	tx.mipmap = 1;
 	tx.dimension = CELL_GCM_TEXTURE_DIMENSION_2;
 	tx.cubemap = CELL_GCM_FALSE;
@@ -354,11 +360,11 @@ static void bind_texture(const Texture *t) {
 	tx.location = CELL_GCM_LOCATION_LOCAL;
 	tx.pitch = t->pitch;
 	tx.offset = t->gpu_offset;
-	cellGcmSetTexture(ctx, 0, &tx);
-	cellGcmSetTextureControl(ctx, 0, CELL_GCM_TRUE, 0, 0, CELL_GCM_TEXTURE_MAX_ANISO_1);
+	cellGcmSetTexture(ctx, unit, &tx);
+	cellGcmSetTextureControl(ctx, unit, CELL_GCM_TRUE, 0, 0, CELL_GCM_TEXTURE_MAX_ANISO_1);
 	u8 filt = t->linear ? CELL_GCM_TEXTURE_LINEAR : CELL_GCM_TEXTURE_NEAREST;
-	cellGcmSetTextureFilter(ctx, 0, 0, filt, filt, CELL_GCM_TEXTURE_CONVOLUTION_QUINCUNX);
-	cellGcmSetTextureAddress(ctx, 0, CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_CLAMP_TO_EDGE,
+	cellGcmSetTextureFilter(ctx, unit, 0, filt, filt, CELL_GCM_TEXTURE_CONVOLUTION_QUINCUNX);
+	cellGcmSetTextureAddress(ctx, unit, CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_CLAMP_TO_EDGE,
 	                         CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_UNSIGNED_REMAP_NORMAL,
 	                         CELL_GCM_TEXTURE_ZFUNC_LESS, 0);
 }
@@ -373,6 +379,14 @@ static void flush_batch() {
 		cellGcmSetInvalidateTextureCache(ctx, CELL_GCM_INVALIDATE_TEXTURE);
 		tex_cache_dirty = false;
 	}
+	bool dither = batch_blend == Blend::Dither && g_dither_bayer;
+	if (dither != g_fp_dither) {
+		g_fp_dither = dither;
+		if (dither) cellGcmSetFragmentProgram(ctx, fpo_dither, fp_dither_offset);
+		else if (g_plain_fp) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
+		else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
+	}
+	if (dither) bind_texture(g_dither_bayer, 1, true);
 	bind_texture(batch_tex);
 	// The vertex ring is reused every VB_COUNT frames: without this the
 	// RSX's vertex cache can hand back vertices from an earlier frame,
@@ -483,6 +497,15 @@ bool init() {
 		void *uc = bump_alloc(sz, 64);
 		memcpy(uc, blob, sz);
 		cellGcmAddressToOffset(uc, &fp_plain_offset);
+	}
+	{
+		fpo_dither = (CGprogram)dither_fp_fpo;
+		cellGcmCgInitProgram(fpo_dither);
+		void *blob; u32 sz = 0;
+		cellGcmCgGetUCode(fpo_dither, &blob, &sz);
+		void *uc = bump_alloc(sz, 64);
+		memcpy(uc, blob, sz);
+		cellGcmAddressToOffset(uc, &fp_dither_offset);
 	}
 	auto attr = [](const char *name, int fallback) {
 		CGparameter p = cellGcmCgGetNamedParameter(vpo, name);
@@ -670,6 +693,18 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 	float tr = s.tone_r / 255.0f, tg = s.tone_g / 255.0f, tb = s.tone_b / 255.0f;
 	float hue = s.hue * (3.14159265f / 180.0f);
 	Vertex *v = vb[vb_cur] + vb_used;
+	if (blend == Blend::Dither) {
+		// Dither cell coordinates per corner, and the wipe line.
+		float cx0 = (dx - g_dither_ox) / g_dither_cell, cx1 = (dx + dw - g_dither_ox) / g_dither_cell;
+		float cy0 = (dy - g_dither_oy) / g_dither_cell, cy1 = (dy + dh - g_dither_oy) / g_dither_cell;
+		float ln = g_dither_line;
+		v[0] = { l, tp, u0, v0, cr, cg, cb, ca, cx0, cy0, ln, 0 };
+		v[1] = { r, tp, u1, v0, cr, cg, cb, ca, cx1, cy0, ln, 0 };
+		v[2] = { r, bt, u1, v1, cr, cg, cb, ca, cx1, cy1, ln, 0 };
+		v[3] = { l, bt, u0, v1, cr, cg, cb, ca, cx0, cy1, ln, 0 };
+		vb_used += 4;
+		return;
+	}
 	v[0] = { l, tp, u0, v0, cr, cg, cb, ca, tr, tg, tb, hue };
 	v[1] = { r, tp, u1, v0, cr, cg, cb, ca, tr, tg, tb, hue };
 	v[2] = { r, bt, u1, v1, cr, cg, cb, ca, tr, tg, tb, hue };
@@ -938,11 +973,23 @@ const char *draw_mode_name() {
 
 void set_plain_shader(bool on) {
 	flush_batch();
+	flush_batch();
 	g_plain_fp = on;
+	g_fp_dither = false;
 	if (on) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
 	else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
 }
 bool plain_shader() { return g_plain_fp; }
+
+void set_dither(float ox, float oy, float cell, float line, const Texture *bayer) {
+	if (ox == g_dither_ox && oy == g_dither_oy && cell == g_dither_cell && line == g_dither_line && bayer == g_dither_bayer) return;
+	flush_batch();   // vertices already queued keep their parameters; the texture binding may change
+	g_dither_ox = ox;
+	g_dither_oy = oy;
+	g_dither_cell = cell > 0 ? cell : 1;
+	g_dither_line = line;
+	g_dither_bayer = bayer;
+}
 void set_full_sync(bool on) { g_full_sync = on; }
 bool full_sync() { return g_full_sync; }
 void set_texel_coords(bool on) { flush_batch(); g_texel_coords = on; }

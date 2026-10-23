@@ -1,0 +1,22 @@
+// dither_fp.fcg - the PC build's DitherShader (boot screen TWM logo wipe).
+// The CPU puts each vertex's position in dither cells (4 boot-screen pixels)
+// in tone.xy and the wipe line (opacity * (screen height / 4 + 50) - 50) in
+// tone.z. A cell is drawn, fully opaque, where
+//   clamp((line - cell row) / 50, -1.1, 0.1) + bayer(cell mod 8) >= 0,
+// so the picture appears from the top down through a 50-cell dithered band.
+void main(
+	float2 in_texcoord      : TEXCOORD0,
+	float4 in_color         : TEXCOORD1,
+	float4 in_tone          : TEXCOORD2,
+	uniform sampler2D tex   : TEXUNIT0,
+	uniform sampler2D bayer : TEXUNIT1,
+	out float4 out_color    : COLOR)
+{
+	float2 cell = floor(in_tone.xy) + 0.5f;
+	float2 m = cell - 8.0f * floor(cell / 8.0f);
+	float b = tex2D(bayer, m / 8.0f).r;
+	float v = clamp((in_tone.z - cell.y) * 0.02f, -1.1f, 0.1f) + b;
+	if (v < 0.0f) discard;
+	float4 t = tex2D(tex, in_texcoord);
+	out_color = float4(t.rgb * in_color.rgb, 1.0f);
+}

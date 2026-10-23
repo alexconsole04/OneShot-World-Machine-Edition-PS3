@@ -12,6 +12,8 @@ struct LoadJob;
 LoadJob *load_async(const char *rel);
 // True once the read has finished (successfully or not).
 bool load_done(LoadJob *j);
+// Blocks until the read has finished.
+void load_wait(LoadJob *j);
 // After load_done: takes the data (caller frees with free()) and releases
 // the job. False (and nothing to free) if the file couldn't be read.
 bool load_take(LoadJob *j, uint8_t **data, size_t *size);

@@ -3,6 +3,7 @@
 // mapped onto the TV with an aspect-correct, centred scale.
 #pragma once
 #include "types.h"
+#include <string>
 #include "../platform/gfx.h"
 
 namespace gm {
@@ -20,6 +21,9 @@ const gfx::Texture *texture(const char *name, CacheType cache = Game);
 Vec2 texture_size(const char *name, CacheType cache = Game);
 bool texture_exists(const char *name, CacheType cache = Game);
 void clear_cache(CacheType cache);
+// Maps a texture name to the current language's version of it (set by the
+// language manager; content/<dir>/<lang>/<name>).
+void set_texture_redirect(std::string (*fn)(const std::string &));
 // Start a new "generation" (a map change): textures not used during the last
 // `keep` generations are released. The PC clears the whole Game cache on
 // every map change; keeping the textures the previous maps used means
@@ -80,6 +84,15 @@ void end_window();
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,
                  const gfx::Shade &s, gfx::Blend blend = gfx::Blend::Normal);
 const gfx::Texture *white();   // 1x1 white texture for boxes/text
+
+// Boot screen / desktop drawing space: between begin_space and end_space,
+// window coordinates (blit, color_box, fonts) are pixels of a size.x x
+// size.y screen fitted to the whole TV.
+Vec2 boot_space();   // GraphicsManager.GetBootScreenSize (1280x720 on a 16:9 TV)
+void begin_space(Vec2 size);
+void end_space();
+// Blend::Dither parameters for the current space at this opacity.
+void set_dither(float opacity);
 
 // Clip drawing to the 640x480 OneShot window / back to full screen.
 void clip_to_window();

@@ -30,8 +30,12 @@ struct SpriteFont {
 	bool hasDefault = false;
 };
 
-// Main fonts per type (English) and the two backup chains.
+// Main fonts per type (the language's: English to start with) and the two
+// backup chains.
 static SpriteFont fonts[3] = { SpriteFont("volter"), SpriteFont("terminus"), SpriteFont("terminus_doc") };
+static int osScale = 2;          // LanguageMetaData.font_os_scale
+static float squeeze = 1.0f;     // horizontal squeeze for draw_fit
+static float squeezeX0;          // window x the squeeze is anchored at
 static SpriteFont backup1("noto_sans"), backup1small("noto_sans_small");
 static SpriteFont backup2("noto_sans_jp"), backup2small("noto_sans_jp_small");
 static uint32_t frameCounter;
@@ -80,6 +84,18 @@ static bool load(SpriteFont &f) {
 
 bool available(Type t) { return load(fonts[t]); }
 
+void set_language_fonts(const char *os, const char *game, const char *small, int osFontScale) {
+	const char *names[3] = { os, game, small };
+	for (int i = 0; i < 3; i++) {
+		if (fonts[i].name == names[i]) continue;
+		if (fonts[i].tex) gfx::destroy_texture(fonts[i].tex);
+		fonts[i] = SpriteFont(names[i]);   // loads on first use (GraphicsManager.ClearFontCache)
+	}
+	osScale = osFontScale == 1 ? 1 : 2;
+}
+
+int os_scale() { return osScale; }
+
 // getFontForChar: main font, then backup 1, then backup 2. May return a
 // font that lacks c (then its default character is used).
 static SpriteFont *font_for(Type t, uint32_t c) {
@@ -126,17 +142,37 @@ static int fallback_char_width(Type t, uint32_t c) {
 
 // ------------------------------------------------------------------ measuring
 // TextSize for one character (font units), including the per-font extra.
-static int char_width(Type t, uint32_t c) {
+static bool is_noto(const std::string &n) { return n == "noto_sans" || n == "noto_sans_jp"; }
+static bool is_wqy(const std::string &n) { return n.compare(0, 13, "wqy-microhei_") == 0; }   // incl. the _doc ones
+
+// TextSize(..., osFontNoResize: true) for one character: what drawing
+// advances by.
+static int char_width_raw(Type t, uint32_t c) {
 	SpriteFont *f = font_for(t, c);
 	if (!f) return fallback_char_width(t, c);
 	int space = 6, extra = 1;
 	const std::string &n = f->name;
-	if (n == "noto_sans" || n == "noto_sans_jp" || n == "terminus") { space = 10; extra = 2; }
+	if (is_noto(n) || n == "terminus") { space = 10; extra = 2; }
 	else if (n == "noto_sans_small" || n == "noto_sans_jp_small" || n == "terminus_doc") { space = 8; extra = 1; }
 	else if (n == "volter") { space = 4; extra = 1; }
-	if (c == ' ' || c == 0xA0) return space + extra;
-	const Glyph *g = glyph_of(f, c);
-	return (g ? g->measure : 0) + extra;
+	else if (n == "higashi_ome") { space = 10; extra = 3; }
+	else if (is_wqy(n)) { space = 4; extra = 2; }
+	int w;
+	if (c == ' ' || c == 0xA0) w = space + extra;
+	else {
+		const Glyph *g = glyph_of(f, c);
+		w = (g ? g->measure : 0) + extra;
+	}
+	if (t == OS && osScale == 2 && is_noto(n)) w = (w + 1) / 2;
+	return w;
+}
+
+// TextSize for one character: the OS font of a language whose OS font is
+// drawn at half scale measures half as wide.
+static int char_width(Type t, uint32_t c) {
+	int w = char_width_raw(t, c);
+	if (t == OS && osScale == 1) w = (w + 1) / 2;
+	return w;
 }
 
 // ------------------------------------------------------------------ button glyphs
@@ -221,13 +257,15 @@ static void draw_char(Type t, Vec2 pos, uint32_t c, unsigned rgb, float alpha, i
 	}
 	const std::string &n = f->name;
 	if (t == OS) {
-		if (n == "noto_sans" || n == "noto_sans_jp") {
+		if (is_noto(n)) {
 			if (scale == 2) { pos.x *= 2; pos.y = pos.y * 2 + 7; scale = 1; }
 			else pos.y += 8;
-		} else if (n == "terminus") pos.y += 8;
+		} else if (n == "terminus" || n == "higashi_ome" || is_wqy(n)) pos.y += 8;
 		else if (n != "supertext") pos.y += 5;
 	} else if (t == GameSmall) {
 		if (n == "noto_sans_small" || n == "noto_sans_jp_small") pos.y += 1;
+		else if (n == "higashi_ome_doc") pos.y -= 2;
+		else if (is_wqy(n)) pos.y -= 1;
 	} else if (n == "noto_sans" || n == "noto_sans_jp") {
 		pos.y -= 2;
 	}
@@ -237,7 +275,12 @@ static void draw_char(Type t, Vec2 pos, uint32_t c, unsigned rgb, float alpha, i
 	float x0 = gl->lsb > 0 ? gl->lsb : 0;
 	int wx = pos.x * scale + (int)((x0 + gl->cropX) * scale);
 	int wy = pos.y * scale + gl->cropY * scale;
-	gm::blit_scaled(f->tex, Vec2(wx, wy), gl->src, (float)scale, (float)scale, alpha, 0, blend, GameTone(), r, g, b);
+	float xs = (float)scale;
+	if (squeeze != 1.0f) {
+		wx = (int)(squeezeX0 + (wx - squeezeX0) * squeeze);
+		xs *= squeeze;
+	}
+	gm::blit_scaled(f->tex, Vec2(wx, wy), gl->src, xs, (float)scale, alpha, 0, blend, GameTone(), r, g, b);
 }
 
 static int draw_plain(Type t, Vec2 pos, const std::string &s, size_t from, size_t to, unsigned rgb, float alpha,
@@ -247,12 +290,17 @@ static int draw_plain(Type t, Vec2 pos, const std::string &s, size_t from, size_
 	while (i < to) {
 		uint32_t c = decode_utf8(s, i);
 		if (visible) draw_char(t, Vec2(pos.x + adv, pos.y), c, rgb, alpha, scale, blend);
-		adv += char_width(t, c);
+		adv += char_width_raw(t, c);
 	}
 	return adv;
 }
 
 int draw(Type t, Vec2 pos, const std::string &s, unsigned rgb, float alpha, int scale, Mode mode, gfx::Blend blend) {
+	if (t == OS && osScale == 1 && scale >= 2) {
+		scale /= 2;
+		pos.x *= 2;
+		pos.y *= 2;
+	}
 	int x = 0;
 	size_t i = 0, runStart = 0;
 	bool textVisible = mode != Mode::OnlyGlyphs;
@@ -271,7 +319,7 @@ int draw(Type t, Vec2 pos, const std::string &s, unsigned rgb, float alpha, int 
 			if (frames < 1) frames = 1;
 			int frame = (int)(frameCounter / 20 % (uint32_t)frames);
 			Vec2 p(pos.x + x, pos.y);
-			p.y -= t == Game ? 24 : t == GameSmall ? 8 : 6;
+			p.y -= t == Game ? 24 : t == GameSmall ? 8 : osScale == 2 ? 6 : 12;
 			if (scale != 2) { p.x /= 2; p.y /= 2; }
 			float r = ((rgb >> 16) & 255) / 255.0f, g = ((rgb >> 8) & 255) / 255.0f, b = (rgb & 255) / 255.0f;
 			if (mode != Mode::OnlyText)
@@ -288,6 +336,22 @@ int draw(Type t, Vec2 pos, const std::string &s, unsigned rgb, float alpha, int 
 int draw_centered(Type t, Vec2 pos, const std::string &s, unsigned rgb, float alpha, int scale, Mode mode) {
 	pos.x -= width(t, s, true) / 2;
 	return draw(t, pos, s, rgb, alpha, scale, mode);
+}
+
+int draw_fit(Type t, Vec2 windowPos, const std::string &s, unsigned rgb, float alpha, int maxWidth, bool centered) {
+	// TempTextureManager.GetSingleLineTexture + MainBlit(xCentered): the
+	// text at window scale, squeezed (smoothly, on PC) to maxWidth.
+	int w = width(t, s, true);
+	if (w % 2 == 1) w--;
+	int full = w + 4;
+	float sq = maxWidth > 0 && full > maxWidth ? (float)maxWidth / full : 1.0f;
+	int shown = (int)(full * sq);
+	int x0 = centered ? windowPos.x - shown / 2 : windowPos.x;
+	squeeze = sq;
+	squeezeX0 = (float)x0;
+	draw(t, Vec2(x0 + 2, windowPos.y), s, rgb, alpha, 1, Mode::OnlyText);
+	squeeze = 1.0f;
+	return shown;
 }
 
 // MathHelper.WordWrap.

@@ -27,6 +27,7 @@ add_executable(oneshot-ps3
     source/game/settings.cpp
     source/game/save.cpp
     source/game/loc.cpp
+    source/game/boot_sequence.cpp
     source/game/title_screen.cpp
     source/game/oneshot_window.cpp
     source/game/pictures.cpp
@@ -56,6 +57,7 @@ target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysutil_use
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_vp.vcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_fp.fcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/plain_fp.fcg)
+ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/dither_fp.fcg)
 
 ps3_add_self(oneshot-ps3)
 # XMB extras (PIC1.PNG background, SND0.AT3 looping ambience) are copied

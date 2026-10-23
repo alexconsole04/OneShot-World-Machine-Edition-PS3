@@ -12,7 +12,8 @@
 
 namespace gfx {
 
-enum class Blend : uint8_t { Normal, Additive };
+// Dither: the PC's DitherShader wipe (see set_dither); always opaque where drawn.
+enum class Blend : uint8_t { Normal, Additive, Dither };
 
 struct Texture {
 	uint32_t w = 0, h = 0;
@@ -78,6 +79,10 @@ int draw_mode();
 const char *draw_mode_name();
 // Debug: minimal fragment program (texture * colour) instead of the HueShader port.
 void set_plain_shader(bool on);
+// Parameters for Blend::Dither draws: screen position (TV pixels) of the
+// boot screen's top-left, TV pixels per dither cell, the wipe line (in
+// cells) and the 8x8 Bayer threshold texture (its red channel).
+void set_dither(float originX, float originY, float pxPerCell, float line, const Texture *bayer);
 bool plain_shader();
 // Debug: wait for the RSX to finish every frame (no CPU/GPU overlap).
 void set_full_sync(bool on);

@@ -56,6 +56,9 @@ static gfx::Texture *load(const std::string &name) {
 	return t;
 }
 
+static std::string (*g_redirect)(const std::string &);
+void set_texture_redirect(std::string (*fn)(const std::string &)) { g_redirect = fn; }
+
 const gfx::Texture *texture(const char *name, CacheType cache) {
 	std::string key(name);
 	auto &c = caches[cache];
@@ -67,7 +70,16 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	// Remember failures: retrying a missing file every frame means file
 	// system calls every frame, which on the PS3 costs whole frames.
 	if (missing.count(key)) return nullptr;
-	gfx::Texture *t = load(key);
+	gfx::Texture *t = nullptr;
+	if (g_redirect) {
+		// CacheAndManager.GetTexture: the language's own version if it has one.
+		std::string local = g_redirect(key);
+		if (local != key) {
+			t = load(local);
+			if (t) sys::log("gm: localized texture %s\n", local.c_str());
+		}
+	}
+	if (!t) t = load(key);
 	if (!t) {
 		missing.insert(key);
 		sys::log("gm: missing texture '%s'\n", name);
@@ -255,6 +267,44 @@ void draw_captured_window(float alpha) {
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,
                  const gfx::Shade &s, gfx::Blend blend) {
 	gfx::draw(t, x, y, w, h, src.x, src.y, src.w, src.h, s, blend);
+}
+
+// ------------------------------------------------------------------ boot screen / desktop space
+
+Vec2 boot_space() {
+	// GraphicsManager.GetBootScreenSize for a TV: 720 pixels on the short side.
+	int sw = gfx::screen_w(), sh = gfx::screen_h();
+	if (sw * 3 >= sh * 4) return Vec2((int)(sw * 720.0 / sh + 0.5), 720);
+	return Vec2(720, (int)(sh * 720.0 / sw + 0.5));
+}
+
+static int space_w, space_h;
+static bool in_space;
+
+void begin_space(Vec2 size) {
+	// No off-screen pass: at 1080p one space pixel is 1.5 TV pixels, so the
+	// boot screen's 2x art lands on whole TV pixels (3 per game pixel).
+	space_w = size.x;
+	space_h = size.y;
+	float sx = (float)gfx::screen_w() / size.x, sy = (float)gfx::screen_h() / size.y;
+	S = sx < sy ? sx : sy;
+	OX = (gfx::screen_w() - size.x * S) * 0.5f;
+	OY = (gfx::screen_h() - size.y * S) * 0.5f;
+	in_space = true;
+}
+
+void end_space() {
+	if (!in_space) return;
+	in_space = false;
+	S = S0; OX = OX0; OY = OY0;
+}
+
+void set_dither(float opacity) {
+	// DitherShader parameters: cells of 4 space pixels; the wipe line
+	// reaches the bottom (plus a 50-cell band) at opacity 1.
+	float h = (float)(space_h > 0 ? space_h : 720);
+	float line = opacity * (h / 4.0f + 50.0f) - 50.0f;
+	gfx::set_dither(OX, OY, 4.0f * S, line, texture("transitions/BayerDither8x8", BootScreen));
 }
 
 void clip_to_window() {

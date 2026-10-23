@@ -7,7 +7,14 @@
 namespace audio {
 bool init();                 // starts the output; false = running silent
 void shutdown();
-void preload_sfx();          // load every gamedata/sfx/*.wav (as the PC version does at boot)
+void preload_sfx();          // load every gamedata/sfx/*.wav now (debug starts; the boot console does it otherwise)
+// Boot console (SoundManager.LoadSoundList / NextSoundToLoad / LoadNextSound).
+int scan_sounds();           // lists the sound effects and starts reading them; returns how many
+int sound_count();
+bool has_more_sounds();
+const char *next_sound_name();
+bool load_next_sound();      // false: the next file is still being read (try again next frame)
+void load_all_sounds();      // the rest, waiting for each
 void update();
 
 void play_sound(const char *name, float vol = 1.0f, float pitch = 1.0f);

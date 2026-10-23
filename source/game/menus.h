@@ -92,9 +92,17 @@ public:
 	void Close() override;
 	bool IsOpen() const override { return st != Closed; }
 private:
-	enum Option { Movement, Colorblind, Vibration, ScreenTear, ChromaAberration, Scaling, Automash, COUNT };
+	enum Option { Movement, Colorblind, Vibration, ScreenTear, ChromaAberration, Scaling, Language, Automash, COUNT };
 	std::string Name(int i) const;
 	std::string Value(int i) const;
+	bool Shown_(int i) const { return i != Language || allowLanguage; }
+	int langIndex = 0;              // language picked in the Language row
+	bool confirmingLanguage = false;   // the "restart?" question is up
+public:
+	// The Language row only appears on the title screen (changing language
+	// restarts the boot sequence, which would end a game in progress).
+	bool allowLanguage = false;
+private:
 	enum { Closed, Opening, Shown, Closing } st = Closed;
 	int opacity = 0, selected = 0;
 	int offsetX[COUNT] = {}, optOpacity[COUNT] = {};

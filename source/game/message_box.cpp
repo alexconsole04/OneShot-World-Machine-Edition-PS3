@@ -1,4 +1,5 @@
 #include "message_box.h"
+#include "loc.h"
 #include "game_state.h"
 #include "player.h"
 #include "tilemap.h"
@@ -330,19 +331,24 @@ void TextBox::Draw() {
 		if (fp) gm::blit(fp, p, alpha, 0, gfx::Blend::Normal, portrait == "af" ? 1 : 2);
 	}
 	int tx = (box.x + padX) * 2, ty = (box.y + padY) * 2;
-	// Number input: cursor + digits on the line after the text.
+	// Number input: cursor + digits on the line after the text. Japanese
+	// uses the name-entry letter cursor (wider, no gap).
 	if (inputNumberVar >= 0 && !IsRollingText()) {
-		int cw = ui::text_width("0") + 10;
-		int y = ty + (int)lines.size() * 24 + 4;
+		bool ja = loc::code() == "ja";
+		const gfx::Texture *cur = gm::texture(ja ? "ui/name_select_letter_cursor" : "ui/number_cursor");
+		int gap = ja ? 0 : 5;
+		int cw = cur ? (int)cur->w : 18;
+		Vec2 cp(tx + digitCursor * (cw + gap), ty + (int)lines.size() * 24 - 1);
+		if (cur) gm::blit(cur, cp, cursorAlpha * alpha, 0, gfx::Blend::Normal, 1);
+		Vec2 dp(tx + cw / 2 + 1, ty + (int)lines.size() * 24 + 4);
 		for (size_t i = 0; i < digits.size(); i++) {
 			unsigned col = 0xffffff;
 			if (state->flag(179)) {
 				static const int map4[4] = { 4, 2, 1, 3 };
 				col = TextColor(map4[i % 4]);
 			}
-			int x = tx + (int)i * cw;
-			if ((int)i == digitCursor) gm::color_box(Rect(x / 2 - 1, y / 2 - 1, cw / 2, 11), 255, 255, 255, (uint8_t)(cursorAlpha * alpha * 90));
-			ui::text(x + 2, y, std::string(1, (char)('0' + digits[i])), col, alpha);
+			font::draw_centered(font::Game, dp, std::string(1, (char)('0' + digits[i])), col, alpha, 1);
+			dp.x += cw + gap;
 		}
 	}
 	if (!choices.empty() && !IsRollingText()) {

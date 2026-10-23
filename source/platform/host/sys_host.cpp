@@ -74,6 +74,11 @@ bool file_exists(const char *rel) {
 	return resolve_case(g_dir, rel, real);
 }
 
+const char *system_language() {
+	const char *l = getenv("OSPS3_LANG");   // host testing
+	return l ? l : "en";
+}
+
 const char *user_name() {
 	const char *u = getenv("OSPS3_USER");
 	if (!u) u = getenv("USER");

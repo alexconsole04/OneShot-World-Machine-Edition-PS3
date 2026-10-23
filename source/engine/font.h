@@ -1,10 +1,10 @@
 // font.h - the game's SpriteFonts (GraphicsManager.TextBlit / TextSize /
 // MathHelper.WordWrap).
 //
-// Fonts load from the user's content folder: terminus (Game), terminus_doc
-// (GameSmall) and volter (OS), with noto_sans / noto_sans_small as the
-// backup fonts for characters the main font lacks, exactly as the PC build
-// picks them for English. Text is drawn one character at a time with the
+// Fonts load from the user's content folder: the language's fonts (for
+// English terminus (Game), terminus_doc (GameSmall) and volter (OS)), with
+// noto_sans / noto_sans_small and then noto_sans_jp(_small) as the backup
+// fonts for characters the main font lacks, exactly as the PC build does. Text is drawn one character at a time with the
 // PC build's per-font spacing rules, so line widths and word wrapping
 // match. Button tokens (@OK, @CANCEL, @MOVE, ...) draw as the controller
 // glyph art from content/glyphs.
@@ -40,6 +40,16 @@ int draw_centered(Type t, Vec2 pos, const std::string &s, unsigned rgb, float al
 
 // MathHelper.WordWrap: breaks on spaces and '\n', width in font units.
 std::vector<std::string> word_wrap(Type t, const std::string &s, int maxWidth);
+
+// GetSingleLineTexture(t, s, maxWidth) drawn at a window-pixel position:
+// squeezed horizontally if wider than maxWidth. Returns the drawn width.
+int draw_fit(Type t, Vec2 windowPos, const std::string &s, unsigned rgb, float alpha, int maxWidth, bool centered);
+
+// The language's fonts (LanguageMetaData): font names for OS, Game and
+// GameSmall, and the OS font scale (2 = pixel font drawn double, 1 = full
+// resolution font drawn as is).
+void set_language_fonts(const char *os, const char *game, const char *small, int osFontScale);
+int os_scale();
 
 // GraphicsManager.GlobalFrameCounter, for animated glyphs.
 void tick();

@@ -93,7 +93,7 @@ static std::string decode_json_string(const std::string &s) {
 	return out;
 }
 
-static void HandleEdText(Ctx &c, std::string s) {
+static void HandleEdText(Ctx &c, std::string s, int pageId) {
 	s = s.substr(strlen("EdText."));
 	modal::Type t;
 	if (starts(s, "info(")) { s = s.substr(5); t = modal::Type::Info; }
@@ -107,6 +107,7 @@ static void HandleEdText(Ctx &c, std::string s) {
 	while ((p = text.find("  ")) != std::string::npos) text.erase(p, 1);
 	while (!text.empty() && text.front() == ' ') text.erase(0, 1);
 	while (!text.empty() && text.back() == ' ') text.pop_back();
+	text = loc::map_text(pageId, text);
 	while ((p = text.find("\\p")) != std::string::npos) text.replace(p, 2, c.st->player_name);
 	modal::show(t, text);
 }
@@ -423,7 +424,7 @@ bool HandleScript(TileMap *map, const std::string &script, EventRunner *caller, 
 		c.flag22(t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1);
 		return false;
 	}
-	if (starts(script, "EdText")) { HandleEdText(c, script); return true; }
+	if (starts(script, "EdText")) { HandleEdText(c, script, pageId); return true; }
 	if (starts(script, "UnlockProfile") || starts(script, "UnlockWallpaper") || starts(script, "UnlockTheme") ||
 	    starts(script, "Steam.unlock")) {
 		note("unlock (desktop/achievements not in the PS3 build)", script);
@@ -471,7 +472,7 @@ CondResult HandleScriptConditional(TileMap *map, const std::string &script, Even
 		}
 		return r ? CondResult::Yes : CondResult::No;
 	}
-	if (starts(script, "EdText")) { HandleEdText(c, script); return CondResult::EdText; }
+	if (starts(script, "EdText")) { HandleEdText(c, script, pageId); return CondResult::EdText; }
 	const std::string &s = script;
 	const std::string name = c.st->player_name;
 	std::string lname = name;

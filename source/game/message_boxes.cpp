@@ -3,6 +3,7 @@
 // texture once and blits it; here the text is drawn directly each frame at
 // the same positions, which looks the same and needs no render targets.
 #include "message_box.h"
+#include "loc.h"
 #include "game_state.h"
 #include "../engine/audio.h"
 #include "../engine/font.h"
@@ -130,6 +131,12 @@ void DesktopBox::Draw() {
 
 // ===================================================================== TutorialBox
 TutorialBox::TutorialBox(bool right) : rightAligned(right) { Open(); }
+
+int TutorialBox::LineHeight() const {
+	if (rightAligned) return 15;
+	const std::string &c = loc::code();
+	return c == "ko" || c == "ja" || c == "zh_cn" || c == "zh_cht" ? 17 : 13;
+}
 
 void TutorialBox::FeedText(const std::string &text, const std::string &playerName) {
 	lines = font::word_wrap(font::GameSmall, prepare(text, playerName), 272);

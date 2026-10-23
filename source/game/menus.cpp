@@ -6,6 +6,8 @@
 #include "../engine/ui.h"
 #include "../engine/font.h"
 #include "loc.h"
+#include "modal.h"
+#include "boot_sequence.h"
 #include "settings.h"
 #include "../platform/input.h"
 #include "../platform/sys.h"
@@ -170,9 +172,9 @@ void ItemMenu::Draw() {
 	uint8_t boxA = (uint8_t)(opacity * 200 / 255);
 	gm::color_box(Rect(10, 10, 300, 28), 24, 12, 30, boxA);
 	ui::window_border(Rect(8, 8, 304, 32), gfx::Blend::Normal, alpha);
-	std::string desc;   // "inventory_no_items_item_description" (localized): blank here
+	std::string desc = loc::twm("inventory_no_items_item_description");
 	int cur = cursorIndex >= 0 && cursorIndex < (int)displayed.size() ? displayed[cursorIndex] : -1;
-	if (cur >= 0) desc = Item(cur) ? Item(cur)->description : "item " + std::to_string(cur);
+	if (cur >= 0) desc = Item(cur) ? loc::item_description(cur, Item(cur)->description) : "item " + std::to_string(cur);
 	ui::text(320, 36, desc, 0xffffff, alpha, ui::Align::Center);
 	gm::color_box(Rect(10, 50, 300, 108), 24, 12, 30, boxA);
 	ui::window_border(Rect(8, 48, 304, 112), gfx::Blend::Normal, alpha);
@@ -192,7 +194,7 @@ void ItemMenu::Draw() {
 		int r = 255, g = 255, b = 255;
 		if (d && d->common_event_id > 0) { r = 128; b = 128; }
 		if (itemId == state->var(1) || itemId == comboSelection.first || itemId == comboSelection.second) { r = 222; g = 134; b = 0; }
-		std::string name = d ? d->name : "item " + std::to_string(itemId);
+		std::string name = d ? loc::item_name(itemId, d->name) : "item " + std::to_string(itemId);
 		ui::text((p.x + 76) * 2, p.y * 2 + 4, name, rgb(r, g, b), alpha, ui::Align::Center);
 	}
 }
@@ -227,6 +229,7 @@ void MenuManager::ShowMenu(Menu m) {
 	                : m == Menu::Main ? (AbstractMenu *)&mainMenu : (AbstractMenu *)&settingsMenu;
 	next = n;
 	if (current == next) { next = nullptr; return; }
+	settingsMenu.allowLanguage = titleOpen;
 	if (current) current->Close();
 	next->Open();
 }
@@ -344,7 +347,7 @@ void MainMenu::Draw() {
 std::string SettingsMenu::Name(int i) const {
 	static const char *k[COUNT] = { "settings_movement", "settings_colorblind", "settings_vibration",
 	                                "settings_screentear", "settings_chromaaberration", "settings_ps3_scaling",
-	                                "settings_automash" };
+	                                "change_language_button", "settings_automash" };
 	return loc::twm(k[i]);
 }
 
@@ -357,6 +360,10 @@ std::string SettingsMenu::Value(int i) const {
 		static const char *m[4] = { "settings_ps3_scaling_sharp", "settings_ps3_scaling_smooth", "settings_ps3_scaling_integer",
 		                            "settings_ps3_scaling_direct" };
 		return loc::twm(m[s.scaling >= 0 && s.scaling < 4 ? s.scaling : 0]);
+	}
+	case Language: {
+		const auto &l = loc::languages();
+		return langIndex >= 0 && langIndex < (int)l.size() ? l[langIndex].displayName : std::string();
 	}
 	case Colorblind: v = s.colorblindMode; break;
 	case Vibration: v = s.vibration; break;
@@ -373,6 +380,10 @@ void SettingsMenu::Open() {
 	opacity = 0;
 	selected = 0;
 	for (int i = 0; i < COUNT; i++) { offsetX[i] = 0; optOpacity[i] = 128; }
+	confirmingLanguage = false;
+	langIndex = 0;
+	for (size_t i = 0; i < loc::languages().size(); i++)
+		if (loc::languages()[i].code == loc::code()) langIndex = (int)i;
 }
 
 void SettingsMenu::Close() {
@@ -401,12 +412,23 @@ void SettingsMenu::Update() {
 		if (opacity <= 0) { opacity = 0; st = Closed; }
 		break;
 	case Shown: {
+		if (confirmingLanguage) {
+			// "Change Language? (This will restart The World Machine)"
+			if (modal::is_open()) break;
+			confirmingLanguage = false;
+			if (modal::last_response() == modal::Response::Yes) {
+				boot::request_language(loc::languages()[langIndex].code);
+				Close();
+			}
+			break;   // the button that closed the question isn't ours
+		}
+		if (modal::is_open()) break;
 		if (pressed(BTN_UP)) {
 			audio::play_sound("menu_cursor");
-			if (--selected < 0) selected = COUNT - 1;
+			do { if (--selected < 0) selected = COUNT - 1; } while (!Shown_(selected));
 		} else if (pressed(BTN_DOWN)) {
 			audio::play_sound("menu_cursor");
-			if (++selected >= COUNT) selected = 0;
+			do { if (++selected >= COUNT) selected = 0; } while (!Shown_(selected));
 		}
 		for (int i = 0; i < COUNT; i++) {
 			if (i == selected) {
@@ -417,7 +439,20 @@ void SettingsMenu::Update() {
 				optOpacity[i] = optOpacity[i] - 10 < 128 ? 128 : optOpacity[i] - 10;
 			}
 		}
-		if (pressed(BTN_LEFT) || pressed(BTN_RIGHT) || pressed(BTN_OK)) {
+		if (selected == Language) {
+			int n = (int)loc::languages().size();
+			if (pressed(BTN_LEFT)) { audio::play_sound("menu_cursor"); langIndex = (langIndex + n - 1) % n; }
+			else if (pressed(BTN_RIGHT)) { audio::play_sound("menu_cursor"); langIndex = (langIndex + 1) % n; }
+			else if (pressed(BTN_OK)) {
+				if (loc::languages()[langIndex].code != loc::code()) {
+					audio::play_sound("menu_decision");
+					modal::show(modal::Type::YesNo, loc::twm("change_language_yesno"));
+					confirmingLanguage = true;
+				} else {
+					audio::play_sound("menu_buzzer");
+				}
+			}
+		} else if (pressed(BTN_LEFT) || pressed(BTN_RIGHT) || pressed(BTN_OK)) {
 			audio::play_sound("menu_decision");
 			Settings &s = settings();
 			switch (selected) {
@@ -449,10 +484,27 @@ void SettingsMenu::Draw() {
 	font::draw(font::Game, Vec2(13, 24), loc::twm("settings_title"), 0xffffff, a, 2);
 	int y = 118;
 	for (int i = 0; i < COUNT; i++) {
+		if (!Shown_(i)) continue;
 		float oa = optOpacity[i] / 255.0f * a;
 		if (i == Automash) y += 32;   // the PC build sets this one apart
 		font::draw(font::Game, Vec2(30 + offsetX[i] - 2, y), Name(i), 0xffffff, oa, 1);
-		font::draw(font::Game, Vec2(400 + offsetX[i] - 2, y), Value(i), 0xffffff, oa, 1);
+		if (i == Language) {
+			// The language's name as the boot screen shows it (its own script),
+			// between arrows while picking.
+			const auto &l = loc::languages();
+			std::string tn = "the_world_machine/languages/" + (langIndex < (int)l.size() ? l[langIndex].code : std::string("en"));
+			const gfx::Texture *lt = gm::texture(tn.c_str(), gm::TheWorldMachine);
+			int x = 400 + offsetX[i] - 2;
+			if (lt) gm::blit(lt, Vec2(x, y - 2), oa, 0, gfx::Blend::Normal, 1);
+			else font::draw(font::Game, Vec2(x, y), Value(i), 0xffffff, oa, 1);
+			if (i == selected) {
+				int w = lt ? (int)lt->w : font::width(font::Game, Value(i));
+				gm::blit(gm::texture("the_world_machine/window_icons/arrow_left", gm::TheWorldMachine), Vec2(x - 18, y + 2), oa, 0, gfx::Blend::Normal, 1);
+				gm::blit(gm::texture("the_world_machine/window_icons/arrow_right", gm::TheWorldMachine), Vec2(x + w + 2, y + 2), oa, 0, gfx::Blend::Normal, 1);
+			}
+		} else {
+			font::draw(font::Game, Vec2(400 + offsetX[i] - 2, y), Value(i), 0xffffff, oa, 1);
+		}
 		y += 32;
 	}
 }

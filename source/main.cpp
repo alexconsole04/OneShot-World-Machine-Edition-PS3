@@ -26,12 +26,14 @@
 #include "game/debug_map_menu.h"
 #include "game/settings.h"
 #include "game/mouse_cursor.h"
+#include "game/boot_sequence.h"
+#include "game/loc.h"
 namespace script_trace { void dump(); }
 static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m11"
+#define OSPS3_VERSION "m12"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -83,13 +85,19 @@ int main(int argc, const char **argv) {
 		return 0;
 	}
 
+	loc::init();
 	audio::init();
-	audio::preload_sfx();
-	sys::log("heap: %d MB in use after loading sound effects\n", sys::heap_used_kb() / 1024);
-
-	// Debug starts (OSPS3_MAP, or the map browser) skip the title screen.
+	// Debug starts (OSPS3_MAP) skip the boot sequence and the title screen;
+	// OSPS3_SKIP_BOOT skips only the boot sequence.
 	const char *debugMap = getenv("OSPS3_MAP");
-	if (!window().Boot(debugMap == nullptr)) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
+	bool bootSequence = debugMap == nullptr && getenv("OSPS3_SKIP_BOOT") == nullptr;
+	if (!bootSequence) {
+		audio::preload_sfx();   // the boot console loads them otherwise
+		sys::log("heap: %d MB in use after loading sound effects\n", sys::heap_used_kb() / 1024);
+	}
+	if (!window().Boot(debugMap == nullptr && !bootSequence)) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
+	boot::set_version("OneShot PS3 port " OSPS3_VERSION);
+	if (bootSequence) boot::start();
 	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
 	{
 		GameState &state = window().State();
@@ -240,13 +248,29 @@ int main(int argc, const char **argv) {
 		}
 
 		// The map switcher waits for menus and dialogs to close (they own input).
-		if (dbg && !tex_view && input::pressed(input::BTN_L1) && !modal::is_open() && !window().Menus().IsMenuOpen())
+		if (dbg && !tex_view && !boot::active() && input::pressed(input::BTN_L1) && !modal::is_open() && !window().Menus().IsMenuOpen())
 			debug_map_menu::open(mapId);
 
 		prof::mark("input/debug");
 		uint64_t t0 = sys::time_us();
+		{
+			// Language chosen in the settings menu: the session goes, the boot
+			// console runs again in the new language, then the title screen.
+			std::string lang;
+			if (boot::take_language_request(lang)) {
+				sys::log("language change to %s: restarting the boot sequence\n", lang.c_str());
+				window().ResetForBoot();
+				loc::set(lang);
+				boot::restart_console();
+			}
+		}
+		bool booting = boot::active();
 		if (systemPause) {
 			// nothing: the picture stays as it was
+		} else if (booting) {
+			boot::update();
+			audio::update();
+			if (boot::just_finished()) window().ShowTitle();
 		} else if (mapMenu) {
 			debug_map_menu::update();   // the game is paused underneath
 		} else if (!tex_view) {
@@ -262,7 +286,9 @@ int main(int argc, const char **argv) {
 		gfx::begin_frame(0xff000000);   // may wait for the RSX (vsync-paced)
 		prof::mark("begin_frame (RSX wait)");
 		uint64_t tb = sys::time_us();
-		if (!tex_view) {
+		if (booting) {
+			boot::draw();
+		} else if (!tex_view) {
 			gm::set_scaling(settings().scaling);
 			gm::begin_window();  // offscreen at a whole-number scale (gm.h)
 			gm::clip_to_window();

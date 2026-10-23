@@ -2,6 +2,7 @@
 // (TileSet.cs, TileLayer.cs, TileMapManager.cs, MapLine.cs) closely so
 // collision and draw order behave identically.
 #include "tilemap.h"
+#include "loc.h"
 #include "player.h"
 #include "game_state.h"
 #include "event_runner.h"
@@ -345,6 +346,7 @@ static uint8_t at(const std::vector<uint8_t> &v, int i) { return (i >= 0 && i < 
 bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction facing) {
 	uint64_t t0 = sys::time_us();
 	bool hadMap = currentMapId != 0;
+	loc::load_map(mapId);   // LanguageManager.LoadMapLocFile: this map's translated text
 	heightsToLayers.clear();
 	tilesets.clear();
 	entitiesByHeight.clear();
@@ -1117,7 +1119,8 @@ void TileMap::DebugRunTexts(const std::vector<std::string> &texts) {
 	for (const std::string &t : texts) {
 		EventCommand c;
 		c.code = 101;
-		c.parameters.push_back(t);
+		if (t.compare(0, 8, "!script ") == 0) { c.code = 355; c.parameters.push_back(t.substr(8)); }   // host testing
+		else c.parameters.push_back(t);
 		list->push_back(c);
 	}
 	list->push_back(EventCommand());

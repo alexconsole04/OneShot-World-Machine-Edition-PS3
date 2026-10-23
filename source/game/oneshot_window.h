@@ -27,6 +27,10 @@ public:
 	// and flashes, stops all scripts, then loads the map.
 	bool DebugTeleport(int mapId, int tileX, int tileY, Direction facing);
 	bool QuitRequested() const { return quitApp; }
+	void ShowTitle() { OpenTitle(); }   // after the boot sequence
+	// A language change: drop the session (its textures and text) before the
+	// boot console runs again; the title screen opens when it's done.
+	void ResetForBoot();
 	bool TitleOpen() const { return title.IsOpen(); }
 
 	GameState &State() { return session->state; }
