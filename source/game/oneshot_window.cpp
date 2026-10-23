@@ -53,10 +53,13 @@ bool OneshotWindow::Boot(bool showTitle) {
 	if (sys::list_dir("gamedata/maps", maps)) sys::log("gamedata/maps holds %d files\n", (int)maps.size());
 	if (missing) dataWarning = "Some game files are missing - see oneshot_log.txt";
 	title.onChosen = [this](int choice) {
-		if (choice == TitleScreen::Exit) quitApp = true;
+		if (choice == TitleScreen::Exit) {
+			if (desktopMode) ExitGame();   // closes the window, back to the desktop
+			else quitApp = true;
+		}
 		else StartGame();
 	};
-	if (showTitle) OpenTitle();
+	if (showTitle) { open = true; OpenTitle(); }
 	return true;
 }
 
@@ -72,6 +75,10 @@ void OneshotWindow::StartGame() {
 }
 
 bool OneshotWindow::DebugTeleport(int mapId, int x, int y, Direction facing) {
+	if (!open) {
+		Launch(false);
+		if (onOpenedForDebug) onOpenedForDebug();
+	}
 	if (title.IsOpen()) {
 		title.ForceClose();
 		session->menus.titleOpen = false;
@@ -84,16 +91,29 @@ bool OneshotWindow::DebugTeleport(int mapId, int x, int y, Direction facing) {
 
 void OneshotWindow::ExitGame() { exitRequested = true; }
 
+void OneshotWindow::Launch(bool startGame) {
+	// new OneshotWindow(): a fresh session, then straight into the game if
+	// there's a save, else the title screen.
+	exitRequested = false;
+	if (!NewSession()) { quitApp = true; return; }
+	open = true;
+	if (!startGame) return;
+	if (save::Exists()) StartGame();
+	else OpenTitle();
+}
+
 void OneshotWindow::ResetForBoot() {
 	if (title.IsOpen()) title.ForceClose();
 	exitRequested = false;
 	if (!NewSession()) quitApp = true;
 	session->menus.titleOpen = false;
+	open = false;
 }
 
 void OneshotWindow::CloseGame() {
 	if (title.IsOpen()) {
-		quitApp = true;
+		if (desktopMode) ExitGame();
+		else quitApp = true;
 	} else if (!session->map.IsInScript()) {
 		session->map.StartCommonEvent(35);   // QUIT GAME: "Quit and record your progress?"
 	} else if (!modal::is_open()) {
@@ -104,6 +124,18 @@ void OneshotWindow::CloseGame() {
 void OneshotWindow::Update() {
 	if (exitRequested) {
 		exitRequested = false;
+		if (desktopMode) {
+			// OneshotWindow.ExitGame: music off, the game's textures freed, the
+			// window closes.
+			sys::log("exit game: the OneShot window closes\n");
+			if (title.IsOpen()) title.ForceClose();
+			if (!NewSession()) { quitApp = true; return; }
+			session->menus.titleOpen = false;
+			gm::clear_cache(gm::Game);
+			open = false;
+			if (onClosed) onClosed();
+			return;
+		}
 		sys::log("exit game: back to the title screen\n");
 		if (!NewSession()) { quitApp = true; return; }
 		OpenTitle();
@@ -113,7 +145,6 @@ void OneshotWindow::Update() {
 		// A map file is missing or damaged: say so instead of running a
 		// half-loaded map, and go back to the title screen on a button press.
 		if (input::pressed(input::BTN_OK) || input::pressed(input::BTN_CANCEL)) ExitGame();
-		audio::update();
 		return;
 	}
 	s.state.play_frames++;
@@ -133,8 +164,6 @@ void OneshotWindow::Update() {
 		title.Update();
 		prof::mark("title update");
 	}
-	audio::update();
-	prof::mark("audio update");
 }
 
 void OneshotWindow::Draw() {

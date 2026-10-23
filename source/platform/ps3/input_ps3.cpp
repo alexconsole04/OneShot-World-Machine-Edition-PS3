@@ -110,10 +110,12 @@ void update() {
 	tick_hold_counters(cur);
 }
 
-bool held(uint32_t b) { return (cur & b) != 0; }
-bool pressed(uint32_t b) { return (cur & b) && !(prev & b); }
-int stick_x() { return sx; }
-int stick_y() { return sy; }
+bool held_raw(uint32_t b) { return (cur & b) != 0; }
+bool pressed_raw(uint32_t b) { return (cur & b) && !(prev & b); }
+bool held(uint32_t b) { return held_raw(b & ~suppressed_mask()); }
+bool pressed(uint32_t b) { return pressed_raw(b & ~suppressed_mask()); }
+int stick_x() { return game_suppressed() ? 0 : sx; }
+int stick_y() { return game_suppressed() ? 0 : sy; }
 int rstick_x() { return rx; }
 int rstick_y() { return ry; }
 bool quit_requested() { return quit; }

@@ -74,6 +74,8 @@ bool file_exists(const char *rel) {
 	return resolve_case(g_dir, rel, real);
 }
 
+bool clock_24h() { return getenv("OSPS3_24H") != nullptr; }
+
 const char *system_language() {
 	const char *l = getenv("OSPS3_LANG");   // host testing
 	return l ? l : "en";

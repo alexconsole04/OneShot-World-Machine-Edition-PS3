@@ -5,7 +5,10 @@
 #include "../platform/input.h"
 #include <math.h>
 
-Vec2 desktop_space() { return Vec2(gfx::screen_w() / 2, gfx::screen_h() / 2); }
+Vec2 desktop_space() {
+	Vec2 b = gm::boot_space();   // the desktop's draw size (1280x720 on a 16:9 TV)
+	return Vec2(b.x / 2, b.y / 2);
+}
 
 // InputManager.ApplyStickDeadzone
 static Vec2 apply_dead_zone(Vec2 stick, int dead, int upper) {
@@ -53,13 +56,14 @@ void MouseCursor::Draw() const {
 	if (hidden) return;
 	const gfx::Texture *t = gm::texture("the_world_machine/cursor", gm::TheWorldMachine);
 	if (!t) return;
-	// Desktop space is drawn at 2x onto the TV: one desktop pixel = 2 TV pixels.
-	float x = (float)((pos.x + offset.x) * 2), y = (float)((pos.y + offset.y) * 2);
-	gfx::Shade black, white;
-	black.r = black.g = black.b = 0;
+	// MainBlit at scale 2 in the desktop's draw space: the black outline
+	// rows, then the white fill.
+	gm::begin_space(gm::boot_space());
+	Vec2 p(pos.x + offset.x, pos.y + offset.y);
 	Rect outline = frameRect, fill = frameRect;
 	outline.y += 16;
 	fill.y += 32;
-	gm::blit_screen(t, x, y, 32, 32, outline, black);
-	gm::blit_screen(t, x, y, 32, 32, fill, white);
+	gm::blit(t, p, outline, 1.0f, 0, gfx::Blend::Normal, 2, GameTone(), 0, 0, 0);
+	gm::blit(t, p, fill, 1.0f, 0, gfx::Blend::Normal, 2);
+	gm::end_space();
 }

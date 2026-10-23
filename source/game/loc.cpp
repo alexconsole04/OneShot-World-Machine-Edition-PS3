@@ -3,13 +3,42 @@
 #include "../engine/font.h"
 #include "../engine/gm.h"
 #include "../platform/sys.h"
-#include "cJSON.h"
+#include "json_file.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <map>
 #include <set>
 #include <unordered_map>
+
+// cJSON is strict; the game's JSON has trailing commas.
+cJSON *parse_json_file(const char *rel) {
+	uint8_t *d;
+	size_t n;
+	if (!sys::read_file(rel, &d, &n)) return nullptr;
+	std::string s((const char *)d, n), out;
+	free(d);
+	out.reserve(s.size());
+	bool str = false;
+	for (size_t i = 0; i < s.size(); i++) {
+		char c = s[i];
+		if (str) {
+			out += c;
+			if (c == '\\' && i + 1 < s.size()) out += s[++i];
+			else if (c == '"') str = false;
+			continue;
+		}
+		if (c == '"') str = true;
+		if (c == ',') {
+			size_t j = i + 1;
+			while (j < s.size() && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r' || s[j] == '\n')) j++;
+			if (j < s.size() && (s[j] == '}' || s[j] == ']')) continue;
+		}
+		out += c;
+	}
+	return cJSON_Parse(out.c_str());
+}
+
 
 namespace loc {
 
@@ -104,34 +133,6 @@ static bool read_po(const std::string &rel, Table &out, bool parseKeys) {
 
 // ------------------------------------------------------------------ metadata
 
-// cJSON is strict; the game's JSON has trailing commas.
-static cJSON *parse_lenient(const char *rel) {
-	uint8_t *d;
-	size_t n;
-	if (!sys::read_file(rel, &d, &n)) return nullptr;
-	std::string s((const char *)d, n), out;
-	free(d);
-	out.reserve(s.size());
-	bool str = false;
-	for (size_t i = 0; i < s.size(); i++) {
-		char c = s[i];
-		if (str) {
-			out += c;
-			if (c == '\\' && i + 1 < s.size()) out += s[++i];
-			else if (c == '"') str = false;
-			continue;
-		}
-		if (c == '"') str = true;
-		if (c == ',') {
-			size_t j = i + 1;
-			while (j < s.size() && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r' || s[j] == '\n')) j++;
-			if (j < s.size() && (s[j] == '}' || s[j] == ']')) continue;
-		}
-		out += c;
-	}
-	return cJSON_Parse(out.c_str());
-}
-
 static void set_builtin() {
 	// Strings the console build adds or this port adds (English), and
 	// fallbacks if a language's file is missing.
@@ -160,7 +161,7 @@ static void set_builtin() {
 void init() {
 	set_builtin();
 	g_langs.clear();
-	if (cJSON *j = parse_lenient("gamedata/loc/language_metadata.json")) {
+	if (cJSON *j = parse_json_file("gamedata/loc/language_metadata.json")) {
 		const cJSON *it;
 		cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(j, "languages")) {
 			auto str = [&](const char *k) {

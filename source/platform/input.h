@@ -20,6 +20,17 @@ void init();
 void update();                 // call once per frame
 bool held(uint32_t b);
 bool pressed(uint32_t b);      // went down this frame
+// The game's buttons and left stick, as the OneShot window sees them:
+// InputManager.SuppressOneshotwindowInputs (window minimized, a system
+// dialog up). held/pressed/auto_trigger/stick then report nothing for
+// these; the _raw versions always see the pad.
+const uint32_t GAME_BUTTONS = BTN_DOWN | BTN_LEFT | BTN_RIGHT | BTN_UP | BTN_OK | BTN_CANCEL | BTN_RUN |
+                              BTN_INVENTORY | BTN_MAINMENU | BTN_MASHTEXT;
+void suppress_game(bool on);
+bool game_suppressed();
+uint32_t suppressed_mask();
+bool held_raw(uint32_t b);
+bool pressed_raw(uint32_t b);
 // Left stick, -100..100 like the game's MoveStickPos (Y down positive).
 // Already dead-zoned; 0,0 when centred.
 int stick_x();

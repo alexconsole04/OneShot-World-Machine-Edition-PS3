@@ -39,6 +39,8 @@ bool list_dir(const char *rel, std::vector<std::string> &out);
 
 // The console's language as a game language code ("en", "ja", ...).
 const char *system_language();
+// The console's clock setting (24-hour or AM/PM), for the taskbar clock.
+bool clock_24h();
 
 // The console's / OS's user name (OneShot addresses the player by it).
 const char *user_name();

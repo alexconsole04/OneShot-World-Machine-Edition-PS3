@@ -27,13 +27,14 @@
 #include "game/settings.h"
 #include "game/mouse_cursor.h"
 #include "game/boot_sequence.h"
+#include "game/desktop.h"
 #include "game/loc.h"
 namespace script_trace { void dump(); }
 static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m12b"
+#define OSPS3_VERSION "m13"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -87,17 +88,23 @@ int main(int argc, const char **argv) {
 
 	loc::init();
 	audio::init();
-	// Debug starts (OSPS3_MAP) skip the boot sequence and the title screen;
-	// OSPS3_SKIP_BOOT skips only the boot sequence.
+	// Debug starts (OSPS3_MAP) skip the boot sequence and start inside a
+	// maximized OneShot window; OSPS3_SKIP_BOOT starts on the desktop.
 	const char *debugMap = getenv("OSPS3_MAP");
 	bool bootSequence = debugMap == nullptr && getenv("OSPS3_SKIP_BOOT") == nullptr;
 	if (!bootSequence) {
 		audio::preload_sfx();   // the boot console loads them otherwise
 		sys::log("heap: %d MB in use after loading sound effects\n", sys::heap_used_kb() / 1024);
 	}
-	if (!window().Boot(debugMap == nullptr && !bootSequence)) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
+	if (!window().Boot(false)) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
 	boot::set_version("OneShot PS3 port " OSPS3_VERSION);
 	if (bootSequence) boot::start();
+	else {
+		desktop::init();
+		if (debugMap) desktop::ensure_game_window(true);
+		else if (getenv("OSPS3_LAUNCH")) desktop::ensure_game_window(false);   // host testing
+		if (getenv("OSPS3_LAUNCH") && !debugMap) window().Launch(true);
+	}
 	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
 	{
 		GameState &state = window().State();
@@ -164,7 +171,7 @@ int main(int argc, const char **argv) {
 	float frame_ms = 16.7f, update_ms = 0, draw_ms = 0, wait_ms = 0;
 	int frame = 0;
 
-	while (!input::quit_requested() && !window().QuitRequested()) {
+	while (!input::quit_requested() && !window().QuitRequested() && !desktop::quit_requested()) {
 		prof::begin();
 		input::update();
 		prof::mark("input");
@@ -227,26 +234,6 @@ int main(int argc, const char **argv) {
 		if (dbg && input::pressed(input::BTN_R1)) tex_view = !tex_view;
 		if (tex_view && input::pressed(input::BTN_RIGHT)) tex_view_idx++;
 		if (tex_view && input::pressed(input::BTN_LEFT)) tex_view_idx--;
-		// Cursor test (overlay + R3): the World Machine desktop's cursor on top
-		// of the game. Right stick moves, R2 clicks, L3 changes its shape.
-		static bool cursorTest;
-		static MouseCursor cursor;
-		static int cursorShape;
-		if (dbg && !tex_view && input::pressed(input::BTN_R3)) {
-			cursorTest = !cursorTest;
-			if (cursorTest) cursor.SetMousePos(Vec2(desktop_space().x / 2, desktop_space().y / 2));
-			sys::log("cursor test %s (desktop space %dx%d)\n", cursorTest ? "on" : "off", desktop_space().x, desktop_space().y);
-		}
-		if (cursorTest) {
-			static const MouseCursor::State shapes[6] = { MouseCursor::Normal, MouseCursor::Clickable, MouseCursor::Grabbable,
-			                                              MouseCursor::Holding, MouseCursor::Move, MouseCursor::NotAllowed };
-			if (input::pressed(input::BTN_L3)) cursorShape = (cursorShape + 1) % 6;
-			cursor.forceState = true;
-			cursor.forcedState = shapes[cursorShape];
-			cursor.Update();
-			if (cursor.Clicked()) sys::log("cursor test: click at %d,%d\n", cursor.MousePos().x, cursor.MousePos().y);
-		}
-
 		// The map switcher waits for menus and dialogs to close (they own input).
 		if (dbg && !tex_view && !boot::active() && input::pressed(input::BTN_L1) && !modal::is_open() && !window().Menus().IsMenuOpen())
 			debug_map_menu::open(mapId);
@@ -255,11 +242,12 @@ int main(int argc, const char **argv) {
 		uint64_t t0 = sys::time_us();
 		{
 			// Language chosen in the settings menu: the session goes, the boot
-			// console runs again in the new language, then the title screen.
+			// console runs again in the new language, then the desktop.
 			std::string lang;
 			if (boot::take_language_request(lang)) {
 				sys::log("language change to %s: restarting the boot sequence\n", lang.c_str());
 				window().ResetForBoot();
+				desktop::close_all();
 				loc::set(lang);
 				boot::restart_console();
 			}
@@ -269,14 +257,15 @@ int main(int argc, const char **argv) {
 			// nothing: the picture stays as it was
 		} else if (booting) {
 			boot::update();
-			audio::update();
-			if (boot::just_finished()) window().ShowTitle();
+			if (boot::take_desktop_init()) desktop::init();   // Game1.InitWindowManager
+			boot::just_finished();
 		} else if (mapMenu) {
 			debug_map_menu::update();   // the game is paused underneath
 		} else if (!tex_view) {
 			modal::update();
-			window().Update();   // OneshotWindow.GameLogic
+			desktop::update();   // WindowManager.Update: the game runs inside its window
 		}
+		if (!systemPause) audio::update();
 		TileMap &map = window().Map();
 		GameState &state = window().State();
 		mapId = map.GetMapID();
@@ -287,15 +276,15 @@ int main(int argc, const char **argv) {
 		prof::mark("begin_frame (RSX wait)");
 		uint64_t tb = sys::time_us();
 		if (booting) {
+			if (boot::show_os()) {   // the desktop appears under the TWM logo
+				desktop::draw();
+				desktop::draw_cursor();
+			}
 			boot::draw();
 		} else if (!tex_view) {
-			gm::set_scaling(settings().scaling);
-			gm::begin_window();  // offscreen at a whole-number scale (gm.h)
-			gm::clip_to_window();
-			window().Draw();     // OneshotWindow.PreDraw
-			gm::clip_off();
-			gm::end_window();
+			desktop::draw();      // wallpaper, icons, windows (the game inside its own), taskbar
 			modal::draw();
+			desktop::draw_cursor();
 		} else {
 			// Texture viewer: raw texture over a magenta/grey checkerboard so
 			// transparent texels are obvious. Integer scale, centred.
@@ -342,7 +331,7 @@ int main(int argc, const char **argv) {
 			              layer_names[map.debugLayers]);
 			overlay::text(16, 196, 2, 0xff90ff, "shader: %s   R1: texture viewer (renderer switches are in there)",
 			              gfx::plain_shader() ? "PLAIN" : "full");
-			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   R3: cursor test   SELECT: hide   hold SELECT: mark the log");
+			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide   hold SELECT: mark the log");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());
@@ -350,14 +339,7 @@ int main(int argc, const char **argv) {
 			overlay::text(16, 286, 2, 0xffc080, "debug: PC password %04d (var 55)   safe code %06d (var 20)   log file: %s",
 			              state.var(55), state.var(20), sys::log_file_ok() ? "ok" : "NOT WRITABLE");
 		}
-		if (cursorTest) {
-			static const char *names[6] = { "normal", "clickable", "grabbable", "holding", "move", "not allowed" };
-			overlay::text(16, gfx::screen_h() - 50.0f, 2, 0xffffff,
-			              "cursor test: %d,%d of %dx%d  %s  shape: %s   right stick: move  R2: click  L3: shape  overlay+R3: off",
-			              cursor.MousePos().x, cursor.MousePos().y, desktop_space().x, desktop_space().y,
-			              cursor.Held() ? "[HELD]" : "", names[cursorShape]);
-			cursor.Draw();
-		}
+
 		prof::mark("overlay");
 		gfx::end_frame();
 		prof::mark("end_frame (flip)");

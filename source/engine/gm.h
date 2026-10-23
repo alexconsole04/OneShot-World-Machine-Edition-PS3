@@ -74,6 +74,13 @@ void draw_captured_window(float alpha);
 //          builds before m9 drew; uneven pixel sizes at 2.25x / 1.5x)
 enum { SCALE_SHARP = 0, SCALE_SMOOTH = 1, SCALE_INTEGER = 2, SCALE_DIRECT = 3, SCALE_COUNT = 4 };
 void set_scaling(int mode);
+// Where the 640x480 game window lands on the TV (TV pixels, TV pixels per
+// window pixel): the desktop moves it with the OneShot window. reset puts
+// it back to the whole TV (aspect-fitted).
+void set_window_placement(float ox, float oy, float scale);
+void reset_window_placement();
+// A point of a size.x x size.y space (begin_space) in TV pixels.
+Vec2 space_to_tv(Vec2 size, float x, float y, float *scale);
 const char *scaling_info();   // for the debug overlay
 // Window drawing goes to an offscreen target between these two calls
 // (window coordinates keep working), then end_window puts it on the TV.

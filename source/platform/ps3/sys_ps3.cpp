@@ -120,6 +120,12 @@ bool file_exists(const char *rel) {
 	return resolve_case(g_dir, rel, real);
 }
 
+bool clock_24h() {
+	int v = 0;
+	if (cellSysutilGetSystemParamInt(CELL_SYSUTIL_SYSTEMPARAM_ID_TIME_FORMAT, &v) != 0) return false;
+	return v == CELL_SYSUTIL_TIME_FMT_CLOCK24;
+}
+
 const char *system_language() {
 	// The console's language, as a game language code (GetDefaultLanguageCode).
 	int v = -1;

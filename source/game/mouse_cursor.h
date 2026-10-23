@@ -1,7 +1,7 @@
 // mouse_cursor.h - port of MouseCursorManager: the World Machine desktop's
 // cursor, moved with the right stick (the console versions' scheme) and
 // clicked with R2. Positions are in desktop pixels: half the desktop's
-// draw size (the desktop draws at 2x), which here is half the TV size.
+// draw size (the desktop draws at 2x; 640x360 on a 16:9 TV).
 #pragma once
 #include "../engine/types.h"
 
@@ -30,5 +30,5 @@ private:
 	Vec2 offset;
 };
 
-// Desktop space size (DrawScreenSize / 2): TV width and height halved.
+// Desktop space size (DrawScreenSize / 2): 640x360 on a 16:9 TV.
 Vec2 desktop_space();

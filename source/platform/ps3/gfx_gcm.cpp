@@ -73,7 +73,8 @@ static const u32 PROBE_COPY_RGB = 0x0a141e;   // copied into pixel (1,0)
 static int g_draw_fails, g_checks;
 static bool g_draw_ok = true, g_copy_ok = true, g_checked;
 static bool g_after_system_menu;   // the screen check only acts after the XMB has been open
-static volatile bool g_system_drawing;   // the XMB covers the probe pixels: no checks meanwhile
+static volatile bool g_system_drawing;
+static u32 g_checks_quiet_until;   // no screen checks until this frame (the XMB's own fade-out)   // the XMB covers the probe pixels: no checks meanwhile
 static uint8_t *depth_mem;          // size of what's being drawn into (screen or render target)
 static Texture *cur_rt;
 static void resend_state();
@@ -783,7 +784,7 @@ void end_frame() {
 	cellGcmSetWriteCommandLabel(ctx, LABEL_BUFFER_STATUS_OFFSET + g_frame_index, BUFFER_BUSY);
 
 	// Every half second: did the probes reach the frame now on screen?
-	if (++g_checks % 30 == 0 && frame_counter > 10 && !g_system_drawing) {
+	if (++g_checks % 30 == 0 && frame_counter > 10 && !g_system_drawing && frame_counter >= g_checks_quiet_until) {
 		const uint8_t *m = color_mem[g_buffer_on_display % COLOR_BUFFER_NUM];
 		u32 p0 = *(volatile const u32 *)m & 0xffffff, p1 = *(volatile const u32 *)(m + 4) & 0xffffff;
 		auto near = [](u32 c, int r, int g, int b) {
@@ -1011,10 +1012,15 @@ void debug_status(char *buf, int n) {
 	         g_flip_count, g_flip_recovered, g_flip_recovered == 1 ? "" : "s");
 }
 
-void set_system_drawing(bool on) { g_system_drawing = on; g_draw_fails = 0; }
+void set_system_drawing(bool on) {
+	g_system_drawing = on;
+	g_draw_fails = 0;
+	if (!on) g_checks_quiet_until = frame_counter + 60;
+}
 
 void system_menu_closed() {
 	g_after_system_menu = true;
+	g_checks_quiet_until = frame_counter + 60;   // the XMB fades out over the game for a moment
 	// The XMB may change the display setup while it's open: register the
 	// game's display buffers and flip mode again.
 	for (int i = 0; i < COLOR_BUFFER_NUM; i++)

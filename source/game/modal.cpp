@@ -42,10 +42,10 @@ void update() {
 	if (++age < 8) return;
 	using namespace input;
 	if (type_ == Type::YesNo) {
-		if (pressed(BTN_LEFT) || pressed(BTN_RIGHT)) { cursor ^= 1; audio::play_sound("menu_cursor"); }
-		if (pressed(BTN_OK)) { last_ = cursor == 0 ? Response::Yes : Response::No; open_ = false; }
-		else if (pressed(BTN_CANCEL)) { last_ = Response::No; open_ = false; }
-	} else if (pressed(BTN_OK) || pressed(BTN_CANCEL) || auto_mashing()) {
+		if (pressed_raw(BTN_LEFT) || pressed_raw(BTN_RIGHT)) { cursor ^= 1; audio::play_sound("menu_cursor"); }
+		if (pressed_raw(BTN_OK)) { last_ = cursor == 0 ? Response::Yes : Response::No; open_ = false; }
+		else if (pressed_raw(BTN_CANCEL)) { last_ = Response::No; open_ = false; }
+	} else if (pressed_raw(BTN_OK) || pressed_raw(BTN_CANCEL) || auto_mashing()) {
 		last_ = Response::OK;
 		open_ = false;
 	}

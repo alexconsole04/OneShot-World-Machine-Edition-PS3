@@ -3,7 +3,7 @@
 //   Felix -> Future Cat logo -> KOMODO logo -> language select (first
 //   launch only) -> autosave notice -> BIOS console (where the sound
 //   effects and system textures really load) -> the big TWM logo with
-//   twm_startup -> (the desktop on PC; the title screen here for now).
+//   twm_startup -> the desktop.
 //
 // Cross / Circle / R2 skip a section, as on PC. The FMOD logo is left out:
 // this port doesn't use FMOD.
@@ -18,6 +18,8 @@ void start();
 void restart_console();
 bool active();           // drawing and updating the boot screens
 bool just_finished();    // true once, the frame the sequence completes
+bool show_os();          // the desktop shows under the TWM logo as it wipes away
+bool take_desktop_init();   // true once, when the desktop should be created
 void update();
 void draw();             // whole TV (boot screen space)
 

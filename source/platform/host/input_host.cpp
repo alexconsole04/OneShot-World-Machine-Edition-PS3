@@ -74,8 +74,10 @@ void update() {
 	}
 }
 
-bool held(uint32_t b) { return (cur & b) != 0; }
-bool pressed(uint32_t b) { return (cur & b) && !(prev & b); }
+bool held_raw(uint32_t b) { return (cur & b) != 0; }
+bool pressed_raw(uint32_t b) { return (cur & b) && !(prev & b); }
+bool held(uint32_t b) { return held_raw(b & ~suppressed_mask()); }
+bool pressed(uint32_t b) { return pressed_raw(b & ~suppressed_mask()); }
 int stick_x() { return 0; }
 int stick_y() { return 0; }
 int rstick_x() { return (cur_rs & 1) ? -100 : (cur_rs & 2) ? 100 : 0; }

@@ -36,6 +36,7 @@ static int selectedLanguage;
 static std::string version;
 static std::string pendingLanguage;
 static uint64_t stepStart;
+static bool initDesktop;
 
 // SpinningBulbIcon
 static int bulbFrameTimer, bulbFrame, bulbLightCycle;
@@ -102,6 +103,12 @@ void restart_console() {
 }
 
 bool active() { return step != COMPLETE; }
+bool show_os() { return step == TWM_LOGO_FADEOUT; }
+bool take_desktop_init() {
+	bool f = initDesktop;
+	initDesktop = false;
+	return f;
+}
 
 bool just_finished() {
 	bool f = finishedFlag;
@@ -344,6 +351,7 @@ void update() {
 			opacity = 0;
 			set_step(BIG_LOGO_BEFORE_SOUND);
 			audio::play_song("", 0.0f, 1.0f, 1.0f);
+			initDesktop = true;   // Game1.InitWindowManager
 		}
 		break;
 	case BIG_LOGO_BEFORE_SOUND:

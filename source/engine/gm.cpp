@@ -24,7 +24,7 @@ static float S0 = 1.0f, OX0 = 0, OY0 = 0;   // the window's place on the TV
 // Offscreen window (see begin_window).
 static gfx::Texture *win_rt;
 static int win_k, scaling_mode, rt_failed_k;
-static bool in_window, last_frame_rt;
+static bool in_window, last_frame_rt, in_space;
 
 void init() {
 	int sw = gfx::screen_w(), sh = gfx::screen_h();
@@ -186,6 +186,26 @@ void capture_window() {
 	else captured = gfx::capture_screen((int)(OX0 + 0.5f), (int)(OY0 + 0.5f), (int)(640.0f * S0 + 0.5f), (int)(480.0f * S0 + 0.5f));
 }
 
+void set_window_placement(float ox, float oy, float scale) {
+	S0 = scale; OX0 = ox; OY0 = oy;
+	if (!in_window && !in_space) { S = S0; OX = OX0; OY = OY0; }
+}
+
+void reset_window_placement() {
+	int sw = gfx::screen_w(), sh = gfx::screen_h();
+	float sx = sw / 640.0f, sy = sh / 480.0f;
+	float sc = sx < sy ? sx : sy;
+	set_window_placement((sw - 640.0f * sc) * 0.5f, (sh - 480.0f * sc) * 0.5f, sc);
+}
+
+Vec2 space_to_tv(Vec2 size, float x, float y, float *scale) {
+	float sx = (float)gfx::screen_w() / size.x, sy = (float)gfx::screen_h() / size.y;
+	float k = sx < sy ? sx : sy;
+	float ox = (gfx::screen_w() - size.x * k) * 0.5f, oy = (gfx::screen_h() - size.y * k) * 0.5f;
+	if (scale) *scale = k;
+	return Vec2((int)(ox + x * k + 0.5f), (int)(oy + y * k + 0.5f));
+}
+
 void set_scaling(int mode) { scaling_mode = mode >= 0 && mode < SCALE_COUNT ? mode : SCALE_SHARP; }
 
 const char *scaling_info() {
@@ -250,7 +270,8 @@ void end_window() {
 	gfx::Shade s;
 	if (scaling_mode == SCALE_INTEGER) {
 		float w = (float)win_rt->w, h = (float)win_rt->h;
-		float x = floorf((gfx::screen_w() - w) * 0.5f), y = floorf((gfx::screen_h() - h) * 0.5f);
+		// Centred in the window's place (the whole TV when maximized).
+		float x = floorf(OX + (640.0f * S - w) * 0.5f), y = floorf(OY + (480.0f * S - h) * 0.5f);
 		gfx::draw(win_rt, x, y, w, h, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
 	} else {
 		gfx::draw(win_rt, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)win_rt->w, (int)win_rt->h, s, gfx::Blend::Normal);
@@ -279,7 +300,6 @@ Vec2 boot_space() {
 }
 
 static int space_w, space_h;
-static bool in_space;
 
 void begin_space(Vec2 size) {
 	// No off-screen pass: at 1080p one space pixel is 1.5 TV pixels, so the

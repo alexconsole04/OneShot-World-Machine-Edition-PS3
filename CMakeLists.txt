@@ -28,6 +28,7 @@ add_executable(oneshot-ps3
     source/game/save.cpp
     source/game/loc.cpp
     source/game/boot_sequence.cpp
+    source/game/desktop.cpp
     source/game/title_screen.cpp
     source/game/oneshot_window.cpp
     source/game/pictures.cpp
