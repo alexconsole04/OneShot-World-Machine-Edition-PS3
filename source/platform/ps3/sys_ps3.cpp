@@ -164,6 +164,14 @@ const char *user_name() {
 }
 
 void local_time(int *h, int *m, int *s, int *yday) {
+	// cellRtc lives in its own system module, which has to be loaded before
+	// the first call (RPCS3 doesn't mind; a real PS3 crashes on the call).
+	static int loaded = -1;
+	if (loaded < 0) {
+		loaded = cellSysmoduleLoadModule(CELL_SYSMODULE_RTC) == 0;
+		if (!loaded) log("rtc: couldn't load the clock module; the time reads as 12:00\n");
+	}
+	if (!loaded) { *h = 12; *m = 0; *s = 0; *yday = 1; return; }
 	CellRtcDateTime t;
 	memset(&t, 0, sizeof(t));
 	cellRtcGetCurrentClockLocalTime(&t);

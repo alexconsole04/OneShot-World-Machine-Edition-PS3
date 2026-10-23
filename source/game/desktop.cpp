@@ -832,7 +832,10 @@ static void draw_taskbar(Window *active) {
 	}
 	// The clock (DateTime.Now.ToShortTimeString), in the console's format.
 	int h, m, s, yd;
+	static bool logged;
+	if (!logged) sys::log("desktop: reading the clock\n");
 	sys::local_time(&h, &m, &s, &yd);
+	if (!logged) { logged = true; sys::log("desktop: clock reads %d:%02d (%s)\n", h, m, sys::clock_24h() ? "24-hour" : "AM/PM"); }
 	char clock[16];
 	if (sys::clock_24h()) snprintf(clock, sizeof(clock), "%d:%02d", h, m);
 	else snprintf(clock, sizeof(clock), "%d:%02d %s", h % 12 == 0 ? 12 : h % 12, m, h < 12 ? "AM" : "PM");
