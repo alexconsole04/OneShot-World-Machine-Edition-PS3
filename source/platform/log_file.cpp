@@ -99,7 +99,7 @@ void log_file_write(const char *msg) {
 
 #include <stdarg.h>
 namespace sys {
-static int g_traceBudget = 1500;
+static int g_traceBudget = 0;
 void trace(const char *fmt, ...) {
 	if (g_traceBudget <= 0) return;
 	g_traceBudget--;

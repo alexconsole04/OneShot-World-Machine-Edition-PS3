@@ -58,7 +58,11 @@ add_executable(oneshot-ps3
 )
 target_include_directories(oneshot-ps3 PRIVATE source third_party)
 target_compile_features(oneshot-ps3 PRIVATE cxx_std_17 c_std_11)
-target_compile_options(oneshot-ps3 PRIVATE -O2 -Wall
+# -fno-store-merging -fno-tree-slp-vectorize: GCC 12 for the PPU (32-bit pointers in
+# 64-bit registers) otherwise copies pointer pairs (shared_ptr, std::function)
+# with one 64-bit load and then uses half of it as an address without clearing
+# the other half: an invalid address on the PS3 (the m14 startup crashes).
+target_compile_options(oneshot-ps3 PRIVATE -O2 -Wall -fno-store-merging -fno-tree-slp-vectorize
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti>)
 target_link_libraries(oneshot-ps3 PRIVATE gcm_cmd gcm_sys io sysutil sysutil_userinfo_stub rtc_stub audio_stub fs_stub sysmodule rt lv2 m stdc++)
 
