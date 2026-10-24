@@ -5,7 +5,11 @@
 - /home/claude/src_in       - decompiled PC C# (NOT in the repo; re-supply it)
 - /home/claude/gd3          - game content/ + gamedata/ used by host tests (user's own copy, NOT in the repo)
 - /opt/ps3dk                - "PS3 Custom Toolchain v0.22.0" (GCC 12.4 powerpc64-ps3-elf, PSL1GHT-style).
-  Built from: ps3-sdk-src-v0.22.0, ps3-sdk-tools-v0.22.0-linux-x86_64, ps3dev-ppu.tar.xz, ps3dev-spu.tar.xz
+  Source: https://github.com/FirebirdTA01/PS3_Custom_Toolchain release v0.22.0
+  (ps3-sdk-src-v0.22.0.tar.xz sha256 f29a9fe0449135c970062d248d91520d76e04c4452be9e50a739890374de94c8,
+   ps3-sdk-tools-v0.22.0-linux-x86_64.tar.xz sha256 8697101d31ceb684ce5897758ed0196f412d96224b71436558bc65c3b181259a)
+  plus prebuilt ps3dev-ppu.tar.xz / ps3dev-spu.tar.xz compilers (ps3dev/ps3toolchain, PSL1GHT).
+  Installed to /opt/ps3dk; env via /opt/ps3dk/env.sh.
 
 ## Builds
 - PS3:  `. /opt/ps3dk/env.sh; cmake -B build; cmake --build build`  (re-run `cmake build` after adding files)
