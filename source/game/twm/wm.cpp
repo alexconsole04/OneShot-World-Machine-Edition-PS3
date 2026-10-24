@@ -25,6 +25,12 @@ namespace twm {
 
 // ===================================================================== state
 
+// m14b: startup steps logged (and the log flushed) until the desktop has
+// drawn a few frames, to find where some saves stop it on the PS3.
+static int g_traceFrames = 4, g_traceDraws = 4;
+static bool g_inDraw;
+#define TRACE_STEP(what) do { if (g_inDraw ? g_traceDraws > 0 : g_traceFrames > 0) { sys::log("trace: %s\n", what); sys::log_flush(); } } while (0)
+
 static std::vector<Theme> g_themes;
 static std::vector<std::pair<Color, Color>> g_themeOriginals;   // rainbow: colours before the hue cycle
 static float g_rainbowOffset;
@@ -444,7 +450,10 @@ void save_desktop_and_fs() { g_desktopDirty = g_fsDirty = true; }
 static void write_saves() {
 	if (g_fsDirty) {
 		g_fsDirty = false;
-		if (!sys::save_write("fs.dat", g_fs.Save())) sys::log("twm: couldn't write fs.dat\n");
+		TRACE_STEP("saving fs.dat");
+		std::string text = g_fs.Save();
+		TRACE_STEP("writing fs.dat");
+		if (!sys::save_write("fs.dat", text)) sys::log("twm: couldn't write fs.dat\n");
 	}
 	if (!g_desktopDirty) return;
 	g_desktopDirty = false;
@@ -471,6 +480,7 @@ static void write_saves() {
 	cJSON *dr = cJSON_AddObjectToObject(o, "DrawResolution");
 	cJSON_AddNumberToObject(dr, "X", space().x);
 	cJSON_AddNumberToObject(dr, "Y", space().y);
+	TRACE_STEP("writing desktop.dat");
 	char *s = cJSON_PrintUnformatted(o);
 	if (s) {
 		if (!sys::save_write("desktop.dat", s)) sys::log("twm: couldn't write desktop.dat\n");
@@ -492,18 +502,24 @@ static bool load_desktop() {
 	cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(o, "iconPositions"))
 		layout.push_back({ it->string ? it->string : "", Vec2((int)cJSON_GetNumberValue(cJSON_GetObjectItemCaseSensitive(it, "X")),
 		                                                      (int)cJSON_GetNumberValue(cJSON_GetObjectItemCaseSensitive(it, "Y"))) });
+	TRACE_STEP("desktop.dat: layout");
 	g_desktop->SetLayout(layout);
+	TRACE_STEP("desktop.dat: wallpaper");
 	const cJSON *wp = cJSON_GetObjectItemCaseSensitive(o, "currentWallpaper");
 	g_desktop->SetWallpaper(cJSON_IsString(wp) && g_desktop->WallpaperMeta(wp->valuestring) ? wp->valuestring : "default");
 	g_desktop->inSolstice = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "inSolstice"));
 	const cJSON *bt = cJSON_GetObjectItemCaseSensitive(o, "isBadgeToastsEnabled");
 	if (cJSON_IsBool(bt)) unlocks().badgeToastsEnabled = cJSON_IsTrue(bt);
+	TRACE_STEP("desktop.dat: unlocks");
 	unlocks().LoadSaveData(o);
 	const cJSON *th = cJSON_GetObjectItemCaseSensitive(o, "currentTheme");
 	if (cJSON_IsString(th) && theme_by_id(th->valuestring)) g_themeId = th->valuestring;
 	cJSON_Delete(o);
+	TRACE_STEP("desktop.dat: wallpaper files");
 	g_fs.CreateWallpaperFiles(unlocks().wallpapers);
+	TRACE_STEP("desktop.dat: theme files");
 	g_fs.CreateThemeFiles(unlocks().themes);
+	TRACE_STEP("desktop.dat: done");
 	return true;
 }
 
@@ -763,8 +779,11 @@ static void init() {
 	if (gfx::screen_h() >= 1080) set_space(Vec2(gfx::screen_w(), gfx::screen_h()));
 	else set_space(gm::boot_space());
 	set_desktop_space(space());
+	TRACE_STEP("themes");
 	load_themes();
+	TRACE_STEP("unlocks");
 	unlocks();
+	TRACE_STEP("fs.dat");
 	// InitFs
 	bool freshFs = true;
 	std::string fsText;
@@ -776,6 +795,7 @@ static void init() {
 		g_fs.CreateDefaultFiles();
 	}
 	g_fs.onAnyWriteOrDelete = [] { g_fsDirty = true; };
+	TRACE_STEP("taskbar");
 	audio::set_song_hook([](const char *name) {   // SoundManager.PlaySong / QueueSong: UnlockTrack
 		if (unlocks().IsTrack(name)) unlocks().UnlockTrack(name);
 	});
@@ -784,17 +804,22 @@ static void init() {
 	g_taskButtonW = (g_taskArea.w - 26 - text_w("00:00 PM")) / 6 - 4;
 	g_minimizeAll.reset(new WindowButton(WinButtonType::MinimizeAll, Vec2(screen().x - 16 - 6, screen().y - 30 + 2 + 6), [] { minimize_all(); }));
 	// InitDesktop
+	TRACE_STEP("desktop grid");
 	g_desktop.reset(new DesktopGrid(&g_fs, Vec2(screen().x, screen().y - 30)));
 	g_desktop->onBeginDrag = [](DraggedItem *d) { begin_drag(d); };
 	g_desktop->createModal = [](int type, const std::string &msg) { show_system_modal(type, msg); };
 	g_desktop->onDesktopChange = [] { save_desktop_and_fs(); };
+	TRACE_STEP("new files");
 	if (freshFs) {
 		// No file system yet. The PC's desktop tutorial would build it; that
 		// isn't in, so it starts as the tutorial leaves it.
 		g_fs.CreateDocumentsFolder();
 		g_fs.CreateOneshotFile();
+		TRACE_STEP("tutorial files");
 		g_fs.CreateTutorialCompleteFiles(unlocks().wallpapers, unlocks().themes);
+		TRACE_STEP("documents to top left");
 		g_desktop->MoveDocumentsToTopLeft();
+		TRACE_STEP("save file");
 		// A playthrough saved before the file system existed (builds before
 		// m14) keeps its save: the save's file goes where MakeSave puts it.
 		if (sys::save_exists("save.dat")) {
@@ -803,9 +828,11 @@ static void init() {
 			g_fs.WriteFile(Filesystem::MYGAMESONESHOT, f);
 		}
 	}
+	TRACE_STEP("desktop.dat");
 	bool haveDesktop = load_desktop();   // the icons' places, unlocks, theme
 	if (freshFs) sys::log("twm: new file system%s\n", haveDesktop ? " (desktop.dat kept)" : "");
 	if (!haveDesktop) g_desktop->SetWallpaper("default");
+	TRACE_STEP("rest");
 	save_desktop_and_fs();
 	cursor().SetMousePos(Vec2(screen().x / 2, screen().y / 2));
 	window().desktopMode = true;
@@ -854,6 +881,7 @@ static void niko_draw() {
 
 static void update() {
 	if (!g_ready) return;
+	TRACE_STEP("update");
 	cursor().Update();
 	if (g_flashTimer > 0) g_flashTimer--;
 	GameWindow *gw = game_window();
@@ -896,6 +924,7 @@ static void update() {
 			dropping = false;
 		}
 	}
+	TRACE_STEP("update: icons");
 	g_desktop->Update(Vec2(0, 0), consumed);
 	if (dropping) {
 		g_desktop->OnDragDropped(g_drag.get(), cursor().MousePos());
@@ -909,13 +938,18 @@ static void update() {
 	g_toasts.Update();
 	update_themes();
 	flush_deletes();
+	TRACE_STEP("update: saving");
 	write_saves();
+	TRACE_STEP("update: done");
+	if (g_traceFrames > 0) g_traceFrames--;
 }
 
 // ===================================================================== draw
 
 static void draw() {
 	if (!g_ready) return;
+	g_inDraw = true;
+	TRACE_STEP("draw");
 	begin();
 	const Theme &th = theme();
 	Window *maxed = nullptr;
@@ -926,12 +960,15 @@ static void draw() {
 		if (GameWindow *gw = game_window())
 			if (!gw->Minimized() && gw->MinimizedFrames() == 0)
 				g_gameRect = Rect((gw->pos.x + 2) * 2, (gw->pos.y + 26) * 2, 640, 480);
+		TRACE_STEP("draw: wallpaper and icons");
 		g_desktop->DrawDesktop(th, g_gameRect);
+		TRACE_STEP("draw: windows");
 		for (int i = (int)g_windows.size() - 1; i >= 0; i--) g_windows[i]->Draw(th);
 		g_toasts.Draw(th, screen());
 		Window *active = nullptr;
 		for (auto &w : g_windows)
 			if (!w->Minimized()) { active = w.get(); break; }
+		TRACE_STEP("draw: taskbar");
 		draw_taskbar(active);
 		if (g_fadeOpacity) box(Rect(0, 0, screen().x, screen().y), Color(0, 0, 0, g_fadeOpacity));
 		if (g_drag) g_drag->Draw(th, cursor().MousePos());
@@ -950,6 +987,9 @@ static void draw() {
 		box(Rect(0, 0, screen().x, screen().y), c);
 	}
 	end();
+	TRACE_STEP("draw: done");
+	if (g_traceDraws > 0) g_traceDraws--;
+	g_inDraw = false;
 	prof::mark("desktop draw");
 }
 

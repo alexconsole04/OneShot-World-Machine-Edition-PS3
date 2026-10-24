@@ -11,7 +11,7 @@ SRC_C = source/xnb.c third_party/cJSON.c
 OBJ = $(patsubst %,build-host/%.o,$(SRC_CPP) $(SRC_C))
 
 build-host/oneshot-host: $(OBJ)
-	$(CXX) -o $@ $^ -lm -lpthread
+	$(CXX) $(LDFLAGS) -o $@ $^ -lm -lpthread
 
 build-host/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)

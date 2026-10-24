@@ -35,7 +35,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m14"
+#define OSPS3_VERSION "m14b"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
