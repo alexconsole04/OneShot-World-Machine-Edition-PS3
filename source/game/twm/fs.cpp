@@ -66,10 +66,14 @@ bool Filesystem::FileExists(const std::string &path) const {
 bool Filesystem::IsPathMoveRestricted(const std::string &path) const { return path == WALLPAPERS || path == THEMES; }
 
 void Filesystem::NotifyWrite(const std::string &path) {
+	sys::trace("fs: notify %s (%d listeners)", path.c_str(), (int)listeners.size());
 	std::vector<Listener> l = listeners;
 	for (auto &x : l)
-		if (x.write) x.write(path);
+		if (x.write) {
+			x.write(path);
+		}
 	if (onAnyWriteOrDelete) onAnyWriteOrDelete();
+	sys::trace("fs: notify: done");
 }
 
 void Filesystem::NotifyMove(const std::string &path) {
@@ -89,6 +93,7 @@ void Filesystem::Unlisten(int id) {
 }
 
 void Filesystem::Delete(const std::string &path) {
+	sys::trace("fs: delete %s", path.c_str());
 	std::shared_ptr<Folder> folder;
 	auto it = dirs.find(path);
 	if (it != dirs.end()) {
@@ -138,6 +143,7 @@ void Filesystem::MoveFile(File *file, const std::string &to) {
 
 void Filesystem::AddDir(const std::string &path) {
 	if (dirs.count(path)) return;
+	sys::trace("fs: add folder %s", path.c_str());
 	// The folder's name is its last path element ("desktop_foldername" for "/").
 	std::vector<std::string> parts;
 	size_t s = 0;
@@ -168,8 +174,12 @@ int Filesystem::ItemCount(const std::string &path) const {
 }
 
 void Filesystem::WriteFile(const std::string &path, std::shared_ptr<File> file) {
-	if (File *old = FindNamedFile(*file)) Delete(old);
+	sys::trace("fs: write %s%s", path.c_str(), file->name.c_str());
+	File *old = FindNamedFile(*file);
+	sys::trace("fs: write: same file there: %s", old ? "yes" : "no");
+	if (old) Delete(old);
 	Folder *d = GetDir(path);
+	sys::trace("fs: write: folder %s", d ? "found" : "missing");
 	if (!d) {
 		sys::log("twm: could not find path when creating '%s': %s\n", file->name.c_str(), path.c_str());
 		return;
@@ -177,6 +187,7 @@ void Filesystem::WriteFile(const std::string &path, std::shared_ptr<File> file) 
 	d->contents.push_back(file);
 	file->parentPath = path;
 	NotifyWrite(path);
+	sys::trace("fs: write: done");
 }
 
 bool Filesystem::FileTypeExists(Program p) const {
@@ -187,12 +198,13 @@ bool Filesystem::FileTypeExists(Program p) const {
 }
 
 File *Filesystem::FindNamedFile(const File &f) const {
-	for (auto &d : dirs)
+	for (auto &d : dirs) {
 		for (auto &c : d.second->contents)
 			if (!c->IsFolder()) {
 				File *x = static_cast<File *>(c.get());
 				if (x->program == f.program && x->name == f.name) return x;
 			}
+	}
 	return nullptr;
 }
 

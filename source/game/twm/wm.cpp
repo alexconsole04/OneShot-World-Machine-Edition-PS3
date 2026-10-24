@@ -29,7 +29,7 @@ namespace twm {
 // drawn a few frames, to find where some saves stop it on the PS3.
 static int g_traceFrames = 4, g_traceDraws = 4;
 static bool g_inDraw;
-#define TRACE_STEP(what) do { if (g_inDraw ? g_traceDraws > 0 : g_traceFrames > 0) { sys::log("trace: %s\n", what); sys::log_flush(); } } while (0)
+#define TRACE_STEP(what) do { if (g_inDraw ? g_traceDraws > 0 : g_traceFrames > 0) sys::trace("%s", what); } while (0)
 
 static std::vector<Theme> g_themes;
 static std::vector<std::pair<Color, Color>> g_themeOriginals;   // rainbow: colours before the hue cycle
@@ -797,7 +797,9 @@ static void init() {
 	g_fs.onAnyWriteOrDelete = [] { g_fsDirty = true; };
 	TRACE_STEP("taskbar");
 	audio::set_song_hook([](const char *name) {   // SoundManager.PlaySong / QueueSong: UnlockTrack
+		sys::trace("song %s", name);
 		if (unlocks().IsTrack(name)) unlocks().UnlockTrack(name);
+		sys::trace("song %s done", name);
 	});
 	// Taskbar (SetTaskbarSizeFromScreenSize)
 	g_taskArea = Rect(0, screen().y - 30, screen().x, 30);

@@ -35,7 +35,9 @@ static void script_trace_dump() { script_trace::dump(); }
 #include "engine/audio.h"
 
 #include <stdio.h>
-#define OSPS3_VERSION "m14b"
+#include <new>
+#include <exception>
+#define OSPS3_VERSION "m14c"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -74,8 +76,22 @@ static void fatal_screen(const char *msg) {
 	}
 }
 
+// Diagnostics (m14b): say so in the log when the C++ library gives up.
+static void on_out_of_memory() {
+	sys::log("FATAL: out of memory (heap %d KB in use)\n", sys::heap_used_kb());
+	sys::log_flush();
+	abort();
+}
+static void on_terminate() {
+	sys::log("FATAL: std::terminate - a C++ library error (heap %d KB in use)\n", sys::heap_used_kb());
+	sys::log_flush();
+	abort();
+}
+
 int main(int argc, const char **argv) {
 	sys::init_log();
+	std::set_new_handler(on_out_of_memory);
+	std::set_terminate(on_terminate);
 	sys::log("OneShot PS3 port %s (built %s %s)\n", OSPS3_VERSION, __DATE__, __TIME__);
 	if (!gfx::init()) return 1;
 	gm::init();
