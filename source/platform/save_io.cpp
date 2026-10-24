@@ -53,10 +53,14 @@ static bool rename_path(const std::string &from, const std::string &to) {
 }
 
 bool save_exists(const char *name) {
-	FILE *f = fopen(path_of(name).c_str(), "rb");
-	if (!f) return false;
-	fclose(f);
-	return true;
+	// A stat, not fopen/fclose: no stdio involved just to look.
+#ifdef __PPU__
+	CellFsStat st;
+	return cellFsStat(path_of(name).c_str(), &st) == CELL_FS_SUCCEEDED;
+#else
+	struct stat st;
+	return stat(path_of(name).c_str(), &st) == 0;
+#endif
 }
 
 bool save_read(const char *name, std::string &out) {

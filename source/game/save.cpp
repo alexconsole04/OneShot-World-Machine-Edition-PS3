@@ -57,7 +57,9 @@ static const char *FAKESAVE = "/docs_foldername/mygames_foldername/oneshot_folde
 // SaveExists: the playthrough's file on the desktop is the save - delete
 // it there and the save goes too.
 bool Exists() {
+	sys::trace("save: checking for the save file on the desktop");
 	if (desktop::ready() && !twm::filesystem().FileExists(FAKESAVE)) Erase();
+	sys::trace("save: checking save.dat");
 	return sys::save_exists(SAVE_FILE);
 }
 
@@ -255,6 +257,7 @@ bool Load(TileMap *map, GameState *s) {
 }
 
 void Erase() {
+	sys::trace("save: erase");
 	if (sys::save_exists(SAVE_FILE)) {
 		sys::save_delete(SAVE_FILE);
 		sys::log("save erased\n");

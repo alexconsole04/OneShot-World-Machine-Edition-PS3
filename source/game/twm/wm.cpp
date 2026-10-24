@@ -824,8 +824,11 @@ static void init() {
 		TRACE_STEP("save file");
 		// A playthrough saved before the file system existed (builds before
 		// m14) keeps its save: the save's file goes where MakeSave puts it.
-		if (sys::save_exists("save.dat")) {
+		bool haveSave = sys::save_exists("save.dat");
+		sys::trace("save file: save.dat %s", haveSave ? "found" : "not there");
+		if (haveSave) {
 			auto f = make_file("save", "fakesave_filename", PROG_DOCUMENT, { "save_progress_text" });
+			sys::trace("save file: made");
 			f->moveRestricted = true;
 			g_fs.WriteFile(Filesystem::MYGAMESONESHOT, f);
 		}
