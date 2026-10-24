@@ -1,0 +1,43 @@
+# Developer notes (for resuming work)
+
+## Workspace layout this was built in
+- /home/claude/osps3        - this repo
+- /home/claude/src_in       - decompiled PC C# (NOT in the repo; re-supply it)
+- /home/claude/gd3          - game content/ + gamedata/ used by host tests (user's own copy, NOT in the repo)
+- /opt/ps3dk                - "PS3 Custom Toolchain v0.22.0" (GCC 12.4 powerpc64-ps3-elf, PSL1GHT-style).
+  Built from: ps3-sdk-src-v0.22.0, ps3-sdk-tools-v0.22.0-linux-x86_64, ps3dev-ppu.tar.xz, ps3dev-spu.tar.xz
+
+## Builds
+- PS3:  `. /opt/ps3dk/env.sh; cmake -B build; cmake --build build`  (re-run `cmake build` after adding files)
+- Host: `make -f Makefile.host -j16`  -> build-host/oneshot-host
+- New source files go in BOTH CMakeLists.txt and Makefile.host.
+- Keep `-fno-store-merging -fno-tree-slp-vectorize`: GCC 12 PPU miscompiles shared_ptr /
+  std::function copies (64-bit ld then the low word used as a pointer). dev/scan_ld_base.py
+  and dev/asmscan_ld_base.py scan the ELF/asm for that pattern.
+- -fno-rtti: use Window::Kind() instead of dynamic_cast.
+
+## Host tests
+`dev/flow.sh "<input>" "f1,f2,..." ENV=...` (TIMEOUT, TAILN). Input letters:
+U D L R x o s i m e l k c(R2) v z, H/J/Y/N = right stick L/R/U/D; "cH 46" = hold for 46 frames.
+Envs: OSPS3_SKIP_BOOT=1, OSPS3_LAUNCH=1, OSPS3_MAP=N, OSPS3_SCREEN=1920x1080,
+OSPS3_TEXTS="!script ...|...". Saves in /tmp/claude-0/saves.
+
+## Packaging
+out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.cpp.
+
+## Status (m14f) and next work (m15)
+- m14f: game always drawn 1x into 640x480; Sharp = nearest 2x then linear. Awaiting PS3 test of
+  maximized speed (maps 12/14/18).
+- m15 plan:
+  - Customize app: remove Vsync + Fullscreen (slots free); Badge Notifications; Resolution read-only;
+    "Change Resolution" -> Erase All Data (two confirmations, keeps language+settings, deletes
+    p-settings perma flags, desktop.dat, fs.dat, restarts as first launch, English only);
+    System Scaling, View Wallpaper, Brightness, Music/Sound volume, Change Language.
+  - Remove Language from the in-game Settings menu.
+  - Add Quit to the game's main menu (mainmenu_quit, same as window X / CloseGame).
+  - D-pad: front window owns the pad; scrolls focused non-game windows; clicking/selecting the
+    game window gives it back.
+  - Apps: Music Box (+ OneShot exclusion), Gallery, Friends/Contacts, Badges, Timer, Controls, Help.
+- Later: wallpaper preloading (~200-270 ms hitch), custom wallpapers from /dev_hdd0/photo/wme/,
+  vibration, watchdog, fast travel/followers/transitions/prefetch.
+- Check SND0.AT3's origin (remove from history if it's the game's audio).
