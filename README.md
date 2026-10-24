@@ -11,3 +11,6 @@ Closed source due to using original decompiled code from the Steam version's exe
 * Place both "gamedata" and "content" folders inside dev_hdd0/game/OSWM00001/USRDIR
 
 OneShot: World Machine Edition art, code, aseets belong to FutureCat.
+
+# License
+All rights reserved; this is not an open-source project. OneShot belongs to its respective owners (Future Cat LLC, Degica and Komodo). See [LICENSE](LICENSE) for details and for the third-party licenses.
