@@ -29,6 +29,10 @@ OSPS3_TEXTS="!script ...|...". Saves in /tmp/claude-0/saves.
 ## Packaging
 out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.cpp.
 
+## User test results (after m14f)
+- Desktop puzzles, glitch effect and general performance confirmed working; game playable start to finish.
+- Missing, top priority: Fast Travel, NPC followers, some graphical effects.
+
 ## Status (m14f) and next work (m15)
 - m14f: game always drawn 1x into 640x480; Sharp = nearest 2x then linear. Awaiting PS3 test of
   maximized speed (maps 12/14/18).
