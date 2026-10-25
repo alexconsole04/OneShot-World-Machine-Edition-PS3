@@ -35,6 +35,11 @@ out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.c
   - Glen fireflies: FireflyParticle.cs (30 sprites, pictures/firefly, additive, sine alpha, parallax by camDelta;
     spawned by "particles :fireflies" scripts, saved as hasFireflyParticles). Stubbed in script_parser.cpp.
 
+- BUG (fix next build): util::random (engine/util.cpp) is never seeded, so every boot replays the
+  same sequence. George's personality (var 47, rolled 1-6 on maps 51/237 when 0) barely varies.
+  Seed once at startup from the clock (PC seeds System.Random from time).
+- Also stubbed: mood bubbles (event_runner.cpp), footsplashes (script_parser.cpp), fast travel map (menus.cpp).
+
 ## Status (m14f) and next work (m15)
 - m14f: game always drawn 1x into 640x480; Sharp = nearest 2x then linear. Awaiting PS3 test of
   maximized speed (maps 12/14/18).
