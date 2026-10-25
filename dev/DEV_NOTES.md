@@ -32,6 +32,8 @@ out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.c
 ## User test results (after m14f)
 - Desktop puzzles, glitch effect and general performance confirmed working; game playable start to finish.
 - Missing, top priority: Fast Travel, NPC followers, some graphical effects.
+  - Glen fireflies: FireflyParticle.cs (30 sprites, pictures/firefly, additive, sine alpha, parallax by camDelta;
+    spawned by "particles :fireflies" scripts, saved as hasFireflyParticles). Stubbed in script_parser.cpp.
 
 ## Status (m14f) and next work (m15)
 - m14f: game always drawn 1x into 640x480; Sharp = nearest 2x then linear. Awaiting PS3 test of
