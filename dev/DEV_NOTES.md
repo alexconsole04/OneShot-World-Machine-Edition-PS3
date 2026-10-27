@@ -38,6 +38,9 @@ out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.c
 - BUG (fix next build): util::random (engine/util.cpp) is never seeded, so every boot replays the
   same sequence. George's personality (var 47, rolled 1-6 on maps 51/237 when 0) barely varies.
   Seed once at startup from the clock (PC seeds System.Random from time).
+- BUG: brief black screen when the boot's TWM logo wipe finishes, before the desktop shows
+  (boot_sequence.cpp TWM_LOGO_FADEOUT -> COMPLETE handoff in main.cpp; desktop only drawn under the
+  logo during the fadeout). Capture frames around the end of boot with flow.sh to find it.
 - Also stubbed: mood bubbles (event_runner.cpp), footsplashes (script_parser.cpp), fast travel map (menus.cpp).
 
 ## Status (m14f) and next work (m15)
