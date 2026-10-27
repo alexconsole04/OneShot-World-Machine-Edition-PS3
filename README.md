@@ -12,5 +12,8 @@ Closed source due to using original decompiled code from the Steam version's exe
 
 OneShot: World Machine Edition art, code, aseets belong to FutureCat.
 
+# Building
+See [BUILDING.md](BUILDING.md). Requires the [PS3 Custom Toolchain v0.22.0](https://github.com/FirebirdTA01/PS3_Custom_Toolchain/releases), CMake and Ninja.
+
 # License
 All rights reserved; this is not an open-source project. OneShot belongs to its respective owners (Future Cat LLC, Degica and Komodo). See [LICENSE](LICENSE) for details and for the third-party licenses.
