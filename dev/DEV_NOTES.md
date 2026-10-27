@@ -11,6 +11,14 @@
   plus prebuilt ps3dev-ppu.tar.xz / ps3dev-spu.tar.xz compilers (ps3dev/ps3toolchain, PSL1GHT).
   Installed to /opt/ps3dk; env via /opt/ps3dk/env.sh.
 
+## Scripts in dev/
+- flow.sh - run the host build with scripted input and capture screenshots (see Host tests).
+- scan_ld_base.py / asmscan_ld_base.py - scan the PPU binary/asm for the GCC 12 ld-then-base miscompile.
+- make_tex_xnb.py / make_font_xnb.py - make test .xnb textures/fonts. xnb_host_test.c - xnb loader test.
+- clrmeta.py - minimal .NET metadata reader/IL disassembler (inspecting the PC executable).
+- rrc.py / rrc_replay.py - read and replay RPCS3 RSX captures (.rrc) for GPU debugging.
+- mk_snd0.py - builds pkg_files/SND0.AT3 (needs atracdenc).
+
 ## Builds
 - PS3:  `. /opt/ps3dk/env.sh; cmake -B build; cmake --build build`  (re-run `cmake build` after adding files)
 - Host: `make -f Makefile.host -j16`  -> build-host/oneshot-host

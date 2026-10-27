@@ -3,3 +3,6 @@ build-host/
 *.self
 *.elf
 *.pkg
+out/
+*.zip
+__pycache__/

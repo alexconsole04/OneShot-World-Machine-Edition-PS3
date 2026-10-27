@@ -1,5 +1,5 @@
 import sys, struct, numpy as np
-sys.path.insert(0,'/home/claude/tools')
+import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rrc import load
 from PIL import Image
 c=load(sys.argv[1]); out=sys.argv[2]

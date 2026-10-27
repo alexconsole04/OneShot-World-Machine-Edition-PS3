@@ -73,7 +73,7 @@ ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/dither_fp.fcg)
 
 ps3_add_self(oneshot-ps3)
 # XMB extras (PIC1.PNG background, SND0.AT3 looping ambience) are copied
-# from pkg_files/. SND0.AT3 is made by tests/mk_snd0.py with atracdenc.
+# from pkg_files/. SND0.AT3 is made by dev/mk_snd0.py with atracdenc.
 ps3_add_pkg(oneshot-ps3
     TITLE     "OneShot: World Machine Edition (test)"
     ICON      "${CMAKE_CURRENT_SOURCE_DIR}/assets/ICON0.PNG"
