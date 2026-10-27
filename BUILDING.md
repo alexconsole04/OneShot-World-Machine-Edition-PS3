@@ -3,7 +3,7 @@
 ## Requirements
 - A Linux x86_64 machine (Windows works through WSL2, or with the toolchain's Windows build).
 - CMake 3.20 or newer, and Ninja.
-- PS3 Custom Toolchain v0.22.0: https://github.com/FirebirdTA01/PS3_Custom_Toolchain (releases).
+- PS3 Custom Toolchain v0.22.0: https://github.com/FirebirdTA01/PS3DK (releases).
   Install it to /opt/ps3dk (any folder works; adjust the paths below).
 
 ## Steps
