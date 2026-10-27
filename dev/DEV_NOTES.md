@@ -41,6 +41,8 @@ out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.c
 - BUG: brief black screen when the boot's TWM logo wipe finishes, before the desktop shows
   (boot_sequence.cpp TWM_LOGO_FADEOUT -> COMPLETE handoff in main.cpp; desktop only drawn under the
   logo during the fadeout). Capture frames around the end of boot with flow.sh to find it.
+- Before outside testing: cap oneshot_log.txt size per session (log_file.cpp only rotates at boot;
+  long sessions grow it without limit). Add a build/version line + PS3 model/firmware to the log header.
 - Also stubbed: mood bubbles (event_runner.cpp), footsplashes (script_parser.cpp), fast travel map (menus.cpp).
 
 ## Status (m14f) and next work (m15)
