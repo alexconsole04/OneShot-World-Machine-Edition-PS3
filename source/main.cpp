@@ -37,7 +37,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include <stdio.h>
 #include <new>
 #include <exception>
-#define OSPS3_VERSION "m16b"
+#define OSPS3_VERSION "m17"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>

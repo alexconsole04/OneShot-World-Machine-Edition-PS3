@@ -10,6 +10,8 @@
 
 namespace twm {
 
+bool pad_repeat(uint32_t b) { return input::pressed_raw(b) || input::auto_trigger_raw(b, 20, 4); }
+
 // ===================================================================== Window
 
 Window::~Window() {}

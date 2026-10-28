@@ -839,6 +839,12 @@ static void init() {
 	g_ready = true;
 	if (const char *o = getenv("OSPS3_OPEN"))   // host testing: open an app at start
 		if (strcmp(o, "customize") == 0) add_window_(new CustomizeWindow());
+		else if (strncmp(o, "folder:", 7) == 0) add_window_(new BrowserWindow(&g_fs, o + 7));
+		else if (strncmp(o, "doc:", 4) == 0) {   // the first document in that folder
+			if (Folder *d = g_fs.GetDir(o + 4))
+				for (auto &n : d->contents)
+					if (!n->IsFolder() && static_cast<File *>(n.get())->program == PROG_DOCUMENT) { run_file(n.get()); break; }
+		}
 	if (const char *cp = getenv("OSPS3_CURSOR")) {   // host testing: "x,y" in desktop pixels
 		int x = 0, y = 0;
 		if (sscanf(cp, "%d,%d", &x, &y) == 2) cursor().SetMousePos(Vec2(x, y));
@@ -944,7 +950,15 @@ static void update() {
 	// A dialog of another window (or the system's) owns the pad: the game
 	// doesn't hear those presses (it used to play its menu sounds).
 	bool otherDialog = ModalWindow::padOwner && !(gw && gw->IsModalOpen() && ModalWindow::padOwner == gw->Modal());
-	input::suppress_game(gw && (gw->Minimized() || g_systemModal || g_fading || otherDialog));
+	// The front window owns the pad: another window in front of the game
+	// takes it (d-pad scrolling); clicking the game or picking it on the
+	// taskbar brings it back. The game's own dialogs still hear it.
+	Window *front = nullptr;
+	for (auto &w : g_windows)
+		if (!w->Minimized()) { front = w.get(); break; }
+	bool otherFront = front && front != gw && front->WantsPad() && !(gw && gw->IsModalOpen());
+	input::suppress_game(gw && (gw->Minimized() || g_systemModal || g_fading || otherDialog || otherFront));
+	if (otherFront && !front->IsModalOpen() && !g_systemModal && !g_fading) front->PadInput();
 	bool dropping = g_drag && !cursor().Held();
 	bool anyMax = false;
 	for (auto &w : g_windows) anyMax |= w->Maximized();

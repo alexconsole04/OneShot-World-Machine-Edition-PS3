@@ -2,6 +2,7 @@
 // ChooserControl, with this port's Erase All Data.
 #include "customize.h"
 #include "wm_internal.h"
+#include "../../platform/input.h"
 #include "../loc.h"
 #include "../settings.h"
 #include "../../engine/gm.h"
@@ -122,6 +123,59 @@ void CustomizeWindow::OnEraseAllData() {
 	});
 }
 
+Rect CustomizeWindow::CtlRect(int c) const {
+	switch (c) {
+	case BADGE: return badgeToasts->Area();
+	case ERASE: return Rect(4, 104, W, 16);
+	case SCALING: return systemScaling->Area();
+	case WALLPAPER: return Rect(4, 168, W, 16);
+	case GAMMA: return Rect(4 + COL, 8, W, 32);
+	case BGM: return Rect(4 + COL, 48, W, 32);
+	case SFX: return Rect(4 + COL, 88, W, 32);
+	default: return Rect(4 + COL, 168, W, 16);
+	}
+}
+
+void CustomizeWindow::PadInput() {
+	using namespace input;
+	static const int left[4] = { BADGE, ERASE, SCALING, WALLPAPER }, right[4] = { GAMMA, BGM, SFX, LANGUAGE };
+	bool isRight = sel >= GAMMA;
+	const int *col = isRight ? right : left;
+	int row = 0;
+	for (int i = 0; i < 4; i++)
+		if (col[i] == sel) row = i;
+	bool any = false;
+	if (pad_repeat(BTN_UP)) { row = (row + 3) % 4; any = true; }
+	else if (pad_repeat(BTN_DOWN)) { row = (row + 1) % 4; any = true; }
+	int dx = pad_repeat(BTN_LEFT) ? -1 : pad_repeat(BTN_RIGHT) ? 1 : 0;
+	if (any) sel = col[row];
+	if (dx) {
+		any = true;
+		switch (sel) {
+		case BADGE: badgeToasts->Step(dx); break;
+		case SCALING: systemScaling->Step(dx); break;
+		case GAMMA: if (dx < 0) gamma->ArrowLeft(); else gamma->ArrowRight(); break;
+		case BGM: if (dx < 0) bgm->ArrowLeft(); else bgm->ArrowRight(); break;
+		case SFX: if (dx < 0) sfx->ArrowLeft(); else sfx->ArrowRight(); break;
+		default:   // a button: over to the other column
+			if (pressed_raw(BTN_LEFT) || pressed_raw(BTN_RIGHT)) sel = (isRight ? left : right)[row];
+			break;
+		}
+	}
+	if (pressed_raw(BTN_OK)) {
+		any = true;
+		switch (sel) {
+		case BADGE: badgeToasts->Step(1); break;
+		case SCALING: systemScaling->Step(1); break;
+		case ERASE: OnEraseAllData(); break;
+		case WALLPAPER: hide_all_ui(); break;
+		case LANGUAGE: OnChangeLanguage(); break;
+		default: break;
+		}
+	}
+	if (any) padUsed = true;
+}
+
 bool CustomizeWindow::Update(bool consumed) {
 	if (!IsModalOpen()) {
 		bool can = !consumed && !minimized;
@@ -151,6 +205,16 @@ void CustomizeWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 	systemScaling->Draw(sp, th, alpha);
 	changeLanguage->Draw(sp, th, alpha);
 	Color c = th.Primary(alpha);
+	if (padUsed) {
+		// The pad's pick: a frame around the control.
+		Rect r = translated(CtlRect(sel), sp);
+		r = Rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6);
+		Color v = th.Primary(alpha);
+		box(Rect(r.x, r.y, r.w, 1), v);
+		box(Rect(r.x, r.y + r.h - 1, r.w, 1), v);
+		box(Rect(r.x, r.y, 1, r.h), v);
+		box(Rect(r.x + r.w - 1, r.y, 1, r.h), v);
+	}
 	Vec2 lbl = sp + Vec2(120, 46);
 	line(lbl, loc::twm("customize_chooser_label_badgetoasts"), c, COL, true);
 	line(lbl + Vec2(0, 40), "Save Management", c, COL, true);   // the PC's Resolution row

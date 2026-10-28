@@ -50,6 +50,7 @@ int held_frames(uint32_t b);
 // InputManager.HoldAutoTriggerInput: true every `interval` frames once held
 // for `first` frames.
 bool auto_trigger(uint32_t b, int first, int interval);
+bool auto_trigger_raw(uint32_t b, int first, int interval);   // ignores the game's suppression
 // Backends call this at the end of update() with the new button state.
 void tick_hold_counters(uint32_t cur);         // PS button > Quit Game, or host script end
 

@@ -24,8 +24,9 @@ public:
 	void SetValue(const std::string &key);
 	bool Update(Vec2 parentPos, bool canInteract);
 	void Draw(Vec2 parentPos, const Theme &th, int alpha) const;
-private:
 	void Step(int d);
+	Rect Area() const { return area; }
+private:
 	Rect area;
 	std::vector<std::pair<std::string, std::string>> items;
 	int index = 0;
@@ -39,7 +40,15 @@ public:
 	void DrawContents(const Theme &th, Vec2 screenPos, int alpha) override;
 	bool IsSameContent(const Window *other) const override { return other->Kind() == Kind(); }
 	int Kind() const override { return KIND_CUSTOMIZE; }
+	void PadInput() override;
+	bool WantsPad() const override { return true; }
 private:
+	// The pad's pick: two columns of controls, Up/Down within one,
+	// Left/Right change the value (or switch column on a button), Cross presses.
+	enum Ctl { BADGE, ERASE, SCALING, WALLPAPER, GAMMA, BGM, SFX, LANGUAGE, CTL_COUNT };
+	Rect CtlRect(int c) const;
+	int sel = BADGE;
+	bool padUsed = false;
 	void OnEraseAllData();
 	void OnChangeLanguage();
 	std::unique_ptr<Chooser> badgeToasts, systemScaling;

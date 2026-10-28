@@ -1,4 +1,5 @@
 #include "apps.h"
+#include "../../platform/input.h"
 #include "wm_internal.h"
 #include "../loc.h"
 #include "../json_file.h"
@@ -480,5 +481,19 @@ bool JournalWindow::Update(bool consumed) {
 }
 
 bool JournalWindow::IsSameContent(const Window *other) const { return other->Kind() == KIND_JOURNAL; }
+
+} // namespace twm
+
+namespace twm {
+
+// The d-pad scrolls the folder's icons and the document's text.
+static void pad_scroll(Slider *s) {
+	if (!s || !s->active) return;
+	if (pad_repeat(input::BTN_UP)) s->ArrowLeft();
+	else if (pad_repeat(input::BTN_DOWN)) s->ArrowRight();
+}
+
+void BrowserWindow::PadInput() { pad_scroll(slider.get()); }
+void DocumentWindow::PadInput() { pad_scroll(slider.get()); }
 
 } // namespace twm

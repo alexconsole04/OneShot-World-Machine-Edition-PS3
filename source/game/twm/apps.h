@@ -15,6 +15,8 @@ public:
 	bool Update(bool consumed) override;
 	void DrawContents(const Theme &th, Vec2 screenPos, int alpha) override;
 	bool IsSameContent(const Window *other) const override;
+	void PadInput() override;
+	bool WantsPad() const override { return true; }
 	const std::string &Path() const { return path; }
 protected:
 	void HandleDragDropped(DraggedItem *item, Vec2 contentPos) override;
@@ -39,6 +41,8 @@ public:
 	int Kind() const override { return KIND_DOCUMENT; }
 	DocumentWindow(const std::string &name, const std::string &file, const std::string &safeCode);
 	bool Update(bool consumed) override;
+	void PadInput() override;
+	bool WantsPad() const override { return true; }
 	void DrawContents(const Theme &th, Vec2 screenPos, int alpha) override;
 	bool IsSameContent(const Window *other) const override;
 	static void ClearRandomLetters();

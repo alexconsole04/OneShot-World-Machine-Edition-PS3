@@ -20,10 +20,14 @@ int held_frames(uint32_t b) {
 	return 0;
 }
 
-bool auto_trigger(uint32_t b, int first, int interval) {
-	if (b & suppress) return false;
+bool auto_trigger_raw(uint32_t b, int first, int interval) {
 	int n = held_frames(b);
 	return n >= first && n % interval == 0;
+}
+
+bool auto_trigger(uint32_t b, int first, int interval) {
+	if (b & suppress) return false;
+	return auto_trigger_raw(b, first, interval);
 }
 
 } // namespace input

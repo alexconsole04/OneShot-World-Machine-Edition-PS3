@@ -6,6 +6,9 @@
 
 namespace twm {
 
+// A d-pad direction for menus: on the press, then repeating while held.
+bool pad_repeat(uint32_t button);
+
 struct DraggedItem;
 
 // What a window is (the build has no RTTI).
@@ -33,6 +36,12 @@ public:
 	virtual void Draw(const Theme &th);
 	virtual void DrawContents(const Theme &th, Vec2 screenPos, int alpha) = 0;
 	virtual bool IsSameContent(const Window *other) const = 0;
+	// The pad, while this window is in front and isn't the game (the game
+	// then doesn't hear it): scroll, pick, change values.
+	virtual void PadInput() {}
+	// Only windows that use the pad take it from the game (a photo or the
+	// journal in front leaves Niko walking, as the clover puzzle needs).
+	virtual bool WantsPad() const { return false; }
 	virtual void ToggleMaximize() { maximized = !maximized; }
 	void ToggleMinimize();
 
