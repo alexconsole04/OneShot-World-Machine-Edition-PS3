@@ -171,7 +171,6 @@ void IconGrid::InsertIcon(FileIcon *icon, Vec2 at) {
 
 void IconGrid::OnFsChange(const std::string &path) {
 	if (path != fsPath) return;
-	sys::trace("icons: %s changed", path.c_str());
 	Folder *dir = fs->GetDir(path);
 	if (!dir) { sys::log("twm: no folder for icon grid at %s\n", path.c_str()); return; }
 	if (browser) SetIconArea(bounds);
@@ -194,10 +193,8 @@ void IconGrid::OnFsChange(const std::string &path) {
 		if (g) shown.insert(g->file.get());
 	for (auto &c : dir->contents)
 		if (!shown.count(c.get())) {
-			sys::trace("icons: new icon %s", c->name.c_str());
 			AddIcon(c);
 		}
-	sys::trace("icons: %s done", path.c_str());
 	if (!browser) return;
 	// Folder windows: no gaps.
 	int n = cols * rows;

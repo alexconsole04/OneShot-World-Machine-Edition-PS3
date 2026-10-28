@@ -36,20 +36,16 @@ bool OneshotWindow::NewSession() {
 	pictures().Clear();
 	flash() = FlashManager();
 	audio::stop_all();
-	sys::trace("session: new");
 	session.reset(new Session());
 	Session &s = *session;
 	s.state.player_name = sys::user_name();
 	if (!s.map.LoadGlobalData()) return false;
 	s.menus.itemMenu.LoadData();
-	sys::trace("session: items loaded");
 	s.map.menus = &s.menus;
 	s.menus.mainMenu.onQuit = [this] { CloseGame(); };
 	// The constructor of the PC's OneshotWindow: settings, then permanent data.
 	settings().Load();
-	sys::trace("session: settings loaded");
 	save::LoadPerma(&s.state);
-	sys::trace("session: ready");
 	return true;
 }
 
@@ -111,12 +107,9 @@ void OneshotWindow::Launch(bool startGame) {
 	if (!NewSession()) { quitApp = true; return; }
 	open = true;
 	if (!startGame) return;
-	sys::trace("launch: save check");
 	bool have = save::Exists();
-	sys::trace("launch: save %s", have ? "found" : "none");
 	if (have) StartGame();
 	else OpenTitle();
-	sys::trace("launch: done");
 }
 
 void OneshotWindow::ResetForBoot() {

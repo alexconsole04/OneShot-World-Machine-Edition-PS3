@@ -33,9 +33,6 @@ void log_file_write(const char *msg);
 bool log_file_ok();
 // Wait (up to ~1 s) for queued log lines to reach the file (before exiting).
 void log_flush();
-// Diagnostics: logs (with the heap in use) and waits until it's on the
-// drive, for the first few hundred calls.
-void trace(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 // Names of the entries in <data_dir>/<rel> (case as on disk).
 bool list_dir(const char *rel, std::vector<std::string> &out);

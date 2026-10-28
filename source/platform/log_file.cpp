@@ -97,18 +97,3 @@ void log_file_write(const char *msg) {
 
 } // namespace sys
 
-#include <stdarg.h>
-namespace sys {
-static int g_traceBudget = 0;
-void trace(const char *fmt, ...) {
-	if (g_traceBudget <= 0) return;
-	g_traceBudget--;
-	char buf[512];
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-	log("trace: %s (heap %d KB)\n", buf, heap_used_kb());
-	log_flush();
-}
-}
