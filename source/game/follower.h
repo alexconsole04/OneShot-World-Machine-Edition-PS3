@@ -15,6 +15,7 @@ public:
 	bool IsFollower() const override { return true; }
 	int Type() const { return type; }
 	Entity *Target() const { return target; }
+	Entity *ReferencedEntity() const override { return target; }
 	// RemoveFollower: the one behind takes over the removed one's place in line.
 	void InheritPosition(Follower *from);
 

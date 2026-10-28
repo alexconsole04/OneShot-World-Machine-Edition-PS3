@@ -323,8 +323,8 @@ void EventRunner::Update() {
 		case FadeOutBGS: audio::fade_out_bgs(c.fparam(0)); break;
 		case ChangeScreenColorTone: stop = commandChangeScreenColorTone(c); break;
 		case ChangePictureColorTone: stop = commandChangePictureColorTone(c); break;
-		case ShowAnimation:
-			// Moodbubble entity: not ported yet.
+		case ShowAnimation:   // the Moodbubble emote
+			if (Entity *e = GetEntity(c.iparam(0))) map->EntityAddEntity(new Moodbubble(map, state, c.iparam(1), e));
 			break;
 		case ShowChoices: stop = commandShowChoices(c); break;
 		case WhenChoice: stop = commandWhenChoice(c); break;

@@ -117,6 +117,7 @@ public:
 	bool AreAnyEntitiesInForcedRoutes() const;
 	// FollowerManager: the party (GameState::followers, in order) walking behind Niko.
 	void SpawnFollowers();          // SpawnAllFollowers (on every map load)
+	void SpawnFireflyParticles();   // "particles :fireflies" (the Glen)
 	void AddFollower(int type);
 	void RemoveFollower(int type);
 	void HashedEntityCollision(Entity *e, Entity *ignoredEntity = nullptr, bool isTestCollisionEntity = false);
@@ -128,6 +129,7 @@ public:
 	void EnableWrapping() { Wrapping = true; }
 	void SetBackground(const std::string &bg) { background = bg; }
 	void MovePlayerRelative(int x, int y);
+	void MoveFootsplashesRelative(int x, int y);   // Script.fix_footsplashes
 	float GetPlayerXTile() const;
 	float GetPlayerYTile() const;
 	void PixelPuzzleReset();
@@ -178,6 +180,11 @@ private:
 	std::unordered_map<int, std::vector<MapLine *>> hashedMapLines;
 	Player *player = nullptr;
 	int SpawnFollower(int type, int followId);
+	// FireflyParticle: positions in 1/256 window pixels (640x480).
+	struct Firefly { Vec2 pos, vel, scaledSize; Rect src; float size = 1, alpha = 0; int phase = 0, wavelength = 1; };
+	std::vector<Firefly> fireflies;
+	bool hasFireflies = false;
+	void UpdateFireflies(Vec2 camDelta);
 	std::map<int, int> followerIds;   // FollowerType -> entity id on this map
 	int lastFollowerId = -1;
 	Entity *camFocusEntity = nullptr;

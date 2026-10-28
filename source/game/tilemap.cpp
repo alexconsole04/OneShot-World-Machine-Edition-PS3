@@ -10,6 +10,7 @@
 #include "pictures.h"
 #include "../engine/audio.h"
 #include "../engine/gm.h"
+#include "../engine/util.h"
 #include "../engine/xml.h"
 #include "../platform/sys.h"
 #include "cJSON.h"
@@ -355,6 +356,8 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	entitiesById.clear();
 	mapLines.clear();
 	hashedMapLines.clear();
+	fireflies.clear();
+	hasFireflies = false;
 	// Keep the player object across maps (C# reuses it). The rest are retired,
 	// not deleted: this can run from inside an entity's Update or an event
 	// that still refers to its triggering entity.
@@ -869,6 +872,7 @@ void TileMap::TileCollision(Rect tc, Entity *entity, int tileX, int tileY, bool 
 // ---------------------------------------------------------------- update / camera
 void TileMap::Update() {
 	wasMapChangedDuringUpdate = false;
+	if (hasFireflies) UpdateFireflies(Vec2(camPos.x - oldCamPos.x, camPos.y - oldCamPos.y));
 	if (shakeDuration > 0 || shakeOffset != 0.0f) {
 		float step = (float)(shakePower * shakeSpeed * shakeDirection) / 10.0f;
 		if (shakeDuration <= 0 && fabsf(shakeOffset) < fabsf(step)) shakeOffset = 0.0f;
@@ -973,6 +977,15 @@ const std::vector<std::string> *TileMap::GetStepSounds(Vec2 px, float *volume) c
 	return &curInfo->step_sounds[b - 1];
 }
 
+void TileMap::MoveFootsplashesRelative(int x, int y) {
+	for (auto &e : entities) {
+		Entity *f = e.get();
+		if (!f->IsFootsplash()) continue;
+		Vec2 p = f->GetPos();
+		f->SetPos(Vec2(p.x + x * tileSize.x * 256, p.y + y * tileSize.y * 256));
+	}
+}
+
 void TileMap::MovePlayerRelative(int x, int y) {
 	Vec2 p = player->GetPos();
 	p.x += x * tileSize.x * 256;
@@ -1063,6 +1076,41 @@ void TileMap::RemoveFollower(int type) {
 		followerIds.erase(id);
 	}
 	fl.erase(pos);
+}
+
+// ---------------------------------------------------------------- fireflies
+static float frand(float lo, float hi) { return lo + (hi - lo) * (float)util::random(0, 1000000) / 1000000.0f; }
+
+void TileMap::SpawnFireflyParticles() {
+	fireflies.assign(30, Firefly());
+	hasFireflies = true;
+	Vec2 tex = gm::texture_size("pictures/firefly");
+	for (Firefly &f : fireflies) {
+		f.size = frand(0.25f, 1.0f);
+		f.src = Rect(0, 0, tex.x, tex.y);
+		f.scaledSize = Vec2((int)(tex.x * f.size), (int)(tex.y * f.size));
+		f.vel = Vec2(util::random(-512, 512), util::random(-512, 512));
+		f.pos = Vec2(util::random(0, 163840), util::random(0, 122880));
+		f.wavelength = util::random(120, 240);
+		f.phase = util::random(0, f.wavelength);
+	}
+	UpdateFireflies(Vec2());
+}
+
+// FireflyParticle.Update: drift, parallax against the camera (bigger ones
+// move more), wrap around the screen, and pulse.
+void TileMap::UpdateFireflies(Vec2 camDelta) {
+	for (Firefly &f : fireflies) {
+		float k = f.size * (2.0f / 3.0f) + 5.0f / 6.0f;
+		f.pos.x += f.vel.x - (int)((float)(camDelta.x * 2 * 256) * k);
+		f.pos.y += f.vel.y - (int)((float)(camDelta.y * 2 * 256) * k);
+		if (f.pos.x > 163840) f.pos.x -= (640 + f.scaledSize.x) * 256;
+		else if (f.pos.x < -f.scaledSize.x * 256) f.pos.x += (640 + f.scaledSize.x) * 256;
+		if (f.pos.y > 122880) f.pos.y -= (480 + f.scaledSize.y) * 256;
+		else if (f.pos.y < -f.scaledSize.y * 256) f.pos.y += (480 + f.scaledSize.y) * 256;
+		if (++f.phase >= f.wavelength) f.phase = 0;
+		f.alpha = (float)sin((double)((float)f.phase / (float)f.wavelength) * 3.14159265358979);
+	}
 }
 
 // ---------------------------------------------------------------- events
@@ -1226,6 +1274,8 @@ void TileMap::ReleaseRetired() {
 	if (mainEventRunner && referenced(mainEventRunner->TriggeringEntity())) return;
 	for (auto &pr : parallelEventRunners)
 		if (referenced(pr.second->TriggeringEntity())) return;
+	for (auto &e : entities)
+		if (referenced(e->ReferencedEntity())) return;
 	retired.clear();
 }
 
@@ -1391,6 +1441,10 @@ void TileMap::Draw() {
 	}
 	while (node != entitiesByHeight.end()) { DrawEntity(*node, tone); ++node; }
 	if (fog) fog->Draw(camPos, tone);
+	if (hasFireflies)
+		if (const gfx::Texture *ff = gm::texture("pictures/firefly"))
+			for (const Firefly &f : fireflies)
+				gm::blit_scaled(ff, Vec2(f.pos.x / 256, f.pos.y / 256), f.src, f.size, f.size, f.alpha, 0, gfx::Blend::Additive);
 
 	if (bulb > 0.0f) {
 		const gfx::Texture *lm = gm::texture("lightmaps/bulb");
@@ -1435,6 +1489,7 @@ cJSON *TileMap::GetSaveData() const {
 	cJSON_AddNumberToObject(tone, "g", ambientTone.g);
 	cJSON_AddNumberToObject(tone, "b", ambientTone.b);
 	cJSON_AddStringToObject(o, "mapBackground", background.c_str());
+	cJSON_AddBoolToObject(o, "hasFireflyParticles", hasFireflies);
 	if (mainEventRunner) cJSON_AddItemToObject(o, "mainEventRunnerData", mainEventRunner->GetSaveData());
 	if (panorama) {
 		cJSON *p = cJSON_AddObjectToObject(o, "panoramaSaveData");
@@ -1481,6 +1536,7 @@ void TileMap::LoadSaveData(const cJSON *o) {
 	player->SetNPCSheet(cJSON_IsString(sheet) ? sheet->valuestring : "");
 	const cJSON *tone = cJSON_GetObjectItemCaseSensitive(o, "mapAmbientTone");
 	if (tone) ambientTone = GameTone(jn(tone, "r", 0), jn(tone, "g", 0), jn(tone, "b", 0));
+	if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "hasFireflyParticles"))) SpawnFireflyParticles();
 	const cJSON *bg = cJSON_GetObjectItemCaseSensitive(o, "mapBackground");
 	background = cJSON_IsString(bg) ? bg->valuestring : "";
 	const cJSON *pan = cJSON_GetObjectItemCaseSensitive(o, "panoramaSaveData");

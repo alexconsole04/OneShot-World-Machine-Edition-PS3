@@ -394,9 +394,9 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	t["stop_speedrun_timer"] = [](Ctx &) { note("speedrun timer (the Timer app comes later)", "stop_speedrun_timer"); return false; };
 	t["Script.fadein_bgm(90,5)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 5.0f); return false; };
 	t["Script.fadein_bgm(90,3)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 3.0f); return false; };
-	t["particles :fireflies"] = [](Ctx &) { note("particles (not ported)", "fireflies"); return false; };
-	t["particles :fireflies\ngreen_ambient"] = green;
-	t["particles :fireflies\n#green_ambient"] = none;
+	t["particles :fireflies"] = [](Ctx &c) { c.map->SpawnFireflyParticles(); return false; };
+	t["particles :fireflies\ngreen_ambient"] = [green](Ctx &c) { green(c); c.map->SpawnFireflyParticles(); return false; };
+	t["particles :fireflies\n#green_ambient"] = [](Ctx &c) { c.map->SpawnFireflyParticles(); return false; };
 	t["ram_integrity_check"] = flag_if([](Ctx &c) { return c.map->RamPuzzleCheck(); });
 	t["green_ambient"] = green;
 	t["ambient -100, -100, -100"] = [](Ctx &c) { c.map->SetAmbientTone(GameTone(-100, -100, -100)); return false; };
@@ -544,7 +544,12 @@ bool HandleScript(TileMap *map, const std::string &script, EventRunner *caller, 
 		twm::set_journal_page(s.size() >= 2 ? s.substr(1, s.size() - 2) : s);
 		return false;
 	}
-	if (starts(script, "Script.fix_footsplashes(")) return false;   // footsplashes: not ported
+	if (starts(script, "Script.fix_footsplashes(")) {
+		int x = 0, y = 0;
+		sscanf(script.c_str() + strlen("Script.fix_footsplashes("), "%d,%d", &x, &y);
+		c.map->MoveFootsplashesRelative(x, y);
+		return false;
+	}
 	if (starts(script, "Script.move_player_relative(")) {
 		std::string s = script.substr(strlen("Script.move_player_relative("));
 		int x = atoi(s.c_str());

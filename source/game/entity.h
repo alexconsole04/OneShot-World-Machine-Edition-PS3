@@ -25,6 +25,10 @@ public:
 	virtual void Draw(Vec2 camPos, GameTone tone);
 	virtual bool IsPlayer() const { return false; }
 	virtual bool IsFollower() const { return false; }
+	virtual bool IsFootsplash() const { return false; }
+	// An entity this one keeps a pointer to (a follower's leader, a mood
+	// bubble's owner): kept alive while removed entities are released.
+	virtual Entity *ReferencedEntity() const { return nullptr; }
 
 	int GetID() const { return id; }
 	void SetID(int i) { id = i; }
@@ -35,6 +39,7 @@ public:
 	bool HasScript() const;
 
 	int GetPixelBottom() const;
+	Vec2 GetSpriteSize() const { return spriteSize; }
 	Vec2 GetPixelPos() const { return Vec2(pos.x / 256, pos.y / 256); }
 	Vec2 GetCurrentTile() const { return Vec2(pos.x / 4096, pos.y / 4096); }
 	bool HasMoved() const { return oldPos.x != pos.x || oldPos.y != pos.y; }
@@ -173,8 +178,24 @@ public:
 	Footprint(TileMap *map, GameState *state, Direction d, Vec2 p, bool splash);
 	void Update() override;
 	void Draw(Vec2 camPos, GameTone tone) override;
+	bool IsFootsplash() const override { return splash; }
 private:
 	bool splash;
+	Rect drawRect;
+};
+
+// Moodbubble: the "Show Animation" emote over an entity (? ! love sweat
+// frustration), bobbing for 40 frames.
+class Moodbubble : public Entity {
+public:
+	Moodbubble(TileMap *map, GameState *state, int type, Entity *parent);
+	void Update() override;
+	void Draw(Vec2 camPos, GameTone tone) override;
+	Entity *ReferencedEntity() const override { return parent; }
+private:
+	int type;
+	Entity *parent;
+	int parentOffsetY;
 	Rect drawRect;
 };
 

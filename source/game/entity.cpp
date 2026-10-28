@@ -898,6 +898,52 @@ void Footprint::Draw(Vec2 camPos, GameTone tone) {
 	}
 }
 
+// ---------------------------------------------------------------- mood bubbles
+Moodbubble::Moodbubble(TileMap *m, GameState *s, int t, Entity *p) : Entity(m, s), type(t), parent(p) {
+	eventData = &ownData;
+	id = -1;
+	alwaysOnTop = true;
+	frameTimer = 0;
+	NeverHash = true;
+	parentOffsetY = -(parent->GetSpriteSize().y / 4 + 24);
+	pos = Vec2(parent->GetPos().x, parent->GetPos().y + parentOffsetY * 256);
+	oldPos = pos;
+	collisionRect = Rect(0, 0, 0, 0);
+	ignoreMapCollision = ignoreNpcCollision = true;
+	drawRect = Rect(0, 0, 16, 16);
+	switch (type) {
+	case 1: drawRect.y = 0; break;    // Question
+	case 2: drawRect.y = 16; break;   // Exclamation
+	case 3: drawRect.y = 80; break;   // Love
+	case 4: drawRect.y = 96; break;   // Sweat
+	case 5: drawRect.y = 32; break;   // Frustration
+	default: break;
+	}
+}
+
+void Moodbubble::Update() {
+	oldPos = pos;
+	frameTimer++;
+	switch (frameTimer) {
+	case 2: parentOffsetY -= 3; break;
+	case 4: parentOffsetY -= 2; break;
+	case 6: parentOffsetY--; break;
+	case 10: parentOffsetY++; break;
+	case 12: parentOffsetY += 2; break;
+	case 14: parentOffsetY += 3; break;
+	default: break;
+	}
+	pos = Vec2(parent->GetPos().x, parent->GetPos().y + parentOffsetY * 256);
+	if (type == 5) drawRect.y = 32 + frameTimer / 4 % 3 * 16;
+	if (frameTimer > 40) KillEntityAfterUpdate = true;
+}
+
+void Moodbubble::Draw(Vec2 camPos, GameTone tone) {
+	const gfx::Texture *t = gm::texture("npc/mood_bubbles");
+	if (!t) return;
+	gm::blit(t, Vec2(pos.x / 256 - camPos.x - 8, pos.y / 256 - camPos.y - 8), drawRect, 1.0f, 0, gfx::Blend::Normal, 2, tone);
+}
+
 // ---------------------------------------------------------------- save data
 #include "cJSON.h"
 
