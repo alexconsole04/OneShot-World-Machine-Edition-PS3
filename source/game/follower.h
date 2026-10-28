@@ -12,6 +12,7 @@ public:
 
 	Follower(TileMap *map, GameState *state, int type, Entity *target);
 	void Update() override;
+	void Draw(Vec2 camPos, GameTone tone) override;
 	bool IsFollower() const override { return true; }
 	int Type() const { return type; }
 	Entity *Target() const { return target; }

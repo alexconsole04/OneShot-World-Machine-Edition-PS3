@@ -1,6 +1,7 @@
 // follower.cpp - see follower.h. Positions are in 1/256 pixels.
 #include "follower.h"
 #include "tilemap.h"
+#include "player.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -70,4 +71,21 @@ void Follower::InheritPosition(Follower *from) {
 		tracked.push_back(from->tracked.front());
 		from->tracked.pop_front();
 	}
+}
+
+// Port addition: the camera snaps to Niko's whole pixel, and a follower N
+// frames behind on a diagonal sits a fixed fraction of a pixel away from him,
+// so truncating both positions made it wobble a pixel back and forth against
+// Niko (the PC does the same). Drawing it at the nearest whole-pixel offset
+// from Niko keeps it steady; it is never more than half a pixel off.
+static int round_div256(int v) { return v >= 0 ? (v + 128) / 256 : -((-v + 128) / 256); }
+
+void Follower::Draw(Vec2 camPos, GameTone tone) {
+	Entity *p = map->GetPlayer();
+	if (!p) { Entity::Draw(camPos, tone); return; }
+	Vec2 real = pos, pp = p->GetPos();
+	pos = Vec2((pp.x / 256 + round_div256(real.x - pp.x)) * 256 + 128,
+	           (pp.y / 256 + round_div256(real.y - pp.y)) * 256 + 128);
+	Entity::Draw(camPos, tone);
+	pos = real;
 }
