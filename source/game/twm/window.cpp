@@ -202,8 +202,7 @@ bool ModalWindow::Update(bool consumed) {
 		using namespace input;
 		int n = (int)modalButtons.size();
 		if (n > 1 && (pressed_raw(BTN_LEFT) || pressed_raw(BTN_RIGHT))) {
-			padChoice = (padChoice + 1) % n;
-			audio::play_sound("menu_cursor");
+			padChoice = (padChoice + 1) % n;   // silent: the World Machine's dialogs have no cursor sound
 		}
 		if (pressed_raw(BTN_OK)) {
 			modalButtons[padChoice]->action();

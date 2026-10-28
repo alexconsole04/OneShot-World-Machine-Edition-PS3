@@ -153,9 +153,7 @@ void CustomizeWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 	Color c = th.Primary(alpha);
 	Vec2 lbl = sp + Vec2(120, 46);
 	line(lbl, loc::twm("customize_chooser_label_badgetoasts"), c, COL, true);
-	char res[32];
-	snprintf(res, sizeof(res), ": %dx%d", space().x, space().y);
-	line(lbl + Vec2(0, 40), loc::twm("customize_chooser_label_resolution") + res, c, COL, true);
+	line(lbl + Vec2(0, 40), "Save Management", c, COL, true);   // the PC's Resolution row
 	line(lbl + Vec2(0, 80), loc::twm("customize_chooser_label_system_scaling"), c, COL, true);
 }
 

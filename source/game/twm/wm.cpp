@@ -934,7 +934,6 @@ static void update() {
 	GameWindow *gw = game_window();
 	// SuppressOneshotwindowInputs: the game ignores the pad while its window
 	// is minimized, a system dialog is up or the screen is fading.
-	input::suppress_game(gw && (gw->Minimized() || g_systemModal || g_fading));
 	// The dialog the pad answers: a system one, else the game's (the game
 	// has the pad even when its window isn't in front), else the front
 	// window's.
@@ -942,6 +941,10 @@ static void update() {
 	if (g_systemModal) ModalWindow::padOwner = g_systemModal.get();
 	else if (gw && gw->IsModalOpen()) ModalWindow::padOwner = static_cast<ModalWindow *>(gw->Modal());
 	else if (!g_windows.empty() && g_windows[0]->IsModalOpen()) ModalWindow::padOwner = static_cast<ModalWindow *>(g_windows[0]->Modal());
+	// A dialog of another window (or the system's) owns the pad: the game
+	// doesn't hear those presses (it used to play its menu sounds).
+	bool otherDialog = ModalWindow::padOwner && !(gw && gw->IsModalOpen() && ModalWindow::padOwner == gw->Modal());
+	input::suppress_game(gw && (gw->Minimized() || g_systemModal || g_fading || otherDialog));
 	bool dropping = g_drag && !cursor().Held();
 	bool anyMax = false;
 	for (auto &w : g_windows) anyMax |= w->Maximized();
