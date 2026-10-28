@@ -10,6 +10,9 @@ You need to build the PKG yourself or use the provided PKG release. Either way s
 * Install the PKG onto your PS3 using FTP or USB.
 * Using a file manager or FTP, place the game files inside dev_hdd0/game/OSWM00001/USRDIR (both gamedata and content)
 
+# Known Issues
+This port does not properly render graphics on RPCS3 due to emulation bugs. Please do not create issues if playing on RPCS3, it is the limitation of the emulator, not the port.
+
 # Building
 See [BUILDING.md](BUILDING.md). Requires the [PS3 Custom Toolchain v0.22.0](https://github.com/FirebirdTA01/PS3DK/releases), CMake and Ninja.
 
