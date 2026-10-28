@@ -103,6 +103,17 @@ int main(int argc, const char **argv) {
 		return 0;
 	}
 
+	{
+		// The PC seeds System.Random from the clock: every boot plays out
+		// differently (George's personality, NPC wandering, glitches).
+		// OSPS3_SEED pins it for reproducible host tests.
+		int h, m, s, yd;
+		sys::local_time(&h, &m, &s, &yd);
+		uint32_t seed = (uint32_t)sys::time_us() ^ (uint32_t)(((yd * 24 + h) * 60 + m) * 60 + s) * 2654435761u;
+		if (const char *e = getenv("OSPS3_SEED")) seed = (uint32_t)strtoul(e, nullptr, 0);
+		util::seed(seed);
+		sys::log("random seed %08x\n", (unsigned)seed);
+	}
 	loc::init();
 	audio::init();
 	// Debug starts (OSPS3_MAP) skip the boot sequence and start inside a
@@ -278,13 +289,16 @@ int main(int argc, const char **argv) {
 		} else if (booting) {
 			boot::update();
 			if (boot::take_desktop_init()) desktop::init();   // Game1.InitWindowManager
-			boot::just_finished();
+			if (boot::just_finished()) sys::log("boot: finished at frame %d\n", frame);
 		} else if (mapMenu) {
 			debug_map_menu::update();   // the game is paused underneath
 		} else if (!tex_view) {
 			desktop::update();   // WindowManager.Update: the game runs inside its window
 		}
 		if (!systemPause) audio::update();
+		// The frame the boot finishes on draws the desktop, not an empty boot
+		// screen (that was a black frame between the logo wipe and the desktop).
+		if (booting && !boot::active()) booting = false;
 		TileMap &map = window().Map();
 		GameState &state = window().State();
 		mapId = map.GetMapID();
