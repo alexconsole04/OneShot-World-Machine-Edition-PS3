@@ -47,6 +47,10 @@ Vec2 screen_size();                 // desktop pixels (WindowManager.ScreenSize)
 bool game_cursor(Vec2 *gamePx);
 bool cursor_clicked();
 // A theme's colours (current theme if the id is empty or unknown).
+// The Timer app's playthrough timer (TitleScreen starts/resets it, the ending stops it).
+void start_playthrough_timer();
+void stop_playthrough_timer();
+void reset_playthrough_timer();
 void theme_rgb(const std::string &id, uint8_t primary[3], uint8_t background[3]);
 
 } // namespace twm

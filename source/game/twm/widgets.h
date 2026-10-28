@@ -65,6 +65,9 @@ public:
 	Rect scrollZone;
 	int Value() const { return value; }
 	void SetValue(int v) { value = v; }
+	void SetPlacement(Vec2 p, int len) { pos = p; length = len; Layout(); }
+	Vec2 Position() const { return pos; }
+	int Length() const { return length; }
 	bool Update(Vec2 parentPos, bool canInteract);
 	void Draw(const Theme &th, Vec2 parentPos, int alpha) const;
 	void ArrowLeft();

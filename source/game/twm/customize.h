@@ -20,12 +20,20 @@ public:
 	Chooser(const Chooser &) = delete;   // its buttons point back at it
 	Chooser &operator=(const Chooser &) = delete;
 	std::function<void(const std::string &)> onItemChange;
-	const std::string &Value() const { return items[index].first; }
+	const std::string &Value() const { static const std::string none; return items.empty() ? none : items[index].first; }
 	void SetValue(const std::string &key);
 	bool Update(Vec2 parentPos, bool canInteract);
 	void Draw(Vec2 parentPos, const Theme &th, int alpha) const;
 	void Step(int d);
 	Rect Area() const { return area; }
+	void SetItems(std::vector<std::pair<std::string, std::string>> items, const std::string &selected);
+	void SetPosition(Vec2 p);
+	int Index() const { return items.empty() ? -1 : index; }
+	int Count() const { return (int)items.size(); }
+	// The label's text: loc key by default; labelFn(key, name) replaces that.
+	std::function<std::string(const std::string &key, const std::string &name)> labelFn;
+	font::Type labelFont = font::OS;
+	bool showBorder = true, dropShadow = false, disabled = false;
 private:
 	Rect area;
 	std::vector<std::pair<std::string, std::string>> items;

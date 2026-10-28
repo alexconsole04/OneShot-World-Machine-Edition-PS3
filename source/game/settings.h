@@ -13,6 +13,9 @@ struct Settings {
 	int scaling = 0;                 // gm::SCALE_SHARP / SMOOTH (maximized window)
 	bool fullscreen = false;         // the OneShot window opens maximized
 	bool fullscreenBorder = true;    // FullscreenBorderManager's side art when maximized
+	// The Controls app (InputManager): stick dead zones (0..50) and cursor speed (2..8).
+	int moveDeadZone = 20, mouseDeadZone = 20, cursorSpeed = 5;
+	void ApplyInput() const;         // hands them to the pad and the cursor
 	void Load();                     // settings.conf; defaults if missing
 	void Save() const;
 };

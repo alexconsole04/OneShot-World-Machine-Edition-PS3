@@ -37,6 +37,7 @@ int stick_x();
 int stick_y();
 // Right stick, raw -100..100 (Y down positive), no dead zone: the World
 // Machine desktop's cursor (InputManager.MouseStickPos) applies its own.
+void set_move_dead_zone(int percent);   // the left stick's radial dead zone (Controls app)
 int rstick_x();
 int rstick_y();
 bool quit_requested();

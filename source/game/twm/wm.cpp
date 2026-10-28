@@ -5,6 +5,7 @@
 #include "wm_internal.h"
 #include "apps.h"
 #include "customize.h"
+#include "apps2.h"
 #include "../desktop.h"
 #include "../loc.h"
 #include "../json_file.h"
@@ -356,8 +357,13 @@ static bool add_window_(Window *raw) {
 	}
 	place_window(raw);
 	raw->onMinimize = [](Window *x) { toggle_minimize(x); };
-	raw->onClose = [](Window *x) {
-		if (std::find(g_pendingRemoval.begin(), g_pendingRemoval.end(), x) == g_pendingRemoval.end()) g_pendingRemoval.push_back(x);
+	// Delegate.Combine: the window's own close handler (stop the music,
+	// save the controls...) runs first.
+	std::function<void(Window *)> own = raw->onClose;
+	raw->onClose = [own](Window *x) {
+		if (std::find(g_pendingRemoval.begin(), g_pendingRemoval.end(), x) != g_pendingRemoval.end()) return;
+		if (own) own(x);
+		g_pendingRemoval.push_back(x);
 	};
 	raw->grabFocus = [](Window *x) { if (!g_createdThisFrame) bring_to_front(x); };
 	g_taskButtons.push_back({ g_taskButtonW, raw });
@@ -575,12 +581,16 @@ bool run_file(Node *node) {
 	case PROG_DOCUMENT: add_window_(new DocumentWindow(f->name, arg(0), arg(1))); break;
 	case PROG_JUKEBOX:
 		if (game_window()) show_system_modal(MODAL_ERROR, "error_launch_musicbox_oneshot_open");
-		else not_yet(f->name);
+		else add_window_(new JukeboxWindow());
 		break;
 	case PROG_CONTACTS:
 		if (unlocks().profiles.empty()) show_system_modal(MODAL_ERROR, "error_no_friends_unlocked");
-		else not_yet(f->name);
+		else add_window_(new ContactsWindow());
 		break;
+	case PROG_GALLERY: add_window_(new GalleryWindow()); break;
+	case PROG_ACHIEVEMENT: add_window_(new AchievementWindow()); break;
+	case PROG_TIMER: add_window_(new TimerWindow()); break;
+	case PROG_CONTROLS: add_window_(new ControlsWindow()); break;
 	case PROG_AUTHOR_PROFILE: granted(f, "profile", "author"); break;
 	case PROG_NIKO_PROFILE: granted(f, "profile", "niko"); break;
 	case PROG_FROMNIKO_WALLPAPER: granted(f, "wallpaper", "from_niko"); break;
@@ -842,6 +852,12 @@ static void init() {
 	g_ready = true;
 	if (const char *o = getenv("OSPS3_OPEN")) {   // host testing: open an app at start
 		if (strcmp(o, "customize") == 0) add_window_(new CustomizeWindow());
+		else if (strcmp(o, "badges") == 0) add_window_(new AchievementWindow());
+		else if (strcmp(o, "friends") == 0) add_window_(new ContactsWindow());
+		else if (strcmp(o, "gallery") == 0) add_window_(new GalleryWindow());
+		else if (strcmp(o, "musicbox") == 0) add_window_(new JukeboxWindow());
+		else if (strcmp(o, "timer") == 0) add_window_(new TimerWindow());
+		else if (strcmp(o, "controls") == 0) add_window_(new ControlsWindow());
 		else if (strncmp(o, "folder:", 7) == 0) add_window_(new BrowserWindow(&g_fs, o + 7));
 		else if (strncmp(o, "doc:", 4) == 0) {   // the first document in that folder
 			if (Folder *d = g_fs.GetDir(o + 4))
@@ -955,6 +971,7 @@ static void niko_draw() {
 
 static void update() {
 	if (!g_ready) return;
+	tick_timers();
 	cursor().Update();
 	if (g_hideUI) {
 		// HideAllUI: any button or a click brings the desktop back.

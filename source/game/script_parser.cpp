@@ -391,7 +391,7 @@ static const std::unordered_map<std::string, Fn> &script_table() {
 	t["Wallpaper.reset_persistent"] = [](Ctx &) { twm::restore_wallpaper(); return false; };
 	t["Niko.do_your_thing"] = [](Ctx &c) { twm::deploy_niko(c.map->GetMapID() == 255, c.st->flag(160)); return false; };
 	t["set_wallpaper_black"] = [](Ctx &) { twm::set_wallpaper("black"); return false; };
-	t["stop_speedrun_timer"] = [](Ctx &) { note("speedrun timer (the Timer app comes later)", "stop_speedrun_timer"); return false; };
+	t["stop_speedrun_timer"] = [](Ctx &) { twm::stop_playthrough_timer(); return false; };
 	t["Script.fadein_bgm(90,5)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 5.0f); return false; };
 	t["Script.fadein_bgm(90,3)"] = [](Ctx &) { audio::fade_in_bgm(0.9f, 3.0f); return false; };
 	t["particles :fireflies"] = [](Ctx &c) { c.map->SpawnFireflyParticles(); return false; };

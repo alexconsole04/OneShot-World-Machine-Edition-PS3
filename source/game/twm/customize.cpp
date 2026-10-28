@@ -19,6 +19,19 @@ Chooser::Chooser(Vec2 pos, int length, std::vector<std::pair<std::string, std::s
 	SetValue(selected);
 }
 
+void Chooser::SetItems(std::vector<std::pair<std::string, std::string>> it, const std::string &selected) {
+	items = std::move(it);
+	index = 0;
+	SetValue(selected);
+}
+
+void Chooser::SetPosition(Vec2 p) {
+	area.x = p.x;
+	area.y = p.y;
+	left.SetPosition(p);
+	right.SetPosition(p + Vec2(area.w - 16, 0));
+}
+
 void Chooser::SetValue(const std::string &key) {
 	for (size_t i = 0; i < items.size(); i++)
 		if (items[i].first == key) index = (int)i;
@@ -32,6 +45,7 @@ void Chooser::Step(int d) {
 }
 
 bool Chooser::Update(Vec2 parentPos, bool canInteract) {
+	left.disabled = right.disabled = disabled || items.empty();
 	bool used = !canInteract;
 	used |= left.Update(parentPos, canInteract);
 	used |= right.Update(parentPos, canInteract);
@@ -40,12 +54,23 @@ bool Chooser::Update(Vec2 parentPos, bool canInteract) {
 
 void Chooser::Draw(Vec2 parentPos, const Theme &th, int alpha) const {
 	Rect r = translated(area, parentPos);
-	box(r, th.Primary(alpha));
-	box(shrink(r, 1), th.Background(alpha));
-	left.Draw(parentPos, th, alpha);
-	right.Draw(parentPos, th, alpha);
-	if (!items.empty())
-		line(Vec2(r.x + area.w / 2, r.y + 2), loc::twm(items[index].second.c_str()), th.Primary(alpha), area.w - 36, true);
+	Color c = disabled ? th.Variant(alpha) : th.Primary(alpha);
+	if (showBorder) {
+		box(r, c);
+		box(shrink(r, 1), th.Background(alpha));
+	}
+	left.Draw(parentPos, th, alpha, dropShadow);
+	right.Draw(parentPos, th, alpha, dropShadow);
+	if (items.empty()) return;
+	std::string t = labelFn ? labelFn(items[index].first, items[index].second) : loc::twm(items[index].second.c_str());
+	if (labelFont == font::OS) {
+		if (dropShadow) line(Vec2(r.x + area.w / 2 + 1, r.y + 3), t, th.Background(alpha), area.w - 36, true);
+		line(Vec2(r.x + area.w / 2, r.y + 2), t, c, area.w - 36, true);
+	} else {
+		Vec2 p(r.x + area.w / 2, r.y - 2);
+		if (dropShadow) text_centered(p + Vec2(1, 1), t, th.Background(alpha), labelFont);
+		text_centered(p, t, c, labelFont);
+	}
 }
 
 // ===================================================================== CustomizeWindow

@@ -37,7 +37,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include <stdio.h>
 #include <new>
 #include <exception>
-#define OSPS3_VERSION "m17"
+#define OSPS3_VERSION "m18"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -115,6 +115,7 @@ int main(int argc, const char **argv) {
 		sys::log("random seed %08x\n", (unsigned)seed);
 	}
 	loc::init();
+	settings().Load();   // the desktop's cursor uses the Controls settings from the start
 	audio::init();
 	// Debug starts (OSPS3_MAP) skip the boot sequence and start inside a
 	// maximized OneShot window; OSPS3_SKIP_BOOT starts on the desktop.

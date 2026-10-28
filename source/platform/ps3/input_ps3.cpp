@@ -55,12 +55,15 @@ static RawPad raw[MAX_PADS];
 // Left stick -> -100..100 with a radial dead zone. The DS3 reports a square
 // range (full diagonal reads ~141%), so the vector is clamped to the unit
 // circle: equal speed in all directions, no diagonal boost.
+static float g_moveDead = 0.20f;
+void set_move_dead_zone(int p) { g_moveDead = p / 100.0f; }
+
 static void stick(const padData &d, int &ox, int &oy) {
 	float x = ((int)d.ANA_L_H - 128) / 127.0f;
 	float y = ((int)d.ANA_L_V - 128) / 127.0f;
 	float mag = sqrtf(x * x + y * y);
-	const float dead = 0.20f;
-	if (mag < dead) { ox = oy = 0; return; }
+	const float dead = g_moveDead;
+	if (mag <= dead || mag <= 0.0f) { ox = oy = 0; return; }
 	float scaled = (mag - dead) / (1.0f - dead);
 	if (scaled > 1.0f) scaled = 1.0f;
 	ox = (int)(x / mag * scaled * 100.0f);

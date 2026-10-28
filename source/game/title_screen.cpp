@@ -2,6 +2,7 @@
 #include "game_state.h"
 #include "loc.h"
 #include "menus.h"
+#include "twm/wm.h"
 #include "../engine/audio.h"
 #include "../engine/font.h"
 #include "../engine/gm.h"
@@ -11,6 +12,7 @@ void TitleScreen::Open(GameState *s, MenuManager *m) {
 	state = s;
 	menus = m;
 	audio::play_song("MyBurdenIsLight", 1.0f, 1.0f, 1.0f);
+	twm::reset_playthrough_timer();
 	fadeOpacity = 255;
 	st = Opening;
 	selected = 0;
@@ -62,6 +64,7 @@ void TitleScreen::Update() {
 			if (selected == SettingsOpt) {
 				menus->ShowMenu(MenuManager::Menu::Settings);
 			} else {
+				if (selected == 0) twm::start_playthrough_timer();   // the Timer app's current playthrough
 				audio::play_sound("title_decision");
 				Close();
 			}

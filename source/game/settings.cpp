@@ -33,7 +33,15 @@ void Settings::Load() {
 	if (cJSON_IsNumber(sc)) scaling = sc->valueint == 1 ? 1 : 0;
 	get_bool(root, "fullscreen", fullscreen);
 	get_bool(root, "isFullscreenBorderEnabled", fullscreenBorder);
+	auto num = [root](const char *k, int &v, int lo, int hi) {
+		const cJSON *n = cJSON_GetObjectItemCaseSensitive(root, k);
+		if (cJSON_IsNumber(n)) v = n->valueint < lo ? lo : n->valueint > hi ? hi : n->valueint;
+	};
+	num("MoveStickDeadZone", moveDeadZone, 0, 50);
+	num("MouseStickDeadZone", mouseDeadZone, 0, 50);
+	num("MouseSpeed", cursorSpeed, 2, 8);
 	cJSON_Delete(root);
+	ApplyInput();
 }
 
 void Settings::Save() const {
@@ -47,6 +55,9 @@ void Settings::Save() const {
 	cJSON_AddNumberToObject(root, "ps3ScalingMode", scaling);
 	cJSON_AddBoolToObject(root, "fullscreen", fullscreen);
 	cJSON_AddBoolToObject(root, "isFullscreenBorderEnabled", fullscreenBorder);
+	cJSON_AddNumberToObject(root, "MoveStickDeadZone", moveDeadZone);
+	cJSON_AddNumberToObject(root, "MouseStickDeadZone", mouseDeadZone);
+	cJSON_AddNumberToObject(root, "MouseSpeed", cursorSpeed);
 	// The PC's own scaling fields (SettingsMenu.ScalingMode: 1 smooth, 2 sharp).
 	cJSON_AddNumberToObject(root, "fullscreenScaling", scaling == 1 ? 1 : 2);
 	cJSON_AddBoolToObject(root, "isFullscreenScalingSmooth", scaling == 1);
@@ -60,3 +71,12 @@ void Settings::Save() const {
 
 #include "../platform/input.h"
 bool auto_mashing() { return settings().automash && input::held(input::BTN_MASHTEXT); }
+
+#include "twm/twm.h"
+#include "../platform/input.h"
+
+void Settings::ApplyInput() const {
+	input::set_move_dead_zone(moveDeadZone);
+	twm::cursor().deadZone = mouseDeadZone;
+	twm::cursor().speed = cursorSpeed;
+}

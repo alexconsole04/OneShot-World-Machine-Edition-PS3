@@ -49,10 +49,11 @@ Host test hooks: OSPS3_FOLLOWERS="2,3", OSPS3_TRAVEL="zone:map:x:y,...", OSPS3_F
 Not ported yet:
 - Fast travel minimap during the solstice glitch draws plainly (PC uses GlitchEffect on each piece).
 - Map transitions (SpecialTransition is a crossfade).
-- Desktop apps: Customize (plan below), Music Box (+ OneShot exclusion), Gallery, Friends/Contacts,
-  Badges, Timer (stop_speedrun_timer is a stub), Controls, Help.
-- D-pad: front window owns the pad; scrolls focused non-game windows; clicking/selecting the
-  game window gives it back.
+- (m16-m18 added Customize, the d-pad for the front window, Badges, Friends, Gallery, Music Box,
+  Timer, Controls, collectibles and credits text. Test hooks: OSPS3_OPEN=customize|badges|friends|
+  gallery|musicbox|timer|controls|folder:<path>|doc:<path>, OSPS3_CURSOR=x,y.)
+- Gallery/Music Box solstice glitch variants are in; the gallery's LinearStretch blend for oversize
+  pictures is drawn with the normal sampler.
 
 Customize app plan: remove Vsync + Fullscreen (slots free); Badge Notifications; Resolution read-only;
 "Change Resolution" -> Erase All Data (two confirmations, keeps language+settings, deletes
