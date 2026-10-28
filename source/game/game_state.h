@@ -19,6 +19,7 @@ struct GameState {
 	struct TravelLocation { int zone = 0, mapId = 0; int x = 0, y = 0; int direction = 2; };
 	std::vector<TravelLocation> travel_locations;
 	bool travel_enabled = false;     // FastTravelManager.Unlocked
+	int travel_zone = 0;             // FastTravelManager.CurrentZone (0 Blue, 1 Green, 2 Red, 3 RedGround)
 	int plight_timer_start = 0;          // minutes, local clock
 	long long play_frames = 0;           // GameSaveManager.PlayTimeFrameCount
 	long long bruteforce_start = -1;     // PlightBruteForceStartFrame (-1 = unset)

@@ -28,6 +28,7 @@ add_executable(oneshot-ps3
     source/game/save.cpp
     source/game/loc.cpp
     source/game/follower.cpp
+    source/game/fast_travel_menu.cpp
     source/game/twm/twm.cpp
     source/game/twm/widgets.cpp
     source/game/twm/window.cpp

@@ -161,6 +161,7 @@ static void UnlockMap(Ctx &c, std::string s) {
 		else if (parts[2] == ":right") loc.direction = 6;
 	}
 	c.st->travel_enabled = true;   // FastTravelManager.Unlocked
+	c.st->travel_zone = loc.zone;  // CurrentZone
 	for (auto &l : c.st->travel_locations)
 		if (l.zone == loc.zone && l.mapId == loc.mapId) return;
 	c.st->travel_locations.push_back(loc);

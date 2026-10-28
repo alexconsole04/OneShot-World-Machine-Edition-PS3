@@ -133,6 +133,7 @@ void Make(TileMap *map, GameState *s) {
 	for (int f : s->followers) cJSON_AddItemToArray(fol, cJSON_CreateNumber(f));
 	cJSON *ft = cJSON_AddObjectToObject(root, "fastTravel");
 	cJSON_AddBoolToObject(ft, "enabled", s->travel_enabled);
+	cJSON_AddNumberToObject(ft, "currentZone", s->travel_zone);
 	cJSON *locs = cJSON_AddArrayToObject(ft, "locations");
 	for (auto &l : s->travel_locations) {
 		cJSON *o = cJSON_CreateObject();
@@ -215,6 +216,8 @@ bool Load(TileMap *map, GameState *s) {
 			l.direction = jint(it, "direction", 2);
 			s->travel_locations.push_back(l);
 		}
+		// Saves from before currentZone was kept: the zone last unlocked.
+		s->travel_zone = jint(ft, "currentZone", s->travel_locations.empty() ? 0 : s->travel_locations.back().zone);
 	}
 	pictures().LoadSaveData(cJSON_GetObjectItemCaseSensitive(root, "pictureData"));
 	s->plight_timer_start = jint(root, "plightTimeStart", 0);

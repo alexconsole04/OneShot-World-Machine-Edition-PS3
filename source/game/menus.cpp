@@ -228,7 +228,8 @@ void ItemMenu::DrawSelectedItemIcon() {
 
 void MenuManager::ShowMenu(Menu m) {
 	AbstractMenu *n = m == Menu::Item ? (AbstractMenu *)&itemMenu
-	                : m == Menu::Main ? (AbstractMenu *)&mainMenu : (AbstractMenu *)&settingsMenu;
+	                : m == Menu::Main ? (AbstractMenu *)&mainMenu
+	                : m == Menu::FastTravel ? (AbstractMenu *)&fastTravelMenu : (AbstractMenu *)&settingsMenu;
 	next = n;
 	if (current == next) { next = nullptr; return; }
 	settingsMenu.allowLanguage = titleOpen;
@@ -295,8 +296,10 @@ void MainMenu::Update() {
 		if (input::pressed(input::BTN_OK)) {
 			switch (cursorIndex) {
 			case 0:
-				// The fast travel map is not ported yet; it answers like a locked one.
-				if (state->travel_enabled) sys::log("fast travel menu: not ported yet\n");
+				if (state->travel_enabled && !state->travel_locations.empty()) {
+					manager->ShowMenu(MenuManager::Menu::FastTravel);
+					break;
+				}
 				map->StartCommonEvent(4);
 				audio::play_sound("menu_buzzer");
 				break;

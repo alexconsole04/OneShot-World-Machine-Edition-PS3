@@ -1,5 +1,5 @@
 // menus.h - MenuManager, ItemManager (inventory), MainMenu and SettingsMenu
-// from OneShotMG.src.Menus. The fast travel menu comes later.
+// and FastTravelMenu from OneShotMG.src.Menus.
 #pragma once
 #include "../engine/types.h"
 #include <functional>
@@ -84,6 +84,42 @@ private:
 	float cursorAlpha = 0.5f;
 };
 
+// FastTravelMenu: the zone's minimap; pick an unlocked map with the d-pad
+// and Niko warps there (fast_travel_menu.cpp).
+class FastTravelMenu : public AbstractMenu {
+public:
+	FastTravelMenu(TileMap *map, GameState *state) : map(map), state(state) {}
+	void Update() override;
+	void Draw() override;
+	void Open() override;
+	void Close() override;
+	bool IsOpen() const override { return st != Closed; }
+private:
+	struct Piece { int mapId = 0; Vec2 offset, warp; std::string image; bool HasWarp() const { return warp.x != 0 && warp.y != 0; } };
+	struct Edge { int id = 0; int dir = 0; };   // EdgeDirection: 0 up, 1 down, 2 left, 3 right
+	bool IsOption(int mapId) const;
+	void SetTarget(int mapId);
+	void Load();
+	void DrawMinimap(float a);
+	enum { Closed, Opening, Shown, Closing, FadeOut, FadeIn } st = Closed;
+	TileMap *map;
+	GameState *state;
+	bool loaded = false;
+	std::map<int, std::vector<Piece>> zones;                    // zone -> pieces
+	std::map<int, std::map<int, std::vector<Edge>>> zoneEdges;  // zone -> mapId -> edges
+	std::map<int, std::string> mapNames;
+	std::vector<std::string> zoneNames;
+	std::vector<int> options;          // unlocked map ids in the current zone
+	const std::vector<Piece> *pieces = nullptr;
+	std::vector<Edge> edges;           // from the selected map to other options
+	int zone = 0, current = 0, selected = -1;
+	int opacity = 0, fadeTimer = 0, arrowAnimTimer = 0;
+	Vec2 cursor, cursorStart, cursorTarget, shake;
+	int cursorMoveTimer = 0, shakeTimer = 0;
+	Vec2 aberr[3];
+	int aberrTimer[3] = {};
+};
+
 class SettingsMenu : public AbstractMenu {
 public:
 	void Update() override;
@@ -113,9 +149,9 @@ private:
 
 class MenuManager {
 public:
-	enum class Menu { Item, Main, Settings };
+	enum class Menu { Item, Main, Settings, FastTravel };
 	MenuManager(TileMap *map, GameState *state)
-		: itemMenu(map, state), mainMenu(map, state, this), map(map) { itemMenu.manager = this; }
+		: itemMenu(map, state), mainMenu(map, state, this), fastTravelMenu(map, state), map(map) { itemMenu.manager = this; }
 	void ShowMenu(Menu m);
 	void Update();
 	void Draw();
@@ -123,6 +159,7 @@ public:
 	ItemMenu itemMenu;
 	MainMenu mainMenu;
 	SettingsMenu settingsMenu;
+	FastTravelMenu fastTravelMenu;
 	bool titleOpen = false;   // TitleScreenManager.IsOpen: no Start/Triangle menus
 private:
 	TileMap *map;
