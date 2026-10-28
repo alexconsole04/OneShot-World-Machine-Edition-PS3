@@ -45,6 +45,7 @@ static bool g_hasPreviousActive, g_createdThisFrame;
 static std::unique_ptr<ModalWindow> g_systemModal;
 static std::unique_ptr<DraggedItem> g_drag;
 static bool g_ready, g_quit, g_fsDirty, g_desktopDirty;
+static bool g_gameMouseOk;   // OneshotWindow.canMouseInteract, this frame
 static int g_gamma = 100, g_bgmVol = 100, g_sfxVol = 100;   // Customize (desktop.dat)
 static bool g_hideUI;                                        // HideAllUI (View Wallpaper)
 static int g_restartRequest;
@@ -192,6 +193,8 @@ public:
 			borderTimer = 0;
 			borderFrame = (borderFrame + 1) % 2;
 		}
+		// canMouseInteract: the cursor isn't on a window in front, no dialog.
+		g_gameMouseOk = !system_modal_open() && !IsModalOpen() && (maximized || !consumed);
 		// GameLogic, unless a dialog is up (the game waits for it).
 		if (!IsModalOpen() && !system_modal_open() && window().IsOpen()) {
 			prof::mark("desktop ui");
@@ -852,6 +855,34 @@ static void init() {
 	}
 	sys::log("desktop: ready (%dx%d desktop drawn at %dx%d, theme %s) in %.0f ms\n", screen().x, screen().y, space().x,
 	         space().y, g_themeId.c_str(), (sys::time_us() - t0) / 1000.0);
+}
+
+// ===================================================================== the cursor over the game
+
+bool game_cursor(Vec2 *out) {
+	GameWindow *gw = game_window();
+	if (!g_ready || !gw || gw->Minimized() || !g_gameMouseOk) return false;
+	Vec2 m = cursor().MousePos();
+	Vec2 g;
+	if (gw->Maximized()) {
+		Rect fr = gw->FullscreenRect();   // draw-space pixels (2 per desktop pixel)
+		if (fr.w <= 0 || fr.h <= 0) return false;
+		g = Vec2((m.x - fr.x / 2) * 640 / fr.w, (m.y - fr.y / 2) * 480 / fr.h);
+	} else {
+		g = m - Vec2(gw->pos.x + 2, gw->pos.y + 26);
+	}
+	if (g.x < 0 || g.y < 0 || g.x > 320 || g.y > 240) return false;
+	*out = g;
+	return true;
+}
+
+bool cursor_clicked() { return g_ready && cursor().Clicked(); }
+
+void theme_rgb(const std::string &id, uint8_t p[3], uint8_t b[3]) {
+	const Theme *t = id.empty() ? nullptr : theme_by_id(id);
+	if (!t) t = &theme();
+	p[0] = t->primary.r; p[1] = t->primary.g; p[2] = t->primary.b;
+	b[0] = t->background.r; b[1] = t->background.g; b[2] = t->background.b;
 }
 
 // ===================================================================== Customize services

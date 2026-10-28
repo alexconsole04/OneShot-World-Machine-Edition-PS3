@@ -42,5 +42,11 @@ bool overriding_wallpaper(std::string &image, std::string &name, int &mode, uint
 void set_in_solstice(bool on);
 void save_desktop_and_fs();
 Vec2 screen_size();                 // desktop pixels (WindowManager.ScreenSize)
+// The cursor over the game picture, in game pixels (320x240), when it can
+// act on the game (OneshotWindow.canMouseInteract): collectibles.
+bool game_cursor(Vec2 *gamePx);
+bool cursor_clicked();
+// A theme's colours (current theme if the id is empty or unknown).
+void theme_rgb(const std::string &id, uint8_t primary[3], uint8_t background[3]);
 
 } // namespace twm

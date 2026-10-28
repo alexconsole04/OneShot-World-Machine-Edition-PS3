@@ -3,6 +3,7 @@
 // collision and draw order behave identically.
 #include "tilemap.h"
 #include "follower.h"
+#include "special_entities.h"
 #include "loc.h"
 #include "player.h"
 #include "game_state.h"
@@ -532,7 +533,11 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 		entityIDcounter = 10;
 	}
 	if (eventFile)
-		for (auto &ed : eventFile->events) AddEntity(new Entity(this, state, &ed));
+		for (auto &ed : eventFile->events) {
+			if (ed.name == "!collectible") AddEntity(new Collectible(this, state, &ed));
+			else if (ed.name == "@text" || ed.name == "@text_small") AddEntity(new CreditsText(this, state, &ed, ed.name == "@text_small"));
+			else AddEntity(new Entity(this, state, &ed));
+		}
 
 	uint64_t tEntities = sys::time_us();
 	snprintf(rel, sizeof(rel), "gamedata/maps/music_map%d.json", mapId);
