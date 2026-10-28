@@ -24,6 +24,7 @@ public:
 	virtual void Movement();
 	virtual void Draw(Vec2 camPos, GameTone tone);
 	virtual bool IsPlayer() const { return false; }
+	virtual bool IsFollower() const { return false; }
 
 	int GetID() const { return id; }
 	void SetID(int i) { id = i; }

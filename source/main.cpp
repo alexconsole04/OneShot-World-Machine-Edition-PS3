@@ -152,6 +152,8 @@ int main(int argc, const char **argv) {
 			}
 		if (const char *it = getenv("OSPS3_ITEMS"))  // host testing: "3,4"
 			for (const char *p = it; *p; ) { state.add_item(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
+		if (const char *fo = getenv("OSPS3_FOLLOWERS"))  // host testing: "2,3" (FollowerType)
+			for (const char *p = fo; *p; ) { state.followers.push_back(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
 	}
 	int mapId = 0;
 	if (debugMap) {

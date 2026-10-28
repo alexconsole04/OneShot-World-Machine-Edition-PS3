@@ -733,15 +733,9 @@ bool EventRunner::commandChangePartyMember(const EventCommand &c) {
 	case 1:   // Niko
 		if (add) map->GetPlayer()->SetNPCSheet("niko", 0);
 		return false;
-	case 2: case 3: case 4: case 5: case 6:   // Alula, Rue, Plight, Cedric, Proto
-		if (add) {
-			if (!state->has_follower(actor)) state->followers.push_back(actor);
-			map->SpawnFollowers();
-		} else {
-			for (size_t i = 0; i < state->followers.size(); i++)
-				if (state->followers[i] == actor) { state->followers.erase(state->followers.begin() + i); break; }
-			map->SpawnFollowers();
-		}
+	case 2: case 3: case 6: case 7: case 8:   // Alula, Rue, Plight, Cedric, Proto (FollowerType)
+		if (add) map->AddFollower(actor);
+		else map->RemoveFollower(actor);
 		break;
 	default:
 		sys::log("event: unrecognized actorId %d\n", actor);

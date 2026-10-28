@@ -115,7 +115,10 @@ public:
 	void SetPanorama(const std::string &name);
 	void SetFog(const std::string &name, int hue, float opacity, gfx::Blend blend, int sx, int sy);
 	bool AreAnyEntitiesInForcedRoutes() const;
-	void SpawnFollowers();   // FollowerManager.SpawnAllFollowers (followers not ported yet)
+	// FollowerManager: the party (GameState::followers, in order) walking behind Niko.
+	void SpawnFollowers();          // SpawnAllFollowers (on every map load)
+	void AddFollower(int type);
+	void RemoveFollower(int type);
 	void HashedEntityCollision(Entity *e, Entity *ignoredEntity = nullptr, bool isTestCollisionEntity = false);
 	// Footstep sounds for the terrain under a pixel position (null = none).
 	const std::vector<std::string> *GetStepSounds(Vec2 px, float *volume) const;
@@ -174,6 +177,9 @@ private:
 	std::vector<std::unique_ptr<MapLine>> mapLines;
 	std::unordered_map<int, std::vector<MapLine *>> hashedMapLines;
 	Player *player = nullptr;
+	int SpawnFollower(int type, int followId);
+	std::map<int, int> followerIds;   // FollowerType -> entity id on this map
+	int lastFollowerId = -1;
 	Entity *camFocusEntity = nullptr;
 	Vec2 mapSize, tileSize, hashTileSize, hashMapSize;
 	Vec2 camPos, oldCamPos, scrollOffset;

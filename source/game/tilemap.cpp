@@ -2,6 +2,7 @@
 // (TileSet.cs, TileLayer.cs, TileMapManager.cs, MapLine.cs) closely so
 // collision and draw order behave identically.
 #include "tilemap.h"
+#include "follower.h"
 #include "loc.h"
 #include "player.h"
 #include "game_state.h"
@@ -1018,12 +1019,50 @@ bool TileMap::AreAnyEntitiesInForcedRoutes() const {
 	return false;
 }
 
+// TileMapManager.AddFollower: follow the entity with that id (the previous
+// follower), or Niko.
+int TileMap::SpawnFollower(int type, int followId) {
+	Entity *t = GetEntityByID(followId);
+	if (!t) t = player;
+	if (!t) return -1;
+	Follower *f = new Follower(this, state, type, t);
+	AddEntity(f);
+	return f->GetID();
+}
+
 void TileMap::SpawnFollowers() {
-	static bool warned;
-	if (!state->followers.empty() && !warned) {
-		warned = true;
-		sys::log("followers in party but follower entities are not ported yet\n");
+	followerIds.clear();
+	lastFollowerId = -1;
+	for (int type : state->followers) {
+		lastFollowerId = SpawnFollower(type, lastFollowerId);
+		followerIds[type] = lastFollowerId;
 	}
+}
+
+void TileMap::AddFollower(int type) {
+	if (state->has_follower(type)) return;
+	state->followers.push_back(type);
+	lastFollowerId = SpawnFollower(type, lastFollowerId);
+	followerIds[type] = lastFollowerId;
+}
+
+void TileMap::RemoveFollower(int type) {
+	auto &fl = state->followers;
+	auto pos = std::find(fl.begin(), fl.end(), type);
+	if (pos == fl.end()) return;
+	auto id = followerIds.find(type);
+	if (id != followerIds.end()) {
+		Entity *gone = GetEntityByID(id->second);
+		if (pos + 1 != fl.end()) {
+			auto next = followerIds.find(*(pos + 1));
+			Entity *n = next != followerIds.end() ? GetEntityByID(next->second) : nullptr;
+			if (gone && gone->IsFollower() && n && n->IsFollower())
+				static_cast<Follower *>(n)->InheritPosition(static_cast<Follower *>(gone));
+		}
+		if (gone) RemoveEntity(gone);
+		followerIds.erase(id);
+	}
+	fl.erase(pos);
 }
 
 // ---------------------------------------------------------------- events
@@ -1435,7 +1474,7 @@ void TileMap::LoadSaveData(const cJSON *o) {
 	for (auto &kv : entitiesById) {
 		auto it = byId.find(kv.second->GetID());
 		if (it != byId.end()) kv.second->LoadSaveData(it->second);
-		else if (!kv.second->IsPlayer()) gone.push_back(kv.second);
+		else if (!kv.second->IsPlayer() && !kv.second->IsFollower()) gone.push_back(kv.second);
 	}
 	for (Entity *g : gone) RemoveEntity(g);
 	const cJSON *sheet = cJSON_GetObjectItemCaseSensitive(o, "playerSheet");
