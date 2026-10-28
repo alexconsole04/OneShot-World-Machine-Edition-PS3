@@ -38,6 +38,8 @@ OSPS3_TEXTS="!script ...|...". Saves in /tmp/claude-0/saves.
 out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.cpp.
 
 ## Status (m15)
+User-confirmed on PS3/RPCS3 (m15b): followers (diagonal wobble fixed), fast travel, mood bubbles.
+Firefly overlap artefact was an RPCS3 rendering bug, not the port.
 Done in m15: party followers (follower.cpp), fast travel menu (fast_travel_menu.cpp), Glen fireflies
 (tilemap.cpp), mood bubbles + fix_footsplashes (entity.cpp), RNG seeded from the clock
 (OSPS3_SEED pins it), no black frame after the boot wipe, log rotation at 4 MB, startup traces removed.
