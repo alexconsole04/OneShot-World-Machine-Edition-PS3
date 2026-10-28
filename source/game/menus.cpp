@@ -350,7 +350,7 @@ void MainMenu::Draw() {
 
 // ===================================================================== SettingsMenu
 bool SettingsMenu::Shown_(int i) const {
-	if (i == Language) return allowLanguage;
+	if (i == Language) return false;   // in the Customize app on the desktop now
 	if (i == Scaling || i == Border) return twm::game_maximized();   // skipFullscreenRelatedSettings
 	return true;
 }

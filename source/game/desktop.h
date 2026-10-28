@@ -21,4 +21,9 @@ void close_all();        // a language change: every window closes (no saving)
 // Debug starts and the map switcher: make sure the OneShot window is there.
 void ensure_game_window(bool maximized);
 bool game_window_open();
+// A restart the Customize app asked for (1 language, 2 erase all data), once.
+int take_restart_request();
+// Erase All Data: deletes every save but language.dat and settings.conf and
+// forgets the desktop, so the next init starts as a first launch.
+void erase_all_data();
 } // namespace desktop

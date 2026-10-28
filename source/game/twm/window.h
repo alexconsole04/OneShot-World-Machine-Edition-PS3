@@ -9,7 +9,7 @@ namespace twm {
 struct DraggedItem;
 
 // What a window is (the build has no RTTI).
-enum WindowKind { KIND_OTHER, KIND_MODAL, KIND_GAME, KIND_BROWSER, KIND_DOCUMENT, KIND_PHOTO, KIND_JOURNAL, KIND_JUKEBOX };
+enum WindowKind { KIND_OTHER, KIND_MODAL, KIND_GAME, KIND_BROWSER, KIND_DOCUMENT, KIND_PHOTO, KIND_JOURNAL, KIND_JUKEBOX, KIND_CUSTOMIZE };
 
 class Window {
 public:

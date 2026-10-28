@@ -13,7 +13,9 @@
 namespace gfx {
 
 // Dither: the PC's DitherShader wipe (see set_dither); always opaque where drawn.
-enum class Blend : uint8_t { Normal, Additive, Dither };
+// Multiply: dst *= src.rgb. Brighten: dst += dst * src.rgb (the desktop's
+// Brightness setting, the PC's HueShader "gamma" factor, as a final pass).
+enum class Blend : uint8_t { Normal, Additive, Dither, Multiply, Brighten };
 
 struct Texture {
 	uint32_t w = 0, h = 0;

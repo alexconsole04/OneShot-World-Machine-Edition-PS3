@@ -102,6 +102,23 @@ void restart_console() {
 	sys::log("boot: restarting at the console\n");
 }
 
+void restart_language_select() {
+	setup_system_texture_queue();
+	const auto &langs = loc::languages();
+	selectedLanguage = 0;
+	for (size_t i = 0; i < langs.size(); i++)
+		if (langs[i].code == loc::code()) selectedLanguage = (int)i;
+	step = LANGUAGE_SELECT_FADEIN;
+	stateTimer = 0;
+	opacity = 0;
+	postText.clear();
+	srcText.clear();
+	textDelay = 12;
+	finishedFlag = false;
+	stepStart = sys::time_us();
+	sys::log("boot: restarting at the language select\n");
+}
+
 bool active() { return step != COMPLETE; }
 bool show_os() { return step == TWM_LOGO_FADEOUT; }
 bool take_desktop_init() {

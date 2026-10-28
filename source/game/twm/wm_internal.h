@@ -24,5 +24,17 @@ void unlock_app(Program p);
 void flash(Color c, int duration, float strength);
 bool clover_equipped();
 Window *find_window(bool (*pred)(Window *));
+bool game_window_open();
+// The Customize app's settings (kept in desktop.dat, the PC's fields).
+int brightness();              // Gamma, 50..150 (%)
+void set_brightness(int v);
+int bgm_volume();
+int sfx_volume();
+void set_volumes(int bgm, int sfx);
+void hide_all_ui();            // View Wallpaper: the wallpaper alone until a button press
+// Restart the World Machine (after a fade): a language change, or Erase All
+// Data. main.cpp carries it out (desktop::take_restart_request).
+enum { RESTART_NONE = 0, RESTART_LANGUAGE = 1, RESTART_ERASE = 2 };
+void request_restart(int kind);
 
 } // namespace twm

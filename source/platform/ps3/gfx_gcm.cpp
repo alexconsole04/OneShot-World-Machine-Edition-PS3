@@ -278,6 +278,10 @@ static void apply_blend(Blend b) {
 	cellGcmSetBlendEnable(ctx, GCM_TRUE);
 	if (b == Blend::Additive) // XNA BlendState.Additive
 		cellGcmSetBlendFunc(ctx, CELL_GCM_SRC_ALPHA, CELL_GCM_ONE, CELL_GCM_SRC_ALPHA, CELL_GCM_ONE);
+	else if (b == Blend::Multiply)
+		cellGcmSetBlendFunc(ctx, CELL_GCM_DST_COLOR, CELL_GCM_ZERO, CELL_GCM_ZERO, CELL_GCM_ONE);
+	else if (b == Blend::Brighten)
+		cellGcmSetBlendFunc(ctx, CELL_GCM_DST_COLOR, CELL_GCM_ONE, CELL_GCM_ZERO, CELL_GCM_ONE);
 	else                      // XNA BlendState.NonPremultiplied
 		cellGcmSetBlendFunc(ctx, CELL_GCM_SRC_ALPHA, CELL_GCM_ONE_MINUS_SRC_ALPHA,
 		                         CELL_GCM_ONE, CELL_GCM_ONE_MINUS_SRC_ALPHA);

@@ -4,6 +4,7 @@
 // (desktop.h) are what main.cpp uses.
 #include "wm_internal.h"
 #include "apps.h"
+#include "customize.h"
 #include "../desktop.h"
 #include "../loc.h"
 #include "../json_file.h"
@@ -19,6 +20,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <algorithm>
 
 namespace twm {
@@ -43,6 +45,9 @@ static bool g_hasPreviousActive, g_createdThisFrame;
 static std::unique_ptr<ModalWindow> g_systemModal;
 static std::unique_ptr<DraggedItem> g_drag;
 static bool g_ready, g_quit, g_fsDirty, g_desktopDirty;
+static int g_gamma = 100, g_bgmVol = 100, g_sfxVol = 100;   // Customize (desktop.dat)
+static bool g_hideUI;                                        // HideAllUI (View Wallpaper)
+static int g_restartRequest;
 // Taskbar
 struct TaskButton { int w; Window *window; };
 static std::vector<TaskButton> g_taskButtons;
@@ -465,10 +470,10 @@ static void write_saves() {
 	unlocks().PopulateSaveData(o);
 	cJSON_AddBoolToObject(o, "tutorialCompleted", 1);
 	cJSON_AddBoolToObject(o, "inSolstice", g_desktop->inSolstice);
-	cJSON_AddBoolToObject(o, "isSystemScalingSmooth", 1);
-	cJSON_AddNumberToObject(o, "Gamma", 100);
-	cJSON_AddNumberToObject(o, "BGMVolume", 100);
-	cJSON_AddNumberToObject(o, "SFXVolume", 100);
+	cJSON_AddBoolToObject(o, "isSystemScalingSmooth", settings().scaling == gm::SCALE_SMOOTH);
+	cJSON_AddNumberToObject(o, "Gamma", g_gamma);
+	cJSON_AddNumberToObject(o, "BGMVolume", g_bgmVol);
+	cJSON_AddNumberToObject(o, "SFXVolume", g_sfxVol);
 	cJSON_AddBoolToObject(o, "isVsyncEnabled", 1);
 	cJSON_AddBoolToObject(o, "isBadgeToastsEnabled", unlocks().badgeToastsEnabled);
 	cJSON_AddBoolToObject(o, "isFullscreen", 1);
@@ -500,6 +505,15 @@ static bool load_desktop() {
 	const cJSON *wp = cJSON_GetObjectItemCaseSensitive(o, "currentWallpaper");
 	g_desktop->SetWallpaper(cJSON_IsString(wp) && g_desktop->WallpaperMeta(wp->valuestring) ? wp->valuestring : "default");
 	g_desktop->inSolstice = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "inSolstice"));
+	auto num = [o](const char *k, int def, int lo, int hi) {
+		const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
+		int n = cJSON_IsNumber(v) ? (int)v->valuedouble : def;
+		return n < lo ? lo : n > hi ? hi : n;
+	};
+	g_gamma = num("Gamma", 100, 50, 150);
+	g_bgmVol = num("BGMVolume", 100, 0, 100);
+	g_sfxVol = num("SFXVolume", 100, 0, 100);
+	audio::set_volumes(g_bgmVol, g_sfxVol);
 	const cJSON *bt = cJSON_GetObjectItemCaseSensitive(o, "isBadgeToastsEnabled");
 	if (cJSON_IsBool(bt)) unlocks().badgeToastsEnabled = cJSON_IsTrue(bt);
 	unlocks().LoadSaveData(o);
@@ -593,6 +607,7 @@ bool run_file(Node *node) {
 			});
 		});
 		break;
+	case PROG_CUSTOMIZE: add_window_(new CustomizeWindow()); break;
 	case PROG_DUMMY_FILE_FOR_TUTORIALS: break;
 	default: not_yet(f->name); break;
 	}
@@ -822,8 +837,51 @@ static void init() {
 		if (!game_window()) add_window_(new GameWindow());
 	};
 	g_ready = true;
+	if (const char *o = getenv("OSPS3_OPEN"))   // host testing: open an app at start
+		if (strcmp(o, "customize") == 0) add_window_(new CustomizeWindow());
+	if (const char *cp = getenv("OSPS3_CURSOR")) {   // host testing: "x,y" in desktop pixels
+		int x = 0, y = 0;
+		if (sscanf(cp, "%d,%d", &x, &y) == 2) cursor().SetMousePos(Vec2(x, y));
+	}
 	sys::log("desktop: ready (%dx%d desktop drawn at %dx%d, theme %s) in %.0f ms\n", screen().x, screen().y, space().x,
 	         space().y, g_themeId.c_str(), (sys::time_us() - t0) / 1000.0);
+}
+
+// ===================================================================== Customize services
+
+bool game_window_open() { return game_window() != nullptr; }
+int brightness() { return g_gamma; }
+void set_brightness(int v) { g_gamma = v < 50 ? 50 : v > 150 ? 150 : v; save_desktop(); }
+int bgm_volume() { return g_bgmVol; }
+int sfx_volume() { return g_sfxVol; }
+void set_volumes(int bgm, int sfx) {
+	g_bgmVol = bgm;
+	g_sfxVol = sfx;
+	audio::set_volumes(bgm, sfx);
+	save_desktop();
+}
+void hide_all_ui() { g_hideUI = true; }
+
+void request_restart(int kind) {
+	// WindowManager.ShowLanguageSelect: fade out, then restart.
+	fade(128, 255, 120, [kind] {
+		for (auto &w : g_windows)
+			if (w->onClose) w->onClose(w.get());
+		g_restartRequest = kind;
+	});
+}
+
+// HueShader's "gamma": every colour times Brightness/100, done here as one
+// pass over the finished frame.
+static void draw_brightness() {
+	if (g_gamma == 100) return;
+	gfx::Shade sh;
+	gfx::Blend b = gfx::Blend::Multiply;
+	float f = g_gamma / 100.0f;
+	if (f > 1.0f) { b = gfx::Blend::Brighten; f -= 1.0f; }
+	sh.r = sh.g = sh.b = f;
+	gfx::clip_off();
+	gfx::draw(gm::white(), 0, 0, (float)gfx::screen_w(), (float)gfx::screen_h(), 0, 0, 1, 1, sh, b);
 }
 
 // ===================================================================== update
@@ -860,6 +918,18 @@ static void niko_draw() {
 static void update() {
 	if (!g_ready) return;
 	cursor().Update();
+	if (g_hideUI) {
+		// HideAllUI: any button or a click brings the desktop back.
+		using namespace input;
+		input::suppress_game(false);   // read the buttons, then keep them from the game
+		if (pressed(BTN_OK) || pressed(BTN_CANCEL) || pressed(BTN_INVENTORY) || pressed(BTN_MAINMENU) || pressed(BTN_RUN) ||
+		    cursor().Clicked())
+			g_hideUI = false;
+		input::suppress_game(true);
+		g_toasts.Update();
+		write_saves();
+		return;
+	}
 	if (g_flashTimer > 0) g_flashTimer--;
 	GameWindow *gw = game_window();
 	// SuppressOneshotwindowInputs: the game ignores the pad while its window
@@ -923,6 +993,11 @@ static void draw() {
 	if (!g_ready) return;
 	begin();
 	const Theme &th = theme();
+	if (g_hideUI) {
+		g_desktop->DrawDesktop(th, Rect(), false);
+		end();
+		return;
+	}
 	Window *maxed = nullptr;
 	for (auto &w : g_windows)
 		if (w->Maximized()) { maxed = w.get(); break; }
@@ -971,7 +1046,32 @@ void update() {
 }
 void draw() { twm::draw(); }
 void draw_cursor() {
-	if (twm::g_ready) twm::cursor().Draw();
+	if (twm::g_ready && !twm::g_hideUI) twm::cursor().Draw();
+	twm::draw_brightness();
+}
+
+int take_restart_request() {
+	int r = twm::g_restartRequest;
+	twm::g_restartRequest = 0;
+	return r;
+}
+
+void erase_all_data() {
+	using namespace twm;
+	static const char *files[] = { "save.dat", "p-settings.dat", "desktop.dat", "fs.dat" };
+	for (const char *f : files)
+		if (sys::save_exists(f) && !sys::save_delete(f)) sys::log("erase: couldn't delete %s\n", f);
+	g_fsDirty = g_desktopDirty = false;
+	g_fs = Filesystem();
+	delete g_unlocks;
+	g_unlocks = nullptr;
+	g_desktop.reset();
+	g_themeId = "purple";
+	g_hideUI = false;
+	g_fadeOpacity = 0;
+	g_fading = false;
+	g_ready = false;
+	sys::log("erase: all data erased (language and settings kept)\n");
 }
 bool quit_requested() { return twm::g_quit; }
 bool game_window_open() { return twm::game_window() != nullptr; }

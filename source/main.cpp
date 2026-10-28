@@ -37,7 +37,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include <stdio.h>
 #include <new>
 #include <exception>
-#define OSPS3_VERSION "m15b"
+#define OSPS3_VERSION "m16"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -288,6 +288,19 @@ int main(int argc, const char **argv) {
 			// Language chosen in the settings menu: the session goes, the boot
 			// console runs again in the new language, then the desktop.
 			std::string lang;
+			if (int r = desktop::take_restart_request()) {
+				// The Customize app: Change Language, or Erase All Data.
+				window().ResetForBoot();
+				desktop::close_all();
+				if (r == 2) {
+					desktop::erase_all_data();
+					sys::log("restart: first launch after erasing all data\n");
+					boot::start();
+				} else {
+					sys::log("restart: language select\n");
+					boot::restart_language_select();
+				}
+			}
 			if (boot::take_language_request(lang)) {
 				sys::log("language change to %s: restarting the boot sequence\n", lang.c_str());
 				window().ResetForBoot();

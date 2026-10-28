@@ -16,6 +16,9 @@ namespace boot {
 void set_version(const char *versionString);   // top right of the BIOS console
 void start();
 void restart_console();
+// The Customize app's Change Language: back to the language select, then on
+// through the console as after a first launch's pick.
+void restart_language_select();
 bool active();           // drawing and updating the boot screens
 bool just_finished();    // true once, the frame the sequence completes
 bool show_os();          // the desktop shows under the TWM logo as it wipes away

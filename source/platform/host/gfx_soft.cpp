@@ -142,6 +142,10 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 			float dr = ((d >> 16) & 255) / 255.0f, dg = ((d >> 8) & 255) / 255.0f, db = (d & 255) / 255.0f;
 			if (blend == Blend::Additive) {
 				dr = shade::clamp01(dr + c.r * c.a); dg = shade::clamp01(dg + c.g * c.a); db = shade::clamp01(db + c.b * c.a);
+			} else if (blend == Blend::Multiply) {
+				dr *= c.r; dg *= c.g; db *= c.b;
+			} else if (blend == Blend::Brighten) {
+				dr = shade::clamp01(dr + dr * c.r); dg = shade::clamp01(dg + dg * c.g); db = shade::clamp01(db + db * c.b);
 			} else {
 				dr = c.r * c.a + dr * (1 - c.a); dg = c.g * c.a + dg * (1 - c.a); db = c.b * c.a + db * (1 - c.a);
 			}

@@ -36,6 +36,7 @@ add_executable(oneshot-ps3
     source/game/twm/icons.cpp
     source/game/twm/unlocks.cpp
     source/game/twm/apps.cpp
+    source/game/twm/customize.cpp
     source/game/twm/wm.cpp
     source/game/boot_sequence.cpp
     source/game/title_screen.cpp
