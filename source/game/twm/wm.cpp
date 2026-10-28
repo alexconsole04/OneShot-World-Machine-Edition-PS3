@@ -837,7 +837,7 @@ static void init() {
 		if (!game_window()) add_window_(new GameWindow());
 	};
 	g_ready = true;
-	if (const char *o = getenv("OSPS3_OPEN"))   // host testing: open an app at start
+	if (const char *o = getenv("OSPS3_OPEN")) {   // host testing: open an app at start
 		if (strcmp(o, "customize") == 0) add_window_(new CustomizeWindow());
 		else if (strncmp(o, "folder:", 7) == 0) add_window_(new BrowserWindow(&g_fs, o + 7));
 		else if (strncmp(o, "doc:", 4) == 0) {   // the first document in that folder
@@ -845,6 +845,7 @@ static void init() {
 				for (auto &n : d->contents)
 					if (!n->IsFolder() && static_cast<File *>(n.get())->program == PROG_DOCUMENT) { run_file(n.get()); break; }
 		}
+	}
 	if (const char *cp = getenv("OSPS3_CURSOR")) {   // host testing: "x,y" in desktop pixels
 		int x = 0, y = 0;
 		if (sscanf(cp, "%d,%d", &x, &y) == 2) cursor().SetMousePos(Vec2(x, y));
