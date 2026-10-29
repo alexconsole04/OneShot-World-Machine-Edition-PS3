@@ -24,6 +24,6 @@ struct MonitorLock {
 
 // Runs fn(arg) on a new thread. priority: 0 = normal, -1 = lower than the
 // game (background work). False if the thread couldn't be created.
-bool thread_start(void (*fn)(void *), void *arg, const char *name, int priority);
+bool thread_start(void (*fn)(void *), void *arg, const char *name, int priority, uint32_t stackBytes = 64 * 1024);
 
 } // namespace sys

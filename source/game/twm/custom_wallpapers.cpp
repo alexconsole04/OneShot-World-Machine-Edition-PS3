@@ -146,7 +146,7 @@ static bool request(const std::string &key, const std::string &file, int w, int 
 	if (!g_threadTried) {
 		g_threadTried = true;
 		g_mon = sys::monitor_create("wallpapers");
-		g_threadOk = g_mon && sys::thread_start(worker, nullptr, "wallpaper decode", -1);
+		g_threadOk = g_mon && sys::thread_start(worker, nullptr, "wallpaper decode", -1, 256 * 1024);   // stb_image wants more than the usual 64 KB
 		if (!g_threadOk) sys::log("wallpaper: no decoding thread, decoding on the main thread\n");
 	}
 	if (!g_threadOk) return false;

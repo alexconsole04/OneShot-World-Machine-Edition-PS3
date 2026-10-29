@@ -39,13 +39,13 @@ static void entry(uint64_t a) {
 	sys_ppu_thread_exit(0);
 }
 
-bool thread_start(void (*fn)(void *), void *arg, const char *name, int priority) {
+bool thread_start(void (*fn)(void *), void *arg, const char *name, int priority, uint32_t stackBytes) {
 	Start *s = new Start{ fn, arg };
 	sys_ppu_thread_t t;
 	// Lower number = higher priority. The main thread runs at 1001
 	// (SYS_PROCESS_PARAM); the audio thread at 900.
 	int prio = priority < 0 ? 1500 : 1000;
-	if (sys_ppu_thread_create(&t, entry, (uint64_t)(uintptr_t)s, prio, 64 * 1024, 0, name) != 0) {
+	if (sys_ppu_thread_create(&t, entry, (uint64_t)(uintptr_t)s, prio, stackBytes, 0, name) != 0) {
 		delete s;
 		return false;
 	}

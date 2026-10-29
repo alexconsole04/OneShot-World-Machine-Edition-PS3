@@ -118,10 +118,17 @@ std::vector<std::string> list_files(const std::string &dir) {
 bool read_abs(const std::string &path, std::vector<uint8_t> &out) {
 	FILE *f = fopen(path.c_str(), "rb");
 	if (!f) return false;
+	// No big buffer on the stack: this runs on the decoding thread, whose
+	// stack is 64 KB (a 64 KB buffer here overflowed it).
 	out.clear();
-	uint8_t buf[65536];
+	if (fseek(f, 0, SEEK_END) == 0) {
+		long n = ftell(f);
+		if (n > 0) out.reserve((size_t)n);
+		fseek(f, 0, SEEK_SET);
+	}
+	std::vector<uint8_t> buf(16384);
 	size_t n;
-	while ((n = fread(buf, 1, sizeof(buf), f)) > 0) out.insert(out.end(), buf, buf + n);
+	while ((n = fread(buf.data(), 1, buf.size(), f)) > 0) out.insert(out.end(), buf.begin(), buf.begin() + n);
 	fclose(f);
 	return true;
 }

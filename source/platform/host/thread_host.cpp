@@ -21,7 +21,7 @@ void monitor_wait(Monitor *m, uint64_t timeout_us) {
 }
 void monitor_notify(Monitor *m) { m->cond.notify_all(); }
 
-bool thread_start(void (*fn)(void *), void *arg, const char *, int) {
+bool thread_start(void (*fn)(void *), void *arg, const char *, int, uint32_t) {
 	std::thread(fn, arg).detach();
 	return true;
 }
