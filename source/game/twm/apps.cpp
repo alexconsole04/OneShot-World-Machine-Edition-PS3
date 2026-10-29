@@ -218,7 +218,36 @@ void BrowserWindow::OnFileDelete() {
 
 static std::vector<std::string> g_randomLetters;
 
+// The port's own Help document (English, like its other additions).
+static const char *const WALLPAPERS_HELP =
+	"CUSTOM WALLPAPERS\n"
+	"\n"
+	"You can use your own pictures as wallpapers.\n"
+	"\n"
+	"FROM A USB STICK\n"
+	"1. On a USB stick, make a folder named OneShot, and inside it a folder named wallpapers.\n"
+	"2. Put your pictures in OneShot/wallpapers.\n"
+	"3. Plug the stick into the PS3, open Customize and press Import Wallpapers.\n"
+	"The pictures are copied into the game, so the stick can be removed afterwards.\n"
+	"\n"
+	"BY FTP\n"
+	"Copy pictures into /dev_hdd0/game/OSWM00001/USRDIR/wallpapers. They show up when the game next starts, "
+	"or straight away if you press Import Wallpapers.\n"
+	"\n"
+	"USING THEM\n"
+	"Your pictures are at the end of the Wallpapers folder, under their file names. Open one to use it.\n"
+	"To remove one, select it and press the trash button.\n"
+	"\n"
+	"LIMITS\n"
+	"- PNG, JPG and BMP pictures.\n"
+	"- Up to 16 megapixels (a 4K picture is about 8).\n"
+	"- Pictures fill the whole screen. One that isn't the screen's shape is scaled up and its edges are cropped evenly.\n"
+	"- A picture that was already imported is skipped.\n"
+	"- Big pictures take a moment to load the first time.\n"
+	"- Erase All Data keeps your wallpapers.";
+
 static std::string doc_text(const std::string &file) {
+	if (file == "osps3_wallpapers") return WALLPAPERS_HELP;
 	std::string p = "gamedata/loc/" + loc::code() + "/txt/" + file + ".txt";
 	if (!sys::file_exists(p.c_str())) p = "gamedata/txt/" + file + ".txt";
 	uint8_t *data;

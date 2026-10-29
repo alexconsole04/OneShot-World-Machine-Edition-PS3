@@ -128,9 +128,10 @@ void CustomizeWindow::OnImportWallpapers() {
 	ImportResult r = import_custom_wallpapers();
 	refresh_custom_wallpapers();
 	std::string msg;
-	if (r.sticks == 0) {
-		msg = "No USB stick with a OneShot/wallpapers folder was found.\nPut PNG or JPG pictures in a folder named wallpapers, "
-		      "inside a folder named OneShot on the stick.";
+	if (r.devices == 0) {
+		msg = "No USB device was detected, please insert a USB device.";
+	} else if (r.sticks == 0) {
+		msg = "No OneShot/wallpapers folder was found on the USB device.\nSee Wallpapers.txt in the Help folder.";
 	} else {
 		char b[160];
 		if (r.imported == 0) snprintf(b, sizeof(b), "No new pictures to import.");

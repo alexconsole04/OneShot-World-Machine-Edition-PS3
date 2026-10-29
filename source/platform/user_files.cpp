@@ -79,7 +79,7 @@ static std::string child_any_case(const std::string &dir, const char *name) {
 	return "";
 }
 
-std::vector<std::string> usb_wallpaper_dirs() {
+static std::vector<std::string> usb_roots() {
 	std::vector<std::string> roots, r;
 #ifdef __PPU__
 	for (int i = 0; i < 8; i++) {
@@ -90,8 +90,16 @@ std::vector<std::string> usb_wallpaper_dirs() {
 #else
 	if (const char *env = getenv("OSPS3_USB")) roots.push_back(env);   // host testing: a stand-in stick
 #endif
+	for (auto &root : roots)
+		if (is_dir(root)) r.push_back(root);
+	return r;
+}
+
+int usb_device_count() { return (int)usb_roots().size(); }
+
+std::vector<std::string> usb_wallpaper_dirs() {
+	std::vector<std::string> roots = usb_roots(), r;
 	for (auto &root : roots) {
-		if (!is_dir(root)) continue;
 		std::string game = child_any_case(root, "oneshot");
 		if (game.empty() || !is_dir(game)) continue;
 		std::string w = child_any_case(game, "wallpapers");

@@ -154,6 +154,7 @@ static void set_builtin() {
 		{ "game_load_failed", "Save data is corrupt. Deleting save." },
 		{ "boot_lang_select", "Select your Language" }, { "boot_lang_select_hint", "(Press @OK to confirm)" },
 		{ "boot_autosave_explain1", "This game has an autosave feature." },
+		{ "wallpapers_help_filename", "Wallpapers.txt" },
 		{ "boot_autosave_explain2", "When you see this icon on screen, please do not close the game." },
 	};
 	for (auto &d : defaults) builtin[d[0]] = d[1];

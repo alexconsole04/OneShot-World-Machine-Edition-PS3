@@ -156,6 +156,7 @@ void scan_custom_wallpapers() {
 
 ImportResult import_custom_wallpapers() {
 	ImportResult r;
+	r.devices = sys::usb_device_count();
 	std::vector<std::string> have = sys::list_files(sys::wallpaper_dir());
 	for (auto &dir : sys::usb_wallpaper_dirs()) {
 		r.sticks++;

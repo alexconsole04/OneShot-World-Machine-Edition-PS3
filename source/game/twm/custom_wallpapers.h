@@ -23,7 +23,7 @@ void scan_custom_wallpapers();
 const std::vector<CustomWallpaper> &custom_wallpapers();
 std::string custom_wallpaper_name(const std::string &id);
 
-struct ImportResult { int sticks = 0, imported = 0, existing = 0, unreadable = 0; };
+struct ImportResult { int devices = 0, sticks = 0, imported = 0, existing = 0, unreadable = 0; };   // sticks: with the folder
 // Copies new pictures from every USB stick's OneShot/wallpapers folder.
 ImportResult import_custom_wallpapers();
 // Removes the picture from the wallpapers folder.

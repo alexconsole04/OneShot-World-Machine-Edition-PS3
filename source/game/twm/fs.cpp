@@ -266,6 +266,21 @@ void Filesystem::LoadEmpty() {
 }
 
 void Filesystem::CreateExtraSystemFiles() {
+	// The port's Help document about custom wallpapers (desktops that had
+	// a Help folder before it existed get it too).
+	if (GetDir(HELP)) {
+		bool have = false;
+		for (auto &d : dirs)
+			for (auto &c : d.second->contents)
+				if (!c->IsFolder() && static_cast<File *>(c.get())->args.size() == 1 &&
+				    static_cast<File *>(c.get())->args[0] == "osps3_wallpapers")
+					have = true;
+		if (!have) {
+			auto f = make_file("doc", "wallpapers_help_filename", PROG_DOCUMENT, { "osps3_wallpapers" });
+			f->deleteRestricted = true;
+			WriteFile(HELP, f);
+		}
+	}
 	if (!FileTypeExists(PROG_TIMER)) {
 		auto f = make_file("timer", "timer_app_filename", PROG_TIMER);
 		f->deleteRestricted = true;

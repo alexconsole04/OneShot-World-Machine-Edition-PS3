@@ -13,6 +13,8 @@ const std::string &wallpaper_dir();
 // Folders on USB sticks to import wallpapers from: <stick>/OneShot/wallpapers
 // (any case) on each stick that has one.
 std::vector<std::string> usb_wallpaper_dirs();
+// How many USB storage devices are plugged in.
+int usb_device_count();
 
 // Regular files in dir (names only).
 std::vector<std::string> list_files(const std::string &dir);
