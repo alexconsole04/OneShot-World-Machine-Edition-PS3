@@ -13,6 +13,9 @@
 namespace desktop {
 void init();             // WindowManager(): themes, wallpaper, icons, desktop.dat
 bool ready();
+// The wallpaper can be drawn now (a custom one is decoded in the
+// background): the boot waits on its logo for it.
+bool wallpaper_ready();
 void update();           // cursor, taskbar, windows (and the game inside its window), icons
 void draw();             // everything but the cursor
 void draw_cursor();      // last, over dialogs

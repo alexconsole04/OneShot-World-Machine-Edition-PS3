@@ -331,7 +331,7 @@ void Filesystem::CreateWallpaperFiles(const std::vector<std::string> &ids) {
 		CreateWallpaperFile(id);
 		if (Folder *d = GetDir(WALLPAPERS))
 			for (auto &c : d->contents)
-				if (c->name == id) c->deleteRestricted = false;
+				if (c->name == id) c->deleteRestricted = id.compare(0, 8, "custom:@") == 0;   // the port's own stay
 	}
 }
 

@@ -1,5 +1,6 @@
 #include "boot_sequence.h"
 #include "loc.h"
+#include "desktop.h"
 #include "../engine/audio.h"
 #include "../engine/font.h"
 #include "../engine/gm.h"
@@ -377,6 +378,10 @@ void update() {
 		if (stateTimer >= 60) { stateTimer = 0; opacity = 1; set_step(BIG_LOGO_AFTER_SOUND); }
 		break;
 	case BIG_LOGO_AFTER_SOUND:
+		// The desktop's own picture is decoded in the background: the logo
+		// stays until it's ready (up to 10 s more), so the wipe shows it.
+		if (stateTimer >= 120 && !desktop::wallpaper_ready() && stateTimer < 120 + 600) break;
+		if (stateTimer >= 120 + 600) sys::log("boot: wallpaper still loading, going on\n");
 		display(120, TWM_LOGO_FADEOUT);
 		break;
 	case TWM_LOGO_FADEOUT:

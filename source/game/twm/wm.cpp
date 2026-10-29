@@ -1252,6 +1252,8 @@ static void init() {
 	g_hint.reset();
 	if (freshFs) sys::log("twm: new file system%s%s\n", haveDesktop ? " (desktop.dat kept)" : "", tutorialDone ? "" : ", introduction");
 	if (!haveDesktop) g_desktop->SetWallpaper("default");
+	// Start decoding the player's own picture now, while the boot logo shows.
+	if (is_custom_wallpaper(g_desktop->Showing().imageFile)) custom_wallpaper_ready(g_desktop->Showing().imageFile);
 	save_desktop_and_fs();
 	cursor().SetMousePos(Vec2(screen().x / 2, screen().y / 2));
 	window().desktopMode = true;
@@ -1543,6 +1545,12 @@ namespace desktop {
 
 void init() { twm::init(); }
 bool ready() { return twm::g_ready; }
+bool wallpaper_ready() {
+	using namespace twm;
+	if (!g_ready || !g_desktop) return true;
+	const std::string &id = g_desktop->Showing().imageFile;
+	return !is_custom_wallpaper(id) || custom_wallpaper_ready(id);
+}
 void update() {
 	twm::update();
 }

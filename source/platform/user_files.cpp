@@ -54,6 +54,29 @@ const std::string &wallpaper_dir() {
 	return dir;
 }
 
+const std::string &port_dir() {
+	static std::string dir;
+	if (dir.empty()) {
+#ifdef __PPU__
+		dir = "/dev_hdd0/game/OSWM00001/USRDIR/port";
+#else
+		const char *env = getenv("OSPS3_PORT_DIR");   // host: the repo's pkg_files/USRDIR/port
+		dir = env ? env : "pkg_files/USRDIR/port";
+#endif
+	}
+	return dir;
+}
+
+long long file_size(const std::string &p) {
+#ifdef __PPU__
+	CellFsStat st;
+	return cellFsStat(p.c_str(), &st) == CELL_FS_SUCCEEDED ? (long long)st.st_size : -1;
+#else
+	struct stat st;
+	return stat(p.c_str(), &st) == 0 ? (long long)st.st_size : -1;
+#endif
+}
+
 static std::string lower(std::string s) {
 	for (auto &c : s) c = (char)tolower((unsigned char)c);
 	return s;

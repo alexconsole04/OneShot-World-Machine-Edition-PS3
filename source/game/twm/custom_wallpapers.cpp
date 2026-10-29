@@ -31,7 +31,7 @@ static const int THUMB_W = 84, THUMB_H = 48;
 static const int MAX_PIXELS = 16 * 1000 * 1000;   // decoded that is 64 MB of memory: bigger pictures are refused
 
 static std::vector<CustomWallpaper> g_list;
-static std::map<std::string, std::vector<uint32_t>> g_thumbs;   // file -> 84x48 ARGB
+static std::map<std::string, std::vector<uint32_t>> g_thumbs;   // id -> 84x48 ARGB
 
 static bool picture_ext(const std::string &n) {
 	size_t d = n.find_last_of('.');
@@ -51,9 +51,9 @@ std::string custom_wallpaper_name(const std::string &id) {
 
 // Decodes the picture and scales it to cover w x h (cropping what overhangs,
 // centred). Area averaging when shrinking, bilinear when enlarging.
-static bool decode_cover(const std::string &file, int tw, int th, std::vector<uint32_t> &out) {
+static bool decode_cover(const std::string &path, int tw, int th, std::vector<uint32_t> &out) {
 	std::vector<uint8_t> data;
-	std::string path = sys::wallpaper_dir() + "/" + file;
+	std::string file = path.substr(path.find_last_of('/') + 1);
 	if (!sys::read_abs(path, data) || data.empty()) return false;
 	int w, h, n;
 	if (!stbi_info_from_memory(data.data(), (int)data.size(), &w, &h, &n) || w <= 0 || h <= 0 ||
@@ -116,13 +116,42 @@ static const CustomWallpaper *find(const std::string &id) {
 // ------------------------------------------------------------------ the decoding thread
 // Decoding and scaling a big JPEG takes the PPU a second or more, so it's
 // done on a background thread; the desktop keeps drawing meanwhile.
-struct Job { std::string key, file; int w, h; };
+struct Job { std::string key, path, cache; int w, h; };
 static sys::Monitor *g_mon;
 static std::vector<Job> g_jobs;                                  // waiting
 static std::map<std::string, std::vector<uint32_t>> g_done;      // key -> pixels (empty: failed)
 static std::vector<std::string> g_queued;                        // keys waiting or being decoded
 static std::vector<std::string> g_finished;                      // keys to tell gm about (main thread)
 static bool g_threadOk, g_threadTried;
+
+// Icons are kept on disk (wallpapers/.thumbs) so the folder doesn't decode
+// every picture again each time the game starts: the picture's size, then
+// 84x48 pixels.
+static std::string thumb_cache_path(const CustomWallpaper &w) {
+	std::string n = (w.builtIn ? "@" : "") + w.file + ".thumb";
+	return sys::wallpaper_dir() + "/.thumbs/" + n;
+}
+
+static bool read_thumb_cache(const std::string &cache, const std::string &src, std::vector<uint32_t> &px) {
+	std::vector<uint8_t> d;
+	const size_t want = 8 + (size_t)THUMB_W * THUMB_H * 4;
+	if (!sys::read_abs(cache, d) || d.size() != want) return false;
+	long long size = 0;
+	memcpy(&size, d.data(), 8);
+	if (size != sys::file_size(src)) return false;   // the picture changed
+	px.resize((size_t)THUMB_W * THUMB_H);
+	memcpy(px.data(), d.data() + 8, px.size() * 4);
+	return true;
+}
+
+static void write_thumb_cache(const std::string &cache, const std::string &src, const std::vector<uint32_t> &px) {
+	sys::make_dir(sys::wallpaper_dir() + "/.thumbs");
+	std::vector<uint8_t> d(8 + px.size() * 4);
+	long long size = sys::file_size(src);
+	memcpy(d.data(), &size, 8);
+	memcpy(d.data() + 8, px.data(), px.size() * 4);
+	sys::write_abs(cache, d.data(), d.size());
+}
 
 static void worker(void *) {
 	for (;;) {
@@ -134,7 +163,12 @@ static void worker(void *) {
 			g_jobs.erase(g_jobs.begin());
 		}
 		std::vector<uint32_t> px;
-		if (!decode_cover(j.file, j.w, j.h, px)) px.clear();
+		if (!j.cache.empty() && read_thumb_cache(j.cache, j.path, px)) {
+		} else if (!decode_cover(j.path, j.w, j.h, px)) {
+			px.clear();
+		} else if (!j.cache.empty()) {
+			write_thumb_cache(j.cache, j.path, px);
+		}
 		sys::MonitorLock l(g_mon);
 		g_done[j.key] = std::move(px);
 		g_finished.push_back(j.key);
@@ -142,7 +176,7 @@ static void worker(void *) {
 }
 
 // Queues the decode (once). False if it couldn't (no thread): decode now.
-static bool request(const std::string &key, const std::string &file, int w, int h) {
+static bool request(const std::string &key, const std::string &path, int w, int h, const std::string &cache = "") {
 	if (!g_threadTried) {
 		g_threadTried = true;
 		g_mon = sys::monitor_create("wallpapers");
@@ -153,7 +187,7 @@ static bool request(const std::string &key, const std::string &file, int w, int 
 	sys::MonitorLock l(g_mon);
 	if (std::find(g_queued.begin(), g_queued.end(), key) != g_queued.end()) return true;
 	g_queued.push_back(key);
-	g_jobs.push_back(Job{ key, file, w, h });
+	g_jobs.push_back(Job{ key, path, cache, w, h });
 	sys::monitor_notify(g_mon);
 	return true;
 }
@@ -185,17 +219,17 @@ static gfx::Texture *make_texture(const std::string &name) {
 	const CustomWallpaper *w = find(name.substr(full ? fl : tl));
 	if (!w) return nullptr;
 	if (thumb) {
-		auto it = g_thumbs.find(w->file);
+		auto it = g_thumbs.find(w->id);
 		if (it != g_thumbs.end()) return it->second.empty() ? nullptr : gfx::create_texture(THUMB_W, THUMB_H, it->second.data());
 	}
 	Vec2 sz = full ? space() : Vec2(THUMB_W, THUMB_H);   // full: one texel per desktop draw pixel
 	std::vector<uint32_t> px;
 	bool failed;
 	if (!take(name, px, &failed)) {
-		if (request(name, w->file, sz.x, sz.y)) return nullptr;   // on its way
-		if (!decode_cover(w->file, sz.x, sz.y, px)) failed = true;
+		if (request(name, w->path, sz.x, sz.y, thumb ? thumb_cache_path(*w) : "")) return nullptr;   // on its way
+		if (!decode_cover(w->path, sz.x, sz.y, px)) failed = true;
 	}
-	if (thumb) g_thumbs[w->file] = px;   // kept: the folder is opened again and again
+	if (thumb) g_thumbs[w->id] = px;   // kept: the folder is opened again and again
 	if (failed || px.empty()) return nullptr;
 	return gfx::create_texture((uint32_t)sz.x, (uint32_t)sz.y, px.data());
 }
@@ -216,7 +250,7 @@ bool custom_wallpaper_ready(const std::string &id) {
 	std::string key = full_key(id);
 	if (!g_threadOk && g_threadTried) return true;
 	Vec2 sz = space();
-	if (!request(key, w->file, sz.x, sz.y)) return true;   // no thread: SetWallpaper decodes it
+	if (!request(key, w->path, sz.x, sz.y)) return true;   // no thread: SetWallpaper decodes it
 	sys::MonitorLock l(g_mon);
 	return g_done.count(key) != 0;
 }
@@ -228,15 +262,20 @@ void scan_custom_wallpapers() {
 		installed = true;
 	}
 	g_list.clear();
-	std::vector<std::string> files = sys::list_files(sys::wallpaper_dir());
-	std::sort(files.begin(), files.end());
-	for (auto &f : files) {
-		if (!picture_ext(f)) continue;
-		CustomWallpaper w;
-		w.file = f;
-		w.id = "custom:" + f;
-		w.displayName = f.substr(0, f.find_last_of('.'));
-		g_list.push_back(w);
+	for (int builtIn = 1; builtIn >= 0; builtIn--) {   // the port's own first
+		std::string dir = builtIn ? sys::port_dir() + "/wallpapers" : sys::wallpaper_dir();
+		std::vector<std::string> files = sys::list_files(dir);
+		std::sort(files.begin(), files.end());
+		for (auto &f : files) {
+			if (!picture_ext(f)) continue;
+			CustomWallpaper w;
+			w.file = f;
+			w.id = std::string(builtIn ? "custom:@" : "custom:") + f;
+			w.displayName = f.substr(0, f.find_last_of('.'));
+			w.path = dir + "/" + f;
+			w.builtIn = builtIn != 0;
+			g_list.push_back(w);
+		}
 	}
 	sys::log("wallpaper: %d custom wallpapers in %s\n", (int)g_list.size(), sys::wallpaper_dir().c_str());
 }
@@ -274,10 +313,11 @@ ImportResult import_custom_wallpapers() {
 
 bool delete_custom_wallpaper(const std::string &id) {
 	const CustomWallpaper *w = find(id);
-	if (!w) return false;
+	if (!w || w->builtIn) return false;
 	std::string file = w->file;
-	bool ok = sys::remove_abs(sys::wallpaper_dir() + "/" + file);
-	g_thumbs.erase(file);
+	bool ok = sys::remove_abs(w->path);
+	sys::remove_abs(thumb_cache_path(*w));
+	g_thumbs.erase(id);
 	sys::log("wallpaper: deleted %s%s\n", file.c_str(), ok ? "" : " (couldn't remove the file)");
 	scan_custom_wallpapers();
 	return ok;

@@ -13,9 +13,13 @@ struct CustomWallpaper {
 	std::string id;            // "custom:<file name>" (the wallpaper id and the fs file's name)
 	std::string file;          // file name in the wallpapers folder
 	std::string displayName;   // the file name without its extension
+	std::string path;          // the picture's full path
+	bool builtIn = false;      // comes with the port (USRDIR/port/wallpapers): can't be deleted
 };
 
 static inline bool is_custom_wallpaper(const std::string &id) { return id.compare(0, 7, "custom:") == 0; }
+// The port's own wallpapers are "custom:@<file>".
+static inline bool is_builtin_custom_wallpaper(const std::string &id) { return id.compare(0, 8, "custom:@") == 0; }
 
 // Reads the wallpapers folder again. Also installs the texture source that
 // draws them (once).

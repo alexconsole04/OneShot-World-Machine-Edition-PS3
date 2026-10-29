@@ -16,6 +16,11 @@ std::vector<std::string> usb_wallpaper_dirs();
 // How many USB storage devices are plugged in.
 int usb_device_count();
 
+// The port's own files that come in the pkg (USRDIR/port).
+const std::string &port_dir();
+// Size in bytes, or -1 if there's no such file.
+long long file_size(const std::string &path);
+
 // Regular files in dir (names only).
 std::vector<std::string> list_files(const std::string &dir);
 bool read_abs(const std::string &path, std::vector<uint8_t> &out);

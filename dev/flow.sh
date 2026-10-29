@@ -9,7 +9,7 @@ mkdir -p "$WORK/s" "$WORK/saves"
 rm -f "$WORK"/s/*.png
 SH=""; i=0
 for f in ${FR//,/ }; do SH="$SH$f:$WORK/s/$(printf %02d $i).png,"; i=$((i+1)); done
-cd "$DATA" && env OSPS3_SAVEDIR="$WORK/saves" OSPS3_DATA="$DATA" "$@" OSPS3_INPUT="$IN" OSPS3_SHOTS="${SH%,}" timeout ${TIMEOUT:-120} "$REPO/build-host/oneshot-host" > "$WORK/out.txt" 2>&1
+cd "$DATA" && env OSPS3_SAVEDIR="$WORK/saves" OSPS3_DATA="$DATA" OSPS3_PORT_DIR="$REPO/pkg_files/USRDIR/port" "$@" OSPS3_INPUT="$IN" OSPS3_SHOTS="${SH%,}" timeout ${TIMEOUT:-120} "$REPO/build-host/oneshot-host" > "$WORK/out.txt" 2>&1
 echo "rc=$?"
 grep -v "missing texture\|slow frame\|audio: opened\|screenshot" "$WORK/out.txt" | tail -${TAILN:-25}
 WORK="$WORK" python3 - <<'PY'
