@@ -18,6 +18,12 @@ public:
 	void PadInput() override;
 	bool WantsPad() const override { return true; }
 	const std::string &Path() const { return path; }
+	// For the tutorials (GetIconPos and the rest).
+	Vec2 IconPos(Program p);
+	bool IsIconSelected(Program p);
+	Vec2 DeleteButtonPos() const;
+	bool IsShowingDeleteConfirmModal() const;
+	Vec2 ModalButtonsPos() const;
 protected:
 	void HandleDragDropped(DraggedItem *item, Vec2 contentPos) override;
 private:

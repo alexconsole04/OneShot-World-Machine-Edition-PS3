@@ -65,6 +65,9 @@ public:
 	void CreateOneshotFile();
 	void CreateTutorialCompleteFiles(const std::vector<std::string> &wallpapers, const std::vector<std::string> &themes);
 	void CreateExtraSystemFiles();
+	void CreateDeleteTutorialFiles();
+	void CreateMoveTutorialFiles();
+	void LoadEmpty();   // the tutorials' empty desktop
 	void CreateHelpFiles();
 	void CreateWallpaperFiles(const std::vector<std::string> &ids);
 	void CreateWallpaperFile(const std::string &id);

@@ -72,8 +72,21 @@ class Window;
 const Theme &theme();
 const Theme *theme_by_id(const std::string &id);
 const std::vector<Theme> &themes();
-// TutorialStep: the desktop tutorials aren't in yet, so always complete.
-static inline bool tutorial_complete() { return true; }
+// TutorialStep: where the desktop tutorials are (the first launch's
+// introduction, and the Help folder's three).
+enum TutorialStep {
+	TUT_BEGIN, TUT_WAIT_FOR_HINTBOX_FADEOUT, TUT_PREAMBLE, TUT_MOVE_CURSOR, TUT_DRAG_FILE, TUT_LAUNCH_APPLICATION,
+	TUT_MOVE_WINDOW, TUT_MINIMIZE_WINDOW, TUT_UNMINIMIZE_WINDOW, TUT_CLOSE_WINDOW, TUT_WRAP_UP, TUT_ONESHOT_APPEARS,
+	TUT_COMPLETE, TUT_DELETE_CLICK_FILE, TUT_DELETE_CLICK_DELETE, TUT_DELETE_CONFIRM_DELETION, TUT_DELETE_CONGRATULATIONS,
+	TUT_MOVEFILE_DRAG_FILE, TUT_MOVEFILE_DROP_FILE, TUT_MOVEFILE_CONGRATULATIONS, TUT_WAIT
+};
+TutorialStep tutorial_step();
+static inline bool tutorial_complete() { return tutorial_step() == TUT_COMPLETE; }
+static inline bool tutorial_is(TutorialStep s) { return tutorial_step() == s; }
+// The pulse the tutorial puts on what to click (objectHighlightTimer):
+// |t - 40| / 40 * 0.6, plus 0.4 with base.
+float tutorial_pulse(bool base = true);
+bool allow_launch_applications();   // AllowLaunchApplications
 bool is_window_focused(const Window *w);
 void play_sound(const char *name, float vol = 1.0f, float pitch = 1.0f);
 // Windows (dialogs) that close while their own update is running are

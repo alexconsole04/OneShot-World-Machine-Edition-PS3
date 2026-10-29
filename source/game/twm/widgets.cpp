@@ -95,6 +95,10 @@ void TextButton::Draw(Vec2 parentPos, const Theme &th, int alpha) const {
 	line(Vec2(p.x + rect.w / 2, p.y + 2), label, fg, rect.w - 4, true);
 }
 
+void TextButton::DrawHighlight(Vec2 parentPos, const Theme &th, int alpha) const {
+	box(Rect(parentPos.x + rect.x, parentPos.y + rect.y, rect.w, rect.h), hovering ? th.Variant(alpha) : th.Primary(alpha));
+}
+
 // ===================================================================== Slider
 
 Slider::Slider(const std::string &l, int mn, int mx, Vec2 p, int len, bool buttons, bool vert, const std::string &suf)

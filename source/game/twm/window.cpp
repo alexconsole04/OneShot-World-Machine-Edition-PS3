@@ -72,6 +72,8 @@ bool Window::Update(bool consumed) {
 	if (onButton) return true;
 	MouseCursor &c = cursor();
 	Rect bar(pos.x + 2, pos.y + 2, contents.x, 20);
+	// The move-file tutorial keeps both folder windows where they are.
+	bool canGrab = !tutorial_is(TUT_MOVEFILE_DRAG_FILE) && !tutorial_is(TUT_MOVEFILE_DROP_FILE);
 	if (held) {
 		if (c.Held()) {
 			c.SetState(MouseCursor::Holding);
@@ -81,7 +83,7 @@ bool Window::Update(bool consumed) {
 			return true;
 		}
 		held = false;
-	} else if (!maximized && in_rect(bar, c.MousePos())) {
+	} else if (!maximized && in_rect(bar, c.MousePos()) && canGrab) {
 		c.SetState(MouseCursor::Grabbable);
 		if (c.Clicked()) {
 			held = true;
@@ -91,7 +93,7 @@ bool Window::Update(bool consumed) {
 		return true;
 	}
 	if (in_rect(Rect(pos.x, pos.y, contents.x + 4, contents.y + 28), c.MousePos()) && showBackground) {
-		if (c.Clicked() && grabFocus) grabFocus(this);
+		if (c.Clicked() && canGrab && grabFocus) grabFocus(this);
 		return true;
 	}
 	return modalUsed;
@@ -104,11 +106,19 @@ void Window::Draw(const Theme &th) {
 	if (showBackground) box(Rect(p.x, p.y, contents.x + 4, contents.y + 28), th.Primary());
 	else box(Rect(p.x, p.y, contents.x + 4, 24), th.Primary());
 	box(Rect(p.x + 2, p.y + 2, contents.x, 20), th.Background());
+	if (tutorial_is(TUT_MOVE_WINDOW) && Kind() == KIND_BROWSER)   // the tutorial's pulse on the title bar
+		box(Rect(p.x + 2, p.y + 2, contents.x, 20), th.Primary((int)(255 * tutorial_pulse(false))));
 	// GenerateTitleTexture: the icon, then the title, in the theme's colour.
 	int maxLen = contents.x - 24 - (int)buttons.size() * 18;
 	if (!icon.empty()) tex(("the_world_machine/window_icons/" + icon).c_str(), Vec2(p.x + 4, p.y + 4), Rect(), th.Primary());
 	text(Vec2(p.x + 24, p.y + 3), truncate(title, maxLen), th.Primary());
-	for (auto &b : buttons) b->Draw(p, th, 255);
+	for (auto &b : buttons) {
+		int a = 255;
+		if ((tutorial_is(TUT_MINIMIZE_WINDOW) && b->type == WinButtonType::Minimize) ||
+		    (tutorial_is(TUT_CLOSE_WINDOW) && b->type == WinButtonType::Close))
+			a = (int)(a * tutorial_pulse());
+		b->Draw(p, th, a);
+	}
 	DrawContents(th, Vec2(p.x + 2, p.y + 26), 255);
 	if (modal) modal->Draw(th);
 }
@@ -183,6 +193,7 @@ ModalWindow::ModalWindow(int t, const std::string &message, bool sound, bool can
 
 void ModalWindow::Click(int r) {
 	if (closed) return;
+	if (tutorial_is(TUT_DELETE_CONFIRM_DELETION) && r == RESP_NO) return;   // the delete tutorial wants a Yes
 	closed = true;
 	response = r;
 	if (callback) callback(r);
@@ -231,7 +242,14 @@ void ModalWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 		text_centered(p, l, th.Primary(alpha));
 		p.y += 12;
 	}
-	for (auto &b : modalButtons) b->Draw(sp, th, alpha);
+	for (size_t i = 0; i < modalButtons.size(); i++) {
+		modalButtons[i]->Draw(sp, th, alpha);
+		if (i == 0 && tutorial_is(TUT_DELETE_CONFIRM_DELETION)) modalButtons[i]->DrawHighlight(sp, th, (int)(alpha * tutorial_pulse(false)));
+	}
+}
+
+Vec2 ModalWindow::ButtonsPos() const {
+	return pos + Vec2(80, modalButtons.empty() ? 0 : modalButtons[0]->Pos().y + 26);
 }
 
 } // namespace twm

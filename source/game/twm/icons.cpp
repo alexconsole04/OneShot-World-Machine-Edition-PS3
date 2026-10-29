@@ -16,6 +16,9 @@ FileIcon::FileIcon(std::shared_ptr<Node> f) : file(f) {}
 
 bool FileIcon::IsWallpaper() const { return !file->IsFolder() && static_cast<File *>(file.get())->program == PROG_WALLPAPER; }
 bool FileIcon::IsTheme() const { return !file->IsFolder() && static_cast<File *>(file.get())->program == PROG_THEME; }
+bool FileIcon::IsTutorialDummy() const {
+	return !file->IsFolder() && static_cast<File *>(file.get())->program == PROG_DUMMY_FILE_FOR_TUTORIALS;
+}
 
 void FileIcon::Layout() {
 	// processFileName: the name on one or two lines, each at most 76 wide.
@@ -64,6 +67,11 @@ void FileIcon::Draw(const Theme &th0, Vec2 p, bool focus, bool canHover, float a
 	const Theme &th = *thp;
 	Color bg = th.Background(), frame = focus ? th.Primary() : th.Variant(), fg = th.Primary(), shadow = th.Background();
 	if (alpha != 1.0f) fg.a = frame.a = bg.a = (uint8_t)(255 * alpha);
+	// The tutorial's pulse on what to drag, open or pick.
+	TutorialStep st = tutorial_step();
+	if (st == TUT_DRAG_FILE || st == TUT_LAUNCH_APPLICATION ||
+	    ((st == TUT_MOVEFILE_DRAG_FILE || st == TUT_DELETE_CLICK_FILE) && IsTutorialDummy()))
+		fg.a = (uint8_t)(fg.a * tutorial_pulse());
 	Rect area = ClickArea(p);
 	if (canHover && in_rect(area, cursor().MousePos())) {
 		focus = true;
@@ -248,7 +256,9 @@ void IconGrid::Update(Vec2 offset, bool consumed) {
 	Vec2 v = c.MousePos() - offset;
 	if (clickedIcon) {
 		if (c.Held()) {
-			if (onBeginDrag && (iabs(v.x - clickPos.x) > 3 || iabs(v.y - clickPos.y) > 3)) {
+			TutorialStep st = tutorial_step();
+			bool canDrag = st == TUT_DRAG_FILE || st == TUT_COMPLETE || (st == TUT_MOVEFILE_DRAG_FILE && clickedIcon->IsTutorialDummy());
+			if (canDrag && onBeginDrag && (iabs(v.x - clickPos.x) > 3 || iabs(v.y - clickPos.y) > 3)) {
 				heldIcon = clickedIcon;
 				clickedIcon = nullptr;
 				DraggedItem *d = new DraggedItem;
@@ -262,7 +272,10 @@ void IconGrid::Update(Vec2 offset, bool consumed) {
 		}
 		return;
 	}
-	if (consumed || !c.Clicked()) return;
+	TutorialStep st = tutorial_step();
+	bool canClick = st == TUT_COMPLETE || st == TUT_DRAG_FILE || st == TUT_LAUNCH_APPLICATION || st == TUT_DELETE_CLICK_FILE ||
+	                st == TUT_MOVEFILE_DRAG_FILE;
+	if (consumed || !canClick || !c.Clicked()) return;
 	if (!in_rect(Rect(0, 0, bounds.x, bounds.y), v)) return;
 	int gx = std::min(v.x / 84, cols - 1), gy = std::min(v.y / 72, displayHeight - 1) + displayRowStart;
 	if (gx < 0 || gy < 0 || gy >= rows) { Unselect(); return; }
@@ -271,7 +284,8 @@ void IconGrid::Update(Vec2 offset, bool consumed) {
 		Vec2 gp(gx, gy);
 		if (framesSinceClick < 30 && gp == clickGridPos) {   // double click
 			framesSinceClick = 30;
-			if (folderOverride && ic->file->IsFolder()) folderOverride(static_cast<Folder *>(ic->file.get())->Path());
+			if (!allow_launch_applications()) {
+			} else if (folderOverride && ic->file->IsFolder()) folderOverride(static_cast<Folder *>(ic->file.get())->Path());
 			else run_file(ic->file.get());
 		} else {
 			framesSinceClick = 0;
@@ -325,6 +339,31 @@ bool IconGrid::CheckPathMoveRestricted(DraggedItem *item) {
 	return false;
 }
 
+bool IconGrid::CheckBlockedByTutorial(DraggedItem *item) {
+	if (!tutorial_complete() && item->icon->IsTutorialDummy() && fsPath != "/movefile_tutorial_folder2_name/") {
+		if (item->onDropComplete) item->onDropComplete(false);
+		return true;
+	}
+	return false;
+}
+
+Vec2 IconGrid::IconPosition(const std::function<bool(FileIcon *)> &pred, Vec2 offset) {
+	for (int x = 0; x < cols; x++)
+		for (int y = 0; y < rows; y++) {
+			FileIcon *ic = Slot(x, y);
+			if (ic && pred(ic)) {
+				Rect r = ic->ClickArea(GridPosition(x, y));
+				return Vec2(r.x + r.w / 2 + offset.x, r.y + r.h / 2 + offset.y);
+			}
+		}
+	return Vec2(0, 0);
+}
+
+bool IconGrid::IsIconSelected(const std::function<bool(FileIcon *)> &pred) {
+	FileIcon *ic = Selected();
+	return ic && pred(ic);
+}
+
 bool IconGrid::CheckForFolderDrop(DraggedItem *item, Vec2 cursorPos) {
 	Vec2 g = PointToGrid(cursorPos);
 	FileIcon *target = Slot(g.x, g.y);
@@ -357,7 +396,7 @@ static bool still_there(Filesystem *fs, DraggedItem *item) {
 void IconGrid::OnDragDropped(DraggedItem *item, Vec2 pos) {
 	if (!still_there(fs, item)) return;
 	if (CheckPreventMoveFolder(item) || CheckPreventMoveRestricted(item) || CheckForFolderDrop(item, pos) ||
-	    CheckPathMoveRestricted(item))
+	    CheckBlockedByTutorial(item) || CheckPathMoveRestricted(item))
 		return;
 	if (item->source != this) {
 		if (!item->icon->file->IsFolder()) fs->MoveFile(static_cast<File *>(item->icon->file.get()), fsPath);
@@ -511,7 +550,9 @@ void DesktopGrid::OnFsChange(const std::string &path) {
 
 void DesktopGrid::OnDragDropped(DraggedItem *item, Vec2 pos) {
 	if (!item->icon || !still_there(fs, item)) return;
-	if (CheckPreventMoveFolder(item) || CheckPreventMoveRestricted(item) || CheckForFolderDrop(item, pos)) return;
+	if (CheckPreventMoveFolder(item) || CheckPreventMoveRestricted(item) || CheckForFolderDrop(item, pos) ||
+	    CheckBlockedByTutorial(item))
+		return;
 	if (IsFull() && item->icon->file->parentPath != "/") {
 		Error("error_too_many_items");
 		if (item->onDropComplete) item->onDropComplete(false);

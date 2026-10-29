@@ -15,6 +15,7 @@ public:
 	Rect ClickArea(Vec2 pos);
 	bool IsWallpaper() const;
 	bool IsTheme() const;
+	bool IsTutorialDummy() const;
 private:
 	void Layout();
 	int layoutGen = -1;
@@ -50,6 +51,9 @@ public:
 	// Hands an icon over to another grid (a file dragged onto the desktop).
 	std::unique_ptr<FileIcon> Release(FileIcon *icon);
 	const std::string &Path() const { return fsPath; }
+	// GetIconPosition / IsIconSelected (the tutorials point at icons).
+	Vec2 IconPosition(const std::function<bool(FileIcon *)> &pred, Vec2 offset);
+	bool IsIconSelected(const std::function<bool(FileIcon *)> &pred);
 
 protected:
 	virtual void OnFsChange(const std::string &path);
@@ -62,6 +66,7 @@ protected:
 	bool CheckPreventMoveRestricted(DraggedItem *item);
 	bool CheckPathMoveRestricted(DraggedItem *item);
 	bool CheckForFolderDrop(DraggedItem *item, Vec2 cursorPos);
+	bool CheckBlockedByTutorial(DraggedItem *item);
 	void Error(const char *key) { if (createModal) createModal(1 /* MODAL_ERROR */, key); }
 
 	Filesystem *fs;

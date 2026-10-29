@@ -88,6 +88,7 @@ public:
 	void DrawContents(const Theme &th, Vec2 screenPos, int alpha) override;
 	bool IsSameContent(const Window *) const override { return false; }
 	int Kind() const override { return KIND_MODAL; }
+	Vec2 ButtonsPos() const;   // GetButtonsPos
 	// The dialog that answers to the pad this frame (Left/Right to pick,
 	// Cross to press, Circle for No): set by the window manager.
 	static ModalWindow *padOwner;

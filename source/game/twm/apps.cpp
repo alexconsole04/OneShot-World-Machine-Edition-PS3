@@ -21,7 +21,9 @@ BrowserWindow::BrowserWindow(Filesystem *f, const std::string &p) : fs(f) {
 	icon = "folder";
 	SetContents(Vec2(360, 200));
 	NavigateTo(p);
-	AddButton(WinButtonType::Close, [this] { if (onClose) onClose(this); });
+	AddButton(WinButtonType::Close, [this] {
+		if ((tutorial_is(TUT_CLOSE_WINDOW) || tutorial_complete()) && onClose) onClose(this);
+	});
 	AddButton(WinButtonType::Minimize);
 	int y = (CRUMB_BAR_H - 16) / 2;
 	folderUp = IconButton("the_world_machine/window_icons/folder_up", Vec2(4, y), [this] { OnFolderUp(); });
@@ -90,7 +92,7 @@ bool BrowserWindow::Update(bool consumed) {
 		if (slider->Value() > slider->max) slider->SetValue(slider->max);
 	}
 	slider->Update(v, can);
-	if (can) {
+	if (can && tutorial_complete()) {
 		std::string p = "/";
 		for (auto &c : crumbs) {
 			p += c.folder + "/";
@@ -128,7 +130,7 @@ void BrowserWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 		text(Vec2(sp.x + contents.x - 24 - text_w(s), sp.y + contents.y - 20), s, var);
 	}
 	folderUp.Draw(sp, th, alpha);
-	del.Draw(sp, th, alpha);
+	del.Draw(sp, th, tutorial_is(TUT_DELETE_CLICK_DELETE) ? (int)(alpha * tutorial_pulse()) : alpha);
 	slider->Draw(th, sp, alpha);
 	grid->Draw(th, sp + Vec2(0, CRUMB_BAR_H), alpha);
 }
@@ -171,7 +173,29 @@ void BrowserWindow::DropFolder(DraggedItem *item, const std::string &p) {
 	if (item->onDropComplete) item->onDropComplete(false);
 }
 
-void BrowserWindow::OnFolderUp() { NavigateTo(Filesystem::ParentPath(path)); }
+void BrowserWindow::OnFolderUp() {
+	if (tutorial_complete()) NavigateTo(Filesystem::ParentPath(path));
+}
+
+static bool is_program(FileIcon *ic, Program p) { return !ic->file->IsFolder() && static_cast<File *>(ic->file.get())->program == p; }
+
+Vec2 BrowserWindow::IconPos(Program p) {
+	return pos + grid->IconPosition([p](FileIcon *ic) { return is_program(ic, p); }, Vec2(0, 0));
+}
+
+bool BrowserWindow::IsIconSelected(Program p) {
+	return grid->IsIconSelected([p](FileIcon *ic) { return is_program(ic, p); });
+}
+
+Vec2 BrowserWindow::DeleteButtonPos() const { return Vec2(contents.x - 20, (CRUMB_BAR_H - 16) / 2 + 26) + pos; }
+
+bool BrowserWindow::IsShowingDeleteConfirmModal() const {
+	return modal && static_cast<ModalWindow *>(modal.get())->type == MODAL_YESNO;
+}
+
+Vec2 BrowserWindow::ModalButtonsPos() const {
+	return modal ? static_cast<ModalWindow *>(modal.get())->ButtonsPos() : Vec2(0, 0);
+}
 
 void BrowserWindow::OnFileDelete() {
 	FileIcon *sel = grid->Selected();

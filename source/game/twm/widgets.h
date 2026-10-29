@@ -41,6 +41,7 @@ public:
 	std::function<void()> action;
 	bool Update(Vec2 parentPos, bool canInteract);
 	void Draw(Vec2 parentPos, const Theme &th, int alpha) const;
+	void DrawHighlight(Vec2 parentPos, const Theme &th, int alpha) const;
 	void Shift(Vec2 d) { rect.x += d.x; rect.y += d.y; }
 	Vec2 Pos() const { return Vec2(rect.x + 28, rect.y + 8); }
 	bool Hovering() const { return hovering; }

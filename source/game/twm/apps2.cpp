@@ -286,7 +286,7 @@ void ContactsWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 		tex(sheet.c_str(), sp + Vec2(x, y), Rect(), Color::White().withA(alpha), 2, gm::CharacterProfile);
 	} else {
 		for (int i = 0; i < 4; i++) {
-			int fx = current->walkAnimation ? walkTimer / 12 : 0;
+			int fx = current->walkAnimation ? walkTimer / 12 % 4 : 0;   // 48/12 = 4: the PC wraps that to frame 0 (its sampler repeats)
 			tex(sheet.c_str(), sp + Vec2(x + i * (spriteSize.x + 10), y),
 			    Rect(fx * spriteSize.x, i * spriteSize.y, spriteSize.x, spriteSize.y), Color::White().withA(alpha), 2, gm::CharacterProfile);
 		}

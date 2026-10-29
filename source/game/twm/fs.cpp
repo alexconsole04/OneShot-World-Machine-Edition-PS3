@@ -244,6 +244,27 @@ void Filesystem::CreateTutorialCompleteFiles(const std::vector<std::string> &wal
 	CreateExtraSystemFiles();
 }
 
+void Filesystem::CreateDeleteTutorialFiles() {
+	AddDir(MYDOCUMENTS);
+	auto f = make_file("doc", "tutorial_dummyfile_filename", PROG_DUMMY_FILE_FOR_TUTORIALS, { "readme" });
+	f->moveRestricted = true;
+	WriteFile(MYDOCUMENTS, f);
+}
+
+void Filesystem::CreateMoveTutorialFiles() {
+	AddDir("/movefile_tutorial_folder1_name/");
+	AddDir("/movefile_tutorial_folder2_name/");
+	auto f = make_file("doc", "tutorial_dummyfile_filename", PROG_DUMMY_FILE_FOR_TUTORIALS, { "readme" });
+	f->deleteRestricted = true;
+	WriteFile("/movefile_tutorial_folder1_name/", f);
+}
+
+void Filesystem::LoadEmpty() {
+	dirs.clear();
+	AddDir(DESKTOP);
+	NotifyWrite(DESKTOP);
+}
+
 void Filesystem::CreateExtraSystemFiles() {
 	if (!FileTypeExists(PROG_TIMER)) {
 		auto f = make_file("timer", "timer_app_filename", PROG_TIMER);
@@ -370,6 +391,8 @@ bool Filesystem::Load(const std::string &json) {
 		WriteFile(parent, f);
 	}
 	cJSON_Delete(o);
+	if (!GetDir(DESKTOP)) AddDir(DESKTOP);
+	NotifyWrite(DESKTOP);   // the desktop's icons follow a reload
 	return true;
 }
 
