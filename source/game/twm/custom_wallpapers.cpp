@@ -4,6 +4,7 @@
 #include "../../engine/gm.h"
 #include "../../platform/gfx.h"
 #include "../../platform/sys.h"
+#include "../../platform/thread.h"
 #include "../../platform/user_files.h"
 #include <ctype.h>
 #include <string.h>
@@ -112,7 +113,70 @@ static const CustomWallpaper *find(const std::string &id) {
 	return nullptr;
 }
 
-// gm's texture source: the full picture and its icon.
+// ------------------------------------------------------------------ the decoding thread
+// Decoding and scaling a big JPEG takes the PPU a second or more, so it's
+// done on a background thread; the desktop keeps drawing meanwhile.
+struct Job { std::string key, file; int w, h; };
+static sys::Monitor *g_mon;
+static std::vector<Job> g_jobs;                                  // waiting
+static std::map<std::string, std::vector<uint32_t>> g_done;      // key -> pixels (empty: failed)
+static std::vector<std::string> g_queued;                        // keys waiting or being decoded
+static std::vector<std::string> g_finished;                      // keys to tell gm about (main thread)
+static bool g_threadOk, g_threadTried;
+
+static void worker(void *) {
+	for (;;) {
+		Job j;
+		{
+			sys::MonitorLock l(g_mon);
+			while (g_jobs.empty()) sys::monitor_wait(g_mon, 0);
+			j = g_jobs.front();
+			g_jobs.erase(g_jobs.begin());
+		}
+		std::vector<uint32_t> px;
+		if (!decode_cover(j.file, j.w, j.h, px)) px.clear();
+		sys::MonitorLock l(g_mon);
+		g_done[j.key] = std::move(px);
+		g_finished.push_back(j.key);
+	}
+}
+
+// Queues the decode (once). False if it couldn't (no thread): decode now.
+static bool request(const std::string &key, const std::string &file, int w, int h) {
+	if (!g_threadTried) {
+		g_threadTried = true;
+		g_mon = sys::monitor_create("wallpapers");
+		g_threadOk = g_mon && sys::thread_start(worker, nullptr, "wallpaper decode", -1);
+		if (!g_threadOk) sys::log("wallpaper: no decoding thread, decoding on the main thread\n");
+	}
+	if (!g_threadOk) return false;
+	sys::MonitorLock l(g_mon);
+	if (std::find(g_queued.begin(), g_queued.end(), key) != g_queued.end()) return true;
+	g_queued.push_back(key);
+	g_jobs.push_back(Job{ key, file, w, h });
+	sys::monitor_notify(g_mon);
+	return true;
+}
+
+// Takes the decoded pixels for key if they're there.
+static bool take(const std::string &key, std::vector<uint32_t> &px, bool *failed) {
+	*failed = false;
+	if (!g_threadOk) return false;
+	sys::MonitorLock l(g_mon);
+	auto it = g_done.find(key);
+	if (it == g_done.end()) return false;
+	px = std::move(it->second);
+	*failed = px.empty();
+	g_done.erase(it);
+	g_queued.erase(std::remove(g_queued.begin(), g_queued.end(), key), g_queued.end());
+	return true;
+}
+
+static std::string full_key(const std::string &id) { return std::string(FULL_PREFIX) + id; }
+
+// gm's texture source: the full picture and its icon. Until the thread has
+// decoded one, there's no texture (gm notes it missing; custom_wallpapers_poll
+// clears that when the pixels arrive).
 static gfx::Texture *make_texture(const std::string &name) {
 	size_t fl = strlen(FULL_PREFIX), tl = strlen(THUMB_PREFIX);
 	bool full = name.compare(0, fl, FULL_PREFIX) == 0 && is_custom_wallpaper(name.substr(fl));
@@ -120,18 +184,41 @@ static gfx::Texture *make_texture(const std::string &name) {
 	if (!full && !thumb) return nullptr;
 	const CustomWallpaper *w = find(name.substr(full ? fl : tl));
 	if (!w) return nullptr;
+	if (thumb) {
+		auto it = g_thumbs.find(w->file);
+		if (it != g_thumbs.end()) return it->second.empty() ? nullptr : gfx::create_texture(THUMB_W, THUMB_H, it->second.data());
+	}
+	Vec2 sz = full ? space() : Vec2(THUMB_W, THUMB_H);   // full: one texel per desktop draw pixel
 	std::vector<uint32_t> px;
-	if (full) {
-		Vec2 sz = space();   // drawn one texel per desktop draw pixel
-		if (!decode_cover(w->file, sz.x, sz.y, px)) return nullptr;
-		return gfx::create_texture((uint32_t)sz.x, (uint32_t)sz.y, px.data());
+	bool failed;
+	if (!take(name, px, &failed)) {
+		if (request(name, w->file, sz.x, sz.y)) return nullptr;   // on its way
+		if (!decode_cover(w->file, sz.x, sz.y, px)) failed = true;
 	}
-	auto it = g_thumbs.find(w->file);
-	if (it == g_thumbs.end()) {
-		if (!decode_cover(w->file, THUMB_W, THUMB_H, px)) return nullptr;
-		it = g_thumbs.emplace(w->file, std::move(px)).first;
+	if (thumb) g_thumbs[w->file] = px;   // kept: the folder is opened again and again
+	if (failed || px.empty()) return nullptr;
+	return gfx::create_texture((uint32_t)sz.x, (uint32_t)sz.y, px.data());
+}
+
+void custom_wallpapers_poll() {
+	if (!g_threadOk) return;
+	std::vector<std::string> fin;
+	{
+		sys::MonitorLock l(g_mon);
+		fin.swap(g_finished);
 	}
-	return gfx::create_texture(THUMB_W, THUMB_H, it->second.data());
+	for (auto &k : fin) gm::forget_missing(k.c_str());   // asked for again next time it's drawn
+}
+
+bool custom_wallpaper_ready(const std::string &id) {
+	const CustomWallpaper *w = find(id);
+	if (!w) return true;   // nothing to wait for
+	std::string key = full_key(id);
+	if (!g_threadOk && g_threadTried) return true;
+	Vec2 sz = space();
+	if (!request(key, w->file, sz.x, sz.y)) return true;   // no thread: SetWallpaper decodes it
+	sys::MonitorLock l(g_mon);
+	return g_done.count(key) != 0;
 }
 
 void scan_custom_wallpapers() {

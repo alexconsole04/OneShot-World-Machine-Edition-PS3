@@ -69,6 +69,7 @@ static int g_flashTimer, g_flashDuration = 1;
 // TWMNiko: Niko walking off the bottom of the screen.
 struct Niko { Vec2 pos; int frame = 0, timer = 0; bool moved = false, solstice = false, entity = false; };
 static std::unique_ptr<Niko> g_niko;
+static std::string g_pendingWallpaper;   // a custom wallpaper still decoding
 // The desktop tutorials
 static TutorialStep g_tutStep = TUT_COMPLETE;
 static bool g_redoIntro;
@@ -619,6 +620,13 @@ bool run_file(Node *node) {
 	case PROG_FROMNIKO_WALLPAPER: granted(f, "wallpaper", "from_niko"); break;
 	case PROG_WALLPAPER:
 		if (!g_desktop->IsOverridden()) {
+			// The player's own pictures are decoded in the background: the
+			// old wallpaper stays up until the new one is ready.
+			g_pendingWallpaper.clear();
+			if (is_custom_wallpaper(arg(0)) && !custom_wallpaper_ready(arg(0))) {
+				g_pendingWallpaper = arg(0);
+				break;
+			}
 			g_desktop->SetWallpaper(arg(0));
 			save_desktop();
 		}
@@ -1378,6 +1386,14 @@ static void update() {
 	if (!g_ready) return;
 	tick_timers();
 	cursor().Update();
+	custom_wallpapers_poll();
+	if (!g_pendingWallpaper.empty() && custom_wallpaper_ready(g_pendingWallpaper)) {
+		if (!g_desktop->IsOverridden()) {
+			g_desktop->SetWallpaper(g_pendingWallpaper);
+			save_desktop();
+		}
+		g_pendingWallpaper.clear();
+	}
 	if (const char *wp = getenv("OSPS3_WARP")) {   // host testing: "frame:x,y frame:x,y ..." moves the cursor
 		static int frame;
 		frame++;

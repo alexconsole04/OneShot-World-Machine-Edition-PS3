@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <string.h>
 #include <vector>
 
 namespace gm {
@@ -94,12 +95,14 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	if (!t) t = load(key);
 	if (!t) {
 		missing.insert(key);
-		sys::log("gm: missing texture '%s'\n", name);
+		if (!strstr(name, "custom:")) sys::log("gm: missing texture '%s'\n", name);   // custom: still decoding
 		return nullptr;
 	}
 	c.emplace(key, CacheEntry{ t, generation[cache] });
 	return t;
 }
+
+void forget_missing(const char *name) { missing.erase(name); }
 
 Vec2 texture_size(const char *name, CacheType cache) {
 	const gfx::Texture *t = texture(name, cache);

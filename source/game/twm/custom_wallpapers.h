@@ -26,6 +26,11 @@ std::string custom_wallpaper_name(const std::string &id);
 struct ImportResult { int devices = 0, sticks = 0, imported = 0, existing = 0, unreadable = 0; };   // sticks: with the folder
 // Copies new pictures from every USB stick's OneShot/wallpapers folder.
 ImportResult import_custom_wallpapers();
+// The full-screen picture is decoded on a background thread: true once it
+// can be shown without a wait (starts the decode the first time it's asked).
+bool custom_wallpaper_ready(const std::string &id);
+// Each frame: lets the textures that finished decoding be made.
+void custom_wallpapers_poll();
 // Removes the picture from the wallpapers folder.
 bool delete_custom_wallpaper(const std::string &id);
 

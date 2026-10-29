@@ -30,6 +30,8 @@ void set_texture_redirect(std::string (*fn)(const std::string &));
 // Textures that aren't game files (the player's own wallpapers): asked
 // first for every name not yet cached; returns null for names it doesn't make.
 void set_texture_source(gfx::Texture *(*fn)(const std::string &name));
+// Forget that a name was missing (its source can make it now).
+void forget_missing(const char *name);
 // Start a new "generation" (a map change): textures not used during the last
 // `keep` generations are released. The PC clears the whole Game cache on
 // every map change; keeping the textures the previous maps used means
