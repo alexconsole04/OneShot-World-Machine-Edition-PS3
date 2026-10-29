@@ -365,10 +365,12 @@ void end_space() {
 
 void set_dither(float opacity) {
 	// DitherShader parameters: cells of 4 space pixels; the wipe line
-	// reaches the bottom (plus a 50-cell band) at opacity 1.
+	// reaches the far edge (plus a 50-cell band) at opacity 1. As on the PC,
+	// the logo wipes in from the bottom up and out from the top down: rows
+	// are counted up from the bottom edge (a negative cell size).
 	float h = (float)(space_h > 0 ? space_h : 720);
 	float line = opacity * (h / 4.0f + 50.0f) - 50.0f;
-	gfx::set_dither(OX, OY, 4.0f * S, line, texture("transitions/BayerDither8x8", BootScreen));
+	gfx::set_dither(OX, OY + h * S, -4.0f * S, line, texture("transitions/BayerDither8x8", BootScreen));
 }
 
 void clip_to_window() {

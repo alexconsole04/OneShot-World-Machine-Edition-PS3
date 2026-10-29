@@ -1000,7 +1000,7 @@ void set_dither(float ox, float oy, float cell, float line, const Texture *bayer
 	flush_batch();   // vertices already queued keep their parameters; the texture binding may change
 	g_dither_ox = ox;
 	g_dither_oy = oy;
-	g_dither_cell = cell > 0 ? cell : 1;
+	g_dither_cell = cell != 0 ? cell : 1;   // negative: rows counted up from oy
 	g_dither_line = line;
 	g_dither_bayer = bayer;
 }

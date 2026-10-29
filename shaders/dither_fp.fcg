@@ -3,7 +3,8 @@
 // in tone.xy and the wipe line (opacity * (screen height / 4 + 50) - 50) in
 // tone.z. A cell is drawn, fully opaque, where
 //   clamp((line - cell row) / 50, -1.1, 0.1) + bayer(cell mod 8) >= 0,
-// so the picture appears from the top down through a 50-cell dithered band.
+// so the picture appears through a 50-cell dithered band (rows are counted up
+// from the bottom: it wipes in upwards and out downwards, as on the PC).
 void main(
 	float2 in_texcoord      : TEXCOORD0,
 	float4 in_color         : TEXCOORD1,

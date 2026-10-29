@@ -69,7 +69,7 @@ static Blend batch_blend;
 static float d_ox, d_oy, d_cell = 4, d_line;
 static const Texture *d_bayer;
 void set_dither(float ox, float oy, float cell, float line, const Texture *bayer) {
-	d_ox = ox; d_oy = oy; d_cell = cell > 0 ? cell : 1; d_line = line; d_bayer = bayer;
+	d_ox = ox; d_oy = oy; d_cell = cell != 0 ? cell : 1; d_line = line; d_bayer = bayer;
 }
 
 void draw(const Texture *t, float dx, float dy, float dw, float dh,
