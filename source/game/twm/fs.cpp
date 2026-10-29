@@ -312,6 +312,12 @@ void Filesystem::CreateWallpaperFiles(const std::vector<std::string> &ids) {
 	Delete(WALLPAPERS);
 	AddDir(WALLPAPERS);
 	for (auto &id : ids) CreateWallpaperFile(id);
+	for (auto &id : customWallpapers) {
+		CreateWallpaperFile(id);
+		if (Folder *d = GetDir(WALLPAPERS))
+			for (auto &c : d->contents)
+				if (c->name == id) c->deleteRestricted = false;
+	}
 }
 
 void Filesystem::CreateWallpaperFile(const std::string &id) {

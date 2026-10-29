@@ -1,8 +1,9 @@
 // customize.h - CustomizationWindow (the Customize app) and ChooserControl.
 //
-// The PS3 version's layout: the PC's Vsync and Fullscreen choosers are gone
-// (their places are left free), Resolution is shown but can't be changed,
-// and its "Change Resolution" button is Erase All Data instead.
+// The PS3 version's layout: the PC's Vsync, Fullscreen and Resolution
+// settings are gone. Left: the picture (brightness, scaling, badge toasts,
+// wallpapers, with this port's Import Wallpapers). Right: sound, language
+// and this port's Erase All Data.
 #pragma once
 #include "widgets.h"
 #include "window.h"
@@ -53,15 +54,16 @@ public:
 private:
 	// The pad's pick: two columns of controls, Up/Down within one,
 	// Left/Right change the value (or switch column on a button), Cross presses.
-	enum Ctl { BADGE, ERASE, SCALING, WALLPAPER, GAMMA, BGM, SFX, LANGUAGE, CTL_COUNT };
+	enum Ctl { GAMMA, SCALING, BADGE, WALLPAPER, IMPORT, BGM, SFX, LANGUAGE, ERASE, CTL_COUNT };
 	Rect CtlRect(int c) const;
-	int sel = BADGE;
+	int sel = GAMMA;
 	bool padUsed = false;
 	void OnEraseAllData();
 	void OnChangeLanguage();
+	void OnImportWallpapers();
 	std::unique_ptr<Chooser> badgeToasts, systemScaling;
 	std::unique_ptr<Slider> gamma, bgm, sfx;
-	std::unique_ptr<TextButton> eraseButton, viewWallpaper, changeLanguage;
+	std::unique_ptr<TextButton> eraseButton, viewWallpaper, importWallpapers, changeLanguage;
 };
 
 } // namespace twm

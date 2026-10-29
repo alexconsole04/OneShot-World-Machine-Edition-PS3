@@ -36,5 +36,9 @@ void hide_all_ui();            // View Wallpaper: the wallpaper alone until a bu
 // Data. main.cpp carries it out (desktop::take_restart_request).
 enum { RESTART_NONE = 0, RESTART_LANGUAGE = 1, RESTART_ERASE = 2 };
 void request_restart(int kind);
+// The player's own wallpapers: read the folder again and update the
+// Wallpapers folder (after an import), or delete one.
+void refresh_custom_wallpapers();
+void remove_custom_wallpaper(const std::string &id);
 
 } // namespace twm

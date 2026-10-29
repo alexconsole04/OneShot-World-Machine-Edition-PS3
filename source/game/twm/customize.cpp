@@ -2,6 +2,8 @@
 // ChooserControl, with this port's Erase All Data.
 #include "customize.h"
 #include "wm_internal.h"
+#include "custom_wallpapers.h"
+#include "../../engine/util.h"
 #include "../../platform/input.h"
 #include "../loc.h"
 #include "../settings.h"
@@ -82,8 +84,21 @@ CustomizeWindow::CustomizeWindow() {
 	SetTitle(loc::twm("customize_app_name"));
 	SetContents(Vec2(480, 204));
 	typedef std::vector<std::pair<std::string, std::string>> Items;
-	// Left column (the PC's Vsync row, at y 24, is left free).
-	badgeToasts.reset(new Chooser(Vec2(4, 64), W, Items{ { "ON", "settings_on" }, { "OFF", "settings_off" } },
+	// Left column: the picture.
+	gamma.reset(new Slider(loc::twm("customize_slider_label_brightness"), 50, 150, Vec2(4, 8), W, true, false, "%"));
+	gamma->SetValue(brightness());
+	gamma->onValueChanged = [](int v) { set_brightness(v); };
+	// System Scaling is the maximized game window's scaling here (the
+	// desktop itself is drawn pixel for pixel on the PS3).
+	systemScaling.reset(new Chooser(Vec2(4, 64), W,
+	                                Items{ { "SMOOTH", "customize_system_scaling_smooth" }, { "SHARP", "customize_system_scaling_sharp" } },
+	                                settings().scaling == gm::SCALE_SMOOTH ? "SMOOTH" : "SHARP"));
+	systemScaling->onItemChange = [](const std::string &v) {
+		settings().scaling = v == "SMOOTH" ? gm::SCALE_SMOOTH : gm::SCALE_SHARP;
+		settings().Save();
+		save_desktop();
+	};
+	badgeToasts.reset(new Chooser(Vec2(4, 104), W, Items{ { "ON", "settings_on" }, { "OFF", "settings_off" } },
 	                              unlocks().badgeToastsEnabled ? "ON" : "OFF"));
 	badgeToasts->onItemChange = [](const std::string &v) {
 		unlocks().badgeToastsEnabled = v == "ON";
@@ -93,32 +108,38 @@ CustomizeWindow::CustomizeWindow() {
 		}
 		save_desktop();
 	};
-	eraseButton.reset(new TextButton("Erase All Data", Vec2(4, 104), [this] { OnEraseAllData(); }, W));
-	// System Scaling is the maximized game window's scaling here (the
-	// desktop itself is drawn pixel for pixel on the PS3).
-	systemScaling.reset(new Chooser(Vec2(4, 144), W,
-	                                Items{ { "SMOOTH", "customize_system_scaling_smooth" }, { "SHARP", "customize_system_scaling_sharp" } },
-	                                settings().scaling == gm::SCALE_SMOOTH ? "SMOOTH" : "SHARP"));
-	systemScaling->onItemChange = [](const std::string &v) {
-		settings().scaling = v == "SMOOTH" ? gm::SCALE_SMOOTH : gm::SCALE_SHARP;
-		settings().Save();
-		save_desktop();
-	};
-	viewWallpaper.reset(new TextButton(loc::twm("customize_view_wallpaper_button"), Vec2(4, 168), [] { hide_all_ui(); }, W));
-	// Right column (the PC's Fullscreen row, at y 144, is left free).
-	gamma.reset(new Slider(loc::twm("customize_slider_label_brightness"), 50, 150, Vec2(4 + COL, 8), W, true, false, "%"));
-	gamma->SetValue(brightness());
-	gamma->onValueChanged = [](int v) { set_brightness(v); };
-	bgm.reset(new Slider(loc::twm("customize_slider_label_musicvolume"), 0, 100, Vec2(4 + COL, 48), W, true, false, "%"));
+	viewWallpaper.reset(new TextButton(loc::twm("customize_view_wallpaper_button"), Vec2(4, 144), [] { hide_all_ui(); }, W));
+	importWallpapers.reset(new TextButton("Import Wallpapers", Vec2(4, 168), [this] { OnImportWallpapers(); }, W));
+	// Right column: sound, language, saves.
+	bgm.reset(new Slider(loc::twm("customize_slider_label_musicvolume"), 0, 100, Vec2(4 + COL, 8), W, true, false, "%"));
 	bgm->SetValue(bgm_volume());
 	bgm->onValueChanged = [](int v) { set_volumes(v, sfx_volume()); };
-	sfx.reset(new Slider(loc::twm("customize_slider_label_soundvolume"), 0, 100, Vec2(4 + COL, 88), W, true, false, "%"));
+	sfx.reset(new Slider(loc::twm("customize_slider_label_soundvolume"), 0, 100, Vec2(4 + COL, 48), W, true, false, "%"));
 	sfx->SetValue(sfx_volume());
 	sfx->onValueChanged = [](int v) { set_volumes(bgm_volume(), v); };
-	changeLanguage.reset(new TextButton(loc::twm("change_language_button"), Vec2(4 + COL, 168), [this] { OnChangeLanguage(); }, W));
+	changeLanguage.reset(new TextButton(loc::twm("change_language_button"), Vec2(4 + COL, 104), [this] { OnChangeLanguage(); }, W));
+	eraseButton.reset(new TextButton("Erase All Data", Vec2(4 + COL, 168), [this] { OnEraseAllData(); }, W));
 	AddButton(WinButtonType::Close);
 	AddButton(WinButtonType::Minimize);
 	onClose = [](Window *) { save_desktop(); };
+}
+
+void CustomizeWindow::OnImportWallpapers() {
+	ImportResult r = import_custom_wallpapers();
+	refresh_custom_wallpapers();
+	std::string msg;
+	if (r.sticks == 0) {
+		msg = "No USB stick with a OneShot/wallpapers folder was found.\nPut PNG or JPG pictures in a folder named wallpapers, "
+		      "inside a folder named OneShot on the stick.";
+	} else {
+		char b[160];
+		if (r.imported == 0) snprintf(b, sizeof(b), "No new pictures to import.");
+		else snprintf(b, sizeof(b), "Imported %d wallpaper%s.\nThey're in the Wallpapers folder.", r.imported, r.imported == 1 ? "" : "s");
+		msg = b;
+		if (r.existing) { snprintf(b, sizeof(b), "\n%d already imported.", r.existing); msg += b; }
+		if (r.unreadable) { snprintf(b, sizeof(b), "\n%d couldn't be read.", r.unreadable); msg += b; }
+	}
+	ShowModal(r.sticks == 0 ? MODAL_ERROR : MODAL_INFO, msg);
 }
 
 void CustomizeWindow::OnChangeLanguage() {
@@ -150,28 +171,31 @@ void CustomizeWindow::OnEraseAllData() {
 
 Rect CustomizeWindow::CtlRect(int c) const {
 	switch (c) {
-	case BADGE: return badgeToasts->Area();
-	case ERASE: return Rect(4, 104, W, 16);
+	case GAMMA: return Rect(4, 8, W, 32);
 	case SCALING: return systemScaling->Area();
-	case WALLPAPER: return Rect(4, 168, W, 16);
-	case GAMMA: return Rect(4 + COL, 8, W, 32);
-	case BGM: return Rect(4 + COL, 48, W, 32);
-	case SFX: return Rect(4 + COL, 88, W, 32);
+	case BADGE: return badgeToasts->Area();
+	case WALLPAPER: return Rect(4, 144, W, 16);
+	case IMPORT: return Rect(4, 168, W, 16);
+	case BGM: return Rect(4 + COL, 8, W, 32);
+	case SFX: return Rect(4 + COL, 48, W, 32);
+	case LANGUAGE: return Rect(4 + COL, 104, W, 16);
 	default: return Rect(4 + COL, 168, W, 16);
 	}
 }
 
 void CustomizeWindow::PadInput() {
 	using namespace input;
-	static const int left[4] = { BADGE, ERASE, SCALING, WALLPAPER }, right[4] = { GAMMA, BGM, SFX, LANGUAGE };
-	bool isRight = sel >= GAMMA;
+	static const int left[5] = { GAMMA, SCALING, BADGE, WALLPAPER, IMPORT }, right[4] = { BGM, SFX, LANGUAGE, ERASE };
+	// The row each control sits on, to go across to the one beside it.
+	static const int leftRowOf[5] = { 0, 1, 2, 3, 4 }, rightRowOf[4] = { 0, 1, 2, 4 };
+	bool isRight = sel >= BGM;
 	const int *col = isRight ? right : left;
-	int row = 0;
-	for (int i = 0; i < 4; i++)
+	int n = isRight ? 4 : 5, row = 0;
+	for (int i = 0; i < n; i++)
 		if (col[i] == sel) row = i;
 	bool any = false;
-	if (pad_repeat(BTN_UP)) { row = (row + 3) % 4; any = true; }
-	else if (pad_repeat(BTN_DOWN)) { row = (row + 1) % 4; any = true; }
+	if (pad_repeat(BTN_UP)) { row = (row + n - 1) % n; any = true; }
+	else if (pad_repeat(BTN_DOWN)) { row = (row + 1) % n; any = true; }
 	int dx = pad_repeat(BTN_LEFT) ? -1 : pad_repeat(BTN_RIGHT) ? 1 : 0;
 	if (any) sel = col[row];
 	if (dx) {
@@ -182,8 +206,16 @@ void CustomizeWindow::PadInput() {
 		case GAMMA: if (dx < 0) gamma->ArrowLeft(); else gamma->ArrowRight(); break;
 		case BGM: if (dx < 0) bgm->ArrowLeft(); else bgm->ArrowRight(); break;
 		case SFX: if (dx < 0) sfx->ArrowLeft(); else sfx->ArrowRight(); break;
-		default:   // a button: over to the other column
-			if (pressed_raw(BTN_LEFT) || pressed_raw(BTN_RIGHT)) sel = (isRight ? left : right)[row];
+		default:   // a button: over to the nearest control in the other column
+			if (pressed_raw(BTN_LEFT) || pressed_raw(BTN_RIGHT)) {
+				int y = isRight ? rightRowOf[row] : leftRowOf[row];
+				const int *other = isRight ? left : right;
+				const int *otherRow = isRight ? leftRowOf : rightRowOf;
+				int on = isRight ? 5 : 4, best = 0;
+				for (int i = 0; i < on; i++)
+					if (iabs(otherRow[i] - y) < iabs(otherRow[best] - y)) best = i;
+				sel = other[best];
+			}
 			break;
 		}
 	}
@@ -194,6 +226,7 @@ void CustomizeWindow::PadInput() {
 		case SCALING: systemScaling->Step(1); break;
 		case ERASE: OnEraseAllData(); break;
 		case WALLPAPER: hide_all_ui(); break;
+		case IMPORT: OnImportWallpapers(); break;
 		case LANGUAGE: OnChangeLanguage(); break;
 		default: break;
 		}
@@ -214,6 +247,7 @@ bool CustomizeWindow::Update(bool consumed) {
 		used |= systemScaling->Update(pp, can);
 		used |= changeLanguage->Update(pp, can);
 		used |= viewWallpaper->Update(pp, can);
+		used |= importWallpapers->Update(pp, can);
 		(void)used;
 	}
 	return Window::Update(consumed);
@@ -224,6 +258,7 @@ void CustomizeWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 	badgeToasts->Draw(sp, th, alpha);
 	eraseButton->Draw(sp, th, alpha);
 	viewWallpaper->Draw(sp, th, alpha);
+	importWallpapers->Draw(sp, th, alpha);
 	gamma->Draw(th, sp, alpha);
 	bgm->Draw(th, sp, alpha);
 	sfx->Draw(th, sp, alpha);
@@ -241,9 +276,9 @@ void CustomizeWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 		box(Rect(r.x + r.w - 1, r.y, 1, r.h), v);
 	}
 	Vec2 lbl = sp + Vec2(120, 46);
-	line(lbl, loc::twm("customize_chooser_label_badgetoasts"), c, COL, true);
-	line(lbl + Vec2(0, 40), "Save Management", c, COL, true);   // the PC's Resolution row
-	line(lbl + Vec2(0, 80), loc::twm("customize_chooser_label_system_scaling"), c, COL, true);
+	line(lbl, loc::twm("customize_chooser_label_system_scaling"), c, COL, true);
+	line(lbl + Vec2(0, 40), loc::twm("customize_chooser_label_badgetoasts"), c, COL, true);
+	line(lbl + Vec2(COL, 104), "Save Management", c, COL, true);
 }
 
 } // namespace twm

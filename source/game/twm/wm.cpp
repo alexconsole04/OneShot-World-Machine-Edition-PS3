@@ -7,6 +7,7 @@
 #include "customize.h"
 #include "apps2.h"
 #include "hintbox.h"
+#include "custom_wallpapers.h"
 #include "../desktop.h"
 #include "../loc.h"
 #include "../json_file.h"
@@ -812,6 +813,38 @@ static void draw_taskbar(Window *active) {
 	g_minimizeAll->Draw(Vec2(0, 0), th, 255);
 }
 
+// ===================================================================== the player's own wallpapers
+
+static void apply_custom_wallpapers(bool rebuildFolder) {
+	std::vector<WallpaperInfo> v;
+	g_fs.customWallpapers.clear();
+	for (auto &c : custom_wallpapers()) {
+		WallpaperInfo w;
+		w.imageFile = c.id;
+		w.displayName = c.displayName;
+		w.mode = WallpaperInfo::STRETCH;   // the texture is made at the screen's size
+		w.bg = Color(0, 0, 0);
+		v.push_back(w);
+		g_fs.customWallpapers.push_back(c.id);
+	}
+	g_desktop->SetCustomWallpapers(v);
+	if (!rebuildFolder) return;
+	if (g_tutStep == TUT_COMPLETE) g_fs.CreateWallpaperFiles(unlocks().wallpapers);
+	// The picture on the desktop went away: back to the default one.
+	if (!g_desktop->IsOverridden() && !g_desktop->WallpaperMeta(g_desktop->Current().imageFile)) g_desktop->SetWallpaper("default");
+	save_desktop_and_fs();
+}
+
+void refresh_custom_wallpapers() {
+	scan_custom_wallpapers();
+	apply_custom_wallpapers(true);
+}
+
+void remove_custom_wallpaper(const std::string &id) {
+	delete_custom_wallpaper(id);
+	apply_custom_wallpapers(true);
+}
+
 // ===================================================================== the desktop tutorials
 // WindowManager.CheckTutorialStep and its helpers. The tutorial runs on a
 // stand-in desktop; the real one is saved first and loaded again after
@@ -1185,6 +1218,8 @@ static void init() {
 	g_desktop->onBeginDrag = [](DraggedItem *d) { begin_drag(d); };
 	g_desktop->createModal = [](int type, const std::string &msg) { show_system_modal(type, msg); };
 	g_desktop->onDesktopChange = [] { save_desktop_and_fs(); };
+	scan_custom_wallpapers();
+	apply_custom_wallpapers(false);   // before desktop.dat names one as the wallpaper
 	// A playthrough saved before the file system existed (builds before m14)
 	// skips the introduction: its desktop starts as the tutorial leaves it,
 	// with the save's file where MakeSave puts it.

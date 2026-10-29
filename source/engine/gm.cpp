@@ -68,6 +68,8 @@ bool pixel_solid(const char *name, Vec2 p, CacheType cache) {
 
 static std::string (*g_redirect)(const std::string &);
 void set_texture_redirect(std::string (*fn)(const std::string &)) { g_redirect = fn; }
+static gfx::Texture *(*g_source)(const std::string &);
+void set_texture_source(gfx::Texture *(*fn)(const std::string &)) { g_source = fn; }
 
 const gfx::Texture *texture(const char *name, CacheType cache) {
 	std::string key(name);
@@ -80,8 +82,8 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	// Remember failures: retrying a missing file every frame means file
 	// system calls every frame, which on the PS3 costs whole frames.
 	if (missing.count(key)) return nullptr;
-	gfx::Texture *t = nullptr;
-	if (g_redirect) {
+	gfx::Texture *t = g_source ? g_source(key) : nullptr;
+	if (!t && g_redirect) {
 		// CacheAndManager.GetTexture: the language's own version if it has one.
 		std::string local = g_redirect(key);
 		if (local != key) {

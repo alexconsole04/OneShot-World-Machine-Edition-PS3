@@ -1,5 +1,6 @@
 #include "icons.h"
 #include "wm_internal.h"
+#include "custom_wallpapers.h"
 #include "../loc.h"
 #include "../json_file.h"
 #include "../../engine/gm.h"
@@ -25,7 +26,7 @@ void FileIcon::Layout() {
 	if (layoutGen == loc::generation()) return;
 	layoutGen = loc::generation();
 	std::string name;
-	if (IsWallpaper()) name = loc::wallpaper_name(file->name, file->name);
+	if (IsWallpaper()) name = is_custom_wallpaper(file->name) ? custom_wallpaper_name(file->name) : loc::wallpaper_name(file->name, file->name);
 	else if (IsTheme()) {
 		const Theme *t = theme_by_id(file->name);
 		name = loc::theme_name(file->name, t ? t->displayName : file->name);
@@ -476,6 +477,18 @@ DesktopGrid::DesktopGrid(Filesystem *f, Vec2 size) : IconGrid("/", f, size, fals
 	}
 	if (metadata.empty()) sys::log("twm: gamedata/twm/wallpapers_metadata.json missing\n");
 	SetWallpaper("default");
+}
+
+int DesktopGrid::GameWallpaperCount() const {
+	int n = 0;
+	for (auto &m : metadata) n += !is_custom_wallpaper(m.imageFile);
+	return n;
+}
+
+void DesktopGrid::SetCustomWallpapers(const std::vector<WallpaperInfo> &custom) {
+	metadata.erase(std::remove_if(metadata.begin(), metadata.end(), [](const WallpaperInfo &m) { return is_custom_wallpaper(m.imageFile); }),
+	               metadata.end());
+	metadata.insert(metadata.end(), custom.begin(), custom.end());
 }
 
 const WallpaperInfo *DesktopGrid::WallpaperMeta(const std::string &id) const {

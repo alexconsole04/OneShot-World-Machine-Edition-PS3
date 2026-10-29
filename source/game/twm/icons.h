@@ -108,6 +108,8 @@ public:
 
 	const WallpaperInfo *WallpaperMeta(const std::string &id) const;
 	const std::vector<WallpaperInfo> &AllWallpapers() const { return metadata; }
+	int GameWallpaperCount() const;   // without the player's own
+	void SetCustomWallpapers(const std::vector<WallpaperInfo> &custom);
 	void SetWallpaper(const std::string &id);
 	void OverrideWallpaper(const WallpaperInfo &w);
 	void RestoreWallpaper();

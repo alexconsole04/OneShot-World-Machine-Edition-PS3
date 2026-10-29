@@ -32,7 +32,14 @@ static std::string jstr(const cJSON *o, const char *k, const std::string &def = 
 }
 static bool jbool(const cJSON *o, const char *k, bool def) {
 	const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
-	return cJSON_IsBool(v) ? cJSON_IsTrue(v) : def;
+	if (cJSON_IsBool(v)) return cJSON_IsTrue(v);
+	// The metadata writes most of them as strings ("singleSprite": "true"),
+	// which Json.NET reads as bools.
+	if (cJSON_IsString(v)) {
+		if (strcasecmp(v->valuestring, "true") == 0) return true;
+		if (strcasecmp(v->valuestring, "false") == 0) return false;
+	}
+	return def;
 }
 static bool contains(const std::vector<std::string> &v, const std::string &s) { return std::find(v.begin(), v.end(), s) != v.end(); }
 static void pad_slider(Slider *s, uint32_t less, uint32_t more) {

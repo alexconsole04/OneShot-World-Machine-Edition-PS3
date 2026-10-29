@@ -27,6 +27,9 @@ bool pixel_solid(const char *name, Vec2 texel, CacheType cache = Game);
 // Maps a texture name to the current language's version of it (set by the
 // language manager; content/<dir>/<lang>/<name>).
 void set_texture_redirect(std::string (*fn)(const std::string &));
+// Textures that aren't game files (the player's own wallpapers): asked
+// first for every name not yet cached; returns null for names it doesn't make.
+void set_texture_source(gfx::Texture *(*fn)(const std::string &name));
 // Start a new "generation" (a map change): textures not used during the last
 // `keep` generations are released. The PC clears the whole Game cache on
 // every map change; keeping the textures the previous maps used means

@@ -72,6 +72,9 @@ public:
 	void CreateWallpaperFiles(const std::vector<std::string> &ids);
 	void CreateWallpaperFile(const std::string &id);
 	void CreateThemeFiles(const std::vector<std::string> &ids);
+	// The player's own wallpapers (custom_wallpapers.h): CreateWallpaperFiles
+	// adds these after the unlocked ones. They can be deleted.
+	std::vector<std::string> customWallpapers;
 	void CreateThemeFile(const std::string &id);
 
 	// fs.dat (the PC build's JSON: folders and files)

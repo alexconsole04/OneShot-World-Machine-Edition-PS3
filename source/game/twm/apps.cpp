@@ -1,6 +1,7 @@
 #include "apps.h"
 #include "../../platform/input.h"
 #include "wm_internal.h"
+#include "custom_wallpapers.h"
 #include "../loc.h"
 #include "../json_file.h"
 #include "../save.h"
@@ -125,7 +126,7 @@ void BrowserWindow::DrawContents(const Theme &th, Vec2 sp, int alpha) {
 	}
 	if (path == Filesystem::WALLPAPERS || path == Filesystem::THEMES) {
 		int have = path == Filesystem::WALLPAPERS ? (int)unlocks().wallpapers.size() : (int)unlocks().themes.size();
-		int all = path == Filesystem::WALLPAPERS ? (int)desktop_grid().AllWallpapers().size() : (int)themes().size();
+		int all = path == Filesystem::WALLPAPERS ? desktop_grid().GameWallpaperCount() : (int)themes().size();
 		std::string s = std::to_string(have) + "/" + std::to_string(all);
 		text(Vec2(sp.x + contents.x - 24 - text_w(s), sp.y + contents.y - 20), s, var);
 	}
@@ -202,10 +203,13 @@ void BrowserWindow::OnFileDelete() {
 	if (!sel) { ShowModal(MODAL_ERROR, "delete_no_file_selected_modal"); return; }
 	std::shared_ptr<Node> n = sel->file;
 	if (n->deleteRestricted) { ShowModal(MODAL_ERROR, "delete_restricted_modal"); return; }
-	ShowModal(MODAL_YESNO, format1(loc::twm("delete_confirmation_modal"), loc::twm(n->name.c_str())), [this, n](int r) {
+	std::string shown = is_custom_wallpaper(n->name) ? custom_wallpaper_name(n->name) : loc::twm(n->name.c_str());
+	ShowModal(MODAL_YESNO, format1(loc::twm("delete_confirmation_modal"), shown), [this, n](int r) {
 		if (r == RESP_YES) {
 			sys::log("twm: deleting %s%s\n", n->parentPath.c_str(), n->name.c_str());
+			bool customWp = !n->IsFolder() && static_cast<File *>(n.get())->program == PROG_WALLPAPER && is_custom_wallpaper(n->name);
 			fs->Delete(n.get());
+			if (customWp) remove_custom_wallpaper(n->name);   // the picture itself goes too
 		}
 	});
 }

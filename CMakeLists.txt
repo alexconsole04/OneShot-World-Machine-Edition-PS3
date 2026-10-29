@@ -40,6 +40,8 @@ add_executable(oneshot-ps3
     source/game/twm/customize.cpp
     source/game/twm/apps2.cpp
     source/game/twm/hintbox.cpp
+    source/game/twm/custom_wallpapers.cpp
+    source/platform/user_files.cpp
     source/game/twm/wm.cpp
     source/game/boot_sequence.cpp
     source/game/title_screen.cpp
@@ -81,7 +83,7 @@ ps3_add_self(oneshot-ps3)
 # XMB extras (PIC1.PNG background, SND0.AT3 looping ambience) are copied
 # from pkg_files/. SND0.AT3 is made by dev/mk_snd0.py with atracdenc.
 ps3_add_pkg(oneshot-ps3
-    TITLE     "OneShot: World Machine Edition (test)"
+    TITLE     "OneShot: World Machine Edition"
     ICON      "${CMAKE_CURRENT_SOURCE_DIR}/assets/ICON0.PNG"
     APPID     "OSWM00001"
     CONTENTID "UP0001-OSWM00001_00-ONESHOTPS3PORT00")
