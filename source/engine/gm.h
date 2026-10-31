@@ -30,6 +30,11 @@ void set_texture_redirect(std::string (*fn)(const std::string &));
 // Textures that aren't game files (the player's own wallpapers): asked
 // first for every name not yet cached; returns null for names it doesn't make.
 void set_texture_source(gfx::Texture *(*fn)(const std::string &name));
+// Read a texture in the background ahead of use (content/<name>.xnb); the
+// next texture() call for it finds it ready, or waits for that read.
+void prefetch(const char *name, CacheType cache = Game);
+// Each frame: turns finished background reads into textures.
+void pump_prefetch();
 // Forget that a name was missing (its source can make it now).
 void forget_missing(const char *name);
 // Start a new "generation" (a map change): textures not used during the last

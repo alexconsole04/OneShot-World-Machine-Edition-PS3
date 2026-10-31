@@ -37,7 +37,7 @@ static void script_trace_dump() { script_trace::dump(); }
 #include <stdio.h>
 #include <new>
 #include <exception>
-#define OSPS3_VERSION "m26"
+#define OSPS3_VERSION "m27"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -218,6 +218,7 @@ int main(int argc, const char **argv) {
 
 	while (!input::quit_requested() && !window().QuitRequested() && !desktop::quit_requested()) {
 		prof::begin();
+		gm::pump_prefetch();   // textures read ahead in the background
 		input::update();
 		prof::mark("input");
 		// XMB open (or another system overlay): pause the game's logic. Frames
@@ -435,6 +436,7 @@ int main(int argc, const char **argv) {
 			if (s.frame == frame) gfx::screenshot(s.file.c_str());
 	}
 	sys::log("exit after %d frames\n", frame);
+	sys::save_flush();
 	sys::log_flush();
 	audio::shutdown();
 	gfx::shutdown();

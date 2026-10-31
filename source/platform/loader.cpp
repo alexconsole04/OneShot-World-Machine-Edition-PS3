@@ -15,15 +15,16 @@ struct LoadJob {
 };
 
 static Monitor *g_mon;
-static std::deque<LoadJob *> g_queue;
+static std::deque<LoadJob *> g_queue, g_low;   // g_low: prefetches, read when g_queue is empty
 static bool g_started, g_thread_ok;
 
 static void worker(void *) {
 	for (;;) {
 		monitor_lock(g_mon);
-		while (g_queue.empty()) monitor_wait(g_mon, 0);
-		LoadJob *j = g_queue.front();
-		g_queue.pop_front();
+		while (g_queue.empty() && g_low.empty()) monitor_wait(g_mon, 0);
+		std::deque<LoadJob *> &q = g_queue.empty() ? g_low : g_queue;
+		LoadJob *j = q.front();
+		q.pop_front();
 		bool skip = j->cancelled;
 		monitor_unlock(g_mon);
 		uint8_t *d = nullptr;
@@ -44,7 +45,7 @@ static void worker(void *) {
 	}
 }
 
-LoadJob *load_async(const char *rel) {
+LoadJob *load_async(const char *rel, bool lowPriority) {
 	if (!g_started) {
 		g_started = true;
 		g_mon = monitor_create("loader");
@@ -59,7 +60,7 @@ LoadJob *load_async(const char *rel) {
 		return j;
 	}
 	monitor_lock(g_mon);
-	g_queue.push_back(j);
+	(lowPriority ? g_low : g_queue).push_back(j);
 	monitor_notify(g_mon);
 	monitor_unlock(g_mon);
 	return j;
@@ -74,6 +75,12 @@ bool load_done(LoadJob *j) {
 void load_wait(LoadJob *j) {
 	if (!g_thread_ok) return;
 	MonitorLock l(g_mon);
+	for (auto it = g_low.begin(); it != g_low.end(); ++it)
+		if (*it == j) {   // someone needs it now: to the front of the line
+			g_low.erase(it);
+			g_queue.push_front(j);
+			break;
+		}
 	while (!j->done) monitor_wait(g_mon, 5000);
 }
 

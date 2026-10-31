@@ -1,8 +1,12 @@
 // save_io.cpp - save files (save.dat, p-settings.dat, settings.conf) in a
 // "saves" folder next to the game data. Writes go to a temporary file that
 // is then renamed over the old one, so a crash mid-write never leaves a
-// half-written save behind.
+// half-written save behind. The writing happens on a background thread (on
+// the PS3 a save took the game thread 300+ ms); reads see what's queued.
 #include "sys.h"
+#include "thread.h"
+#include <deque>
+#include <utility>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,7 +56,65 @@ static bool rename_path(const std::string &from, const std::string &to) {
 #endif
 }
 
+// ------------------------------------------------------------------ the writing thread
+static Monitor *g_wmon;
+static std::deque<std::pair<std::string, std::string>> g_wqueue;   // waiting: (name, data)
+static std::pair<std::string, std::string> g_writing;               // being written now
+static bool g_busy, g_wtried, g_wok;
+static bool write_now(const char *name, const std::string &data);
+
+static void writer(void *) {
+	for (;;) {
+		{
+			MonitorLock l(g_wmon);
+			while (g_wqueue.empty()) monitor_wait(g_wmon, 0);
+			g_writing = std::move(g_wqueue.front());
+			g_wqueue.pop_front();
+			g_busy = true;
+		}
+		if (!write_now(g_writing.first.c_str(), g_writing.second)) log("save: writing %s failed\n", g_writing.first.c_str());
+		MonitorLock l(g_wmon);
+		g_busy = false;
+		g_writing = {};
+		monitor_notify(g_wmon);
+	}
+}
+
+// The newest data queued (or being written) for name.
+static bool pending_data(const char *name, std::string *out) {
+	if (!g_wok) return false;
+	MonitorLock l(g_wmon);
+	for (auto it = g_wqueue.rbegin(); it != g_wqueue.rend(); ++it)
+		if (it->first == name) { if (out) *out = it->second; return true; }
+	if (g_busy && g_writing.first == name) { if (out) *out = g_writing.second; return true; }
+	return false;
+}
+
+void save_flush() {
+	if (!g_wok) return;
+	MonitorLock l(g_wmon);
+	while (!g_wqueue.empty() || g_busy) monitor_wait(g_wmon, 5000);
+}
+
+bool save_write(const char *name, const std::string &data) {
+	if (!g_wtried) {
+		g_wtried = true;
+		save_dir();   // made (and logged) on this thread
+		g_wmon = monitor_create("save writer");
+		g_wok = g_wmon && thread_start(writer, nullptr, "save writer", -1);
+		if (!g_wok) log("save: no writer thread, saving on the game thread\n");
+	}
+	if (!g_wok) return write_now(name, data);
+	MonitorLock l(g_wmon);
+	for (auto &q : g_wqueue)
+		if (q.first == name) { q.second = data; return true; }   // only the newest gets written
+	g_wqueue.emplace_back(name, data);
+	monitor_notify(g_wmon);
+	return true;
+}
+
 bool save_exists(const char *name) {
+	if (pending_data(name, nullptr)) return true;
 	// A stat, not fopen/fclose: no stdio involved just to look.
 #ifdef __PPU__
 	CellFsStat st;
@@ -64,6 +126,7 @@ bool save_exists(const char *name) {
 }
 
 bool save_read(const char *name, std::string &out) {
+	if (pending_data(name, &out)) return true;
 	FILE *f = fopen(path_of(name).c_str(), "rb");
 	if (!f) return false;
 	out.clear();
@@ -74,7 +137,7 @@ bool save_read(const char *name, std::string &out) {
 	return true;
 }
 
-bool save_write(const char *name, const std::string &data) {
+static bool write_now(const char *name, const std::string &data) {
 	std::string dst = path_of(name), tmp = dst + ".tmp";
 	FILE *f = fopen(tmp.c_str(), "wb");
 	if (!f) {
@@ -104,6 +167,7 @@ bool save_write(const char *name, const std::string &data) {
 }
 
 bool save_delete(const char *name) {
+	save_flush();   // a queued write mustn't bring it back
 	if (!save_exists(name)) return true;
 	return remove_path(path_of(name));
 }

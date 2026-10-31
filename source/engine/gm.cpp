@@ -1,6 +1,7 @@
 #include "gm.h"
 #include "../platform/sys.h"
 #include "xnb.h"
+#include "../platform/loader.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -40,11 +41,8 @@ void init() {
 	sys::log("gm: window scale %.3f at (%.0f,%.0f)\n", S, OX, OY);
 }
 
-static gfx::Texture *load(const std::string &name) {
-	std::string rel = "content/" + name + ".xnb";
-	uint8_t *data;
-	size_t size;
-	if (!sys::read_file(rel.c_str(), &data, &size)) return nullptr;
+// An .xnb file's bytes -> a texture (frees data).
+static gfx::Texture *from_xnb(const std::string &rel, uint8_t *data, size_t size) {
 	xnb_texture xt;
 	int r = xnb_parse_texture(data, size, &xt, nullptr);
 	free(data);
@@ -57,6 +55,21 @@ static gfx::Texture *load(const std::string &name) {
 	free(xt.argb);
 	return t;
 }
+
+static gfx::Texture *load(const std::string &name) {
+	std::string rel = "content/" + name + ".xnb";
+	uint8_t *data;
+	size_t size;
+	if (!sys::read_file(rel.c_str(), &data, &size)) return nullptr;
+	return from_xnb(rel, data, size);
+}
+
+// ------------------------------------------------------------------ prefetching
+// Textures an event will soon want (faces, sprites, pictures) are read on the
+// loader thread ahead of time: on the PS3 even a 9 KB face took 30-600 ms to
+// read, which stalled the frame its text box opened on.
+struct Pending { sys::LoadJob *job; CacheType cache; };
+static std::unordered_map<std::string, Pending> pending;
 
 bool pixel_solid(const char *name, Vec2 p, CacheType cache) {
 	const gfx::Texture *t = texture(name, cache);
@@ -84,6 +97,20 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	// system calls every frame, which on the PS3 costs whole frames.
 	if (missing.count(key)) return nullptr;
 	gfx::Texture *t = g_source ? g_source(key) : nullptr;
+	auto pe = pending.find(key);
+	if (!t && pe != pending.end()) {   // already being read: wait for that read instead of starting another
+		sys::LoadJob *j = pe->second.job;
+		pending.erase(pe);
+		sys::load_wait(j);
+		uint8_t *data;
+		size_t size;
+		std::string rel = "content/" + key + ".xnb";
+		if (sys::load_take(j, &data, &size)) t = from_xnb(rel, data, size);
+		if (t) {
+			c.emplace(key, CacheEntry{ t, generation[cache] });
+			return t;
+		}
+	}
 	if (!t && g_redirect) {
 		// CacheAndManager.GetTexture: the language's own version if it has one.
 		std::string local = g_redirect(key);
@@ -100,6 +127,35 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	}
 	c.emplace(key, CacheEntry{ t, generation[cache] });
 	return t;
+}
+
+void prefetch(const char *name, CacheType cache) {
+	std::string key(name);
+	if (caches[cache].count(key) || missing.count(key) || pending.count(key)) return;
+	if (strstr(name, "custom:")) return;                       // made by the texture source, not read
+	if (g_redirect && g_redirect(key) != key) return;          // a language's own version: loaded the usual way
+	std::string rel = "content/" + key + ".xnb";   // not checked here: a missing file just fails on the loader thread
+	pending.emplace(key, Pending{ sys::load_async(rel.c_str(), true), cache });
+}
+
+void pump_prefetch() {
+	// Finished reads become textures, a few per frame (each is an upload).
+	uint64_t t0 = sys::time_us();
+	for (auto it = pending.begin(); it != pending.end();) {
+		if (!sys::load_done(it->second.job)) { ++it; continue; }
+		std::string key = it->first;
+		CacheType cache = it->second.cache;
+		sys::LoadJob *j = it->second.job;
+		it = pending.erase(it);
+		uint8_t *data;
+		size_t size;
+		gfx::Texture *t = nullptr;
+		if (sys::load_take(j, &data, &size)) t = from_xnb("content/" + key + ".xnb", data, size);
+		if (t && !caches[cache].count(key)) caches[cache].emplace(key, CacheEntry{ t, generation[cache] });
+		else if (t) gfx::destroy_texture(t);
+		else missing.insert(key);   // no such file (a sprite without a lightmap): don't look again
+		if (sys::time_us() - t0 > 2000) break;   // 2 ms a frame at most
+	}
 }
 
 void forget_missing(const char *name) { missing.erase(name); }

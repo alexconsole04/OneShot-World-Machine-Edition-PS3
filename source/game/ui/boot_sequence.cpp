@@ -80,6 +80,11 @@ static void populate_autosave_lines() {
 void set_version(const char *v) { version = v ? v : ""; }
 
 void start() {
+	// The logos are big (up to 8 MB): read them in the background now rather
+	// than stalling the frame each one first appears on.
+	for (const char *n : { "the_world_machine/felix", "partner_logos/futurecat_white", "partner_logos/komodo_white",
+	                       "the_world_machine/logo", "the_world_machine/logo_full" })
+		gm::prefetch(n, gm::BootScreen);
 	setup_system_texture_queue();
 	step = BEGIN;
 	stateTimer = 0;

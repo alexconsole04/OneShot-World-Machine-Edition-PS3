@@ -91,6 +91,7 @@ public:
 	void StartEvent(Entity *triggeringEntity, bool parallelProcess = false);
 	void StartCommonEvent(int commonEventId, bool parallelProcess = false);
 	const CommonEvent *GetCommonEvent(int id) const;
+	void PrefetchEventAssets();
 	void DebugRunTexts(const std::vector<std::string> &texts);
 	// TileMapSaveData (save files).
 	struct cJSON *GetSaveData() const;

@@ -8,11 +8,12 @@ namespace sys {
 
 struct LoadJob;
 
-// Queue <data_dir>/<rel> for reading. Never returns null.
-LoadJob *load_async(const char *rel);
+// Queue <data_dir>/<rel> for reading. Never returns null. Low-priority reads
+// (prefetching) wait until no other read is queued.
+LoadJob *load_async(const char *rel, bool lowPriority = false);
 // True once the read has finished (successfully or not).
 bool load_done(LoadJob *j);
-// Blocks until the read has finished.
+// Blocks until the read has finished (a low-priority read goes first).
 void load_wait(LoadJob *j);
 // After load_done: takes the data (caller frees with free()) and releases
 // the job. False (and nothing to free) if the file couldn't be read.

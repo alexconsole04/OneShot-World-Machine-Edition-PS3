@@ -29,6 +29,10 @@ public:
 	virtual class TextBox *AsTextBox() { return nullptr; }   // built without RTTI
 };
 
+// The facepic a "@name" in a text shows: Niko's face is the gas mask one
+// while Niko wears it, and The World Machine's (en_*) once flag 160 is on.
+std::string portrait_name(const std::string &name, const std::string &playerSheet, bool flag160);
+
 class TextBox : public IMessageBox {
 public:
 	enum class Style { GoldBorder, NoBorder };

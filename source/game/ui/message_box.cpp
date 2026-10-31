@@ -79,13 +79,18 @@ static void replace_all(std::string &s, const char *from, const std::string &to)
 	while ((p = s.find(from, p)) != std::string::npos) { s.replace(p, n, to); p += to.size(); }
 }
 
-void TextBox::SetPortrait(const std::string &p) {
-	portrait = util::lower(p);
-	const std::string &sheet = map->GetPlayer()->GetNPCSheet();
+std::string portrait_name(const std::string &p, const std::string &playerSheet, bool flag160) {
+	std::string r = util::lower(p);
+	const std::string &sheet = playerSheet;
 	if ((sheet == "niko_gasmask" || sheet == "niko_bulb_gasmask" || sheet == "en_gasmask" || sheet == "en_bulb_gasmask") &&
-	    util::starts_with(portrait, "niko"))
-		portrait = "niko_gasmask";
-	if (state->flag(160) && util::starts_with(portrait, "niko")) portrait.replace(0, 4, "en");
+	    util::starts_with(r, "niko"))
+		r = "niko_gasmask";
+	if (flag160 && util::starts_with(r, "niko")) r.replace(0, 4, "en");
+	return r;
+}
+
+void TextBox::SetPortrait(const std::string &p) {
+	portrait = portrait_name(p, map->GetPlayer()->GetNPCSheet(), state->flag(160));
 }
 
 int TextBox::TextAreaWidth() const { return boxW - padX - padW - (portrait.empty() ? 0 : 48); }

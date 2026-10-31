@@ -9,6 +9,7 @@
 #include "../core/game_state.h"
 #include "event_runner.h"
 #include "pictures.h"
+#include "../ui/message_box.h"
 #include "../../engine/audio.h"
 #include "../../engine/gm.h"
 #include "../../engine/util.h"
@@ -17,6 +18,8 @@
 #include "cJSON.h"
 
 #include <algorithm>
+#include <ctype.h>
+#include <functional>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -589,7 +592,71 @@ bool TileMap::LoadMap(int mapId, float playerTileX, float playerTileY, Direction
 	sys::log("  load times (ms): read %.1f, xml %.1f, tilesets %.1f, panorama %.1f, layers %.1f, events %.1f, entities %.1f, rest %.1f\n",
 	         ms(t0, tRead), ms(tRead, tXml), ms(tXml, tTilesets), ms(tTilesets, tPanorama), ms(tPanorama, tLayers), ms(tLayers, tEvents),
 	         ms(tEvents, tEntities), ms(tEntities, tEnd));
+	PrefetchEventAssets();
 	return true;
+}
+
+// Reads ahead, on the loader thread, the faces, sprites and pictures this
+// map's events (and the common events they call) will show, so a text box
+// or a graphic change doesn't stall a frame waiting on the hard drive.
+void TileMap::PrefetchEventAssets() {
+	if (!eventFile) return;
+	uint64_t t0 = sys::time_us();
+	std::string sheet = player ? player->GetNPCSheet() : "";
+	bool f160 = state->flag(160);
+	std::vector<std::string> names;
+	auto add = [&](const std::string &n) {
+		if (!n.empty() && std::find(names.begin(), names.end(), n) == names.end()) names.push_back(n);
+	};
+	auto sprite = [&](const std::string &n) {
+		if (n.empty()) return;
+		add("npc/" + n);
+		add("lightmaps/" + n);
+	};
+	auto faces = [&](const std::string &text) {
+		for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1)) {
+			size_t e = i + 1;
+			while (e < text.size() && (isalnum((unsigned char)text[e]) || text[e] == '_')) e++;
+			std::string tok = text.substr(i + 1, e - i - 1);
+			bool glyph = !tok.empty();   // button glyphs (@OK, @MOVE...) are upper case
+			for (char ch : tok) glyph &= !islower((unsigned char)ch);
+			if (!tok.empty() && !glyph) add("facepics/" + portrait_name(tok, sheet, f160));
+		}
+	};
+	auto route = [&](const MoveRoutePtr &r) {
+		if (!r) return;
+		for (auto &m : r->list)
+			if (m.code == 41 && !m.parameters.empty()) sprite(m.parameters[0]);   // Change Graphic
+	};
+	std::vector<int> commons;
+	std::function<void(const CommandListPtr &)> scan = [&](const CommandListPtr &l) {
+		if (!l) return;
+		for (auto &c : *l) {
+			switch (c.code) {
+			case 101: case 401: faces(c.param(0)); break;                  // Show Text
+			case 231: if (!c.param(1).empty()) add("pictures/" + c.param(1)); break;   // Show Picture
+			case 322: sprite(c.param(1)); break;                         // Change Actor Graphic
+			case 209: route(c.move_route); break;                        // Set Move Route
+			case 117: {                                                   // Call Common Event
+				int id = c.iparam(0);
+				if (std::find(commons.begin(), commons.end(), id) == commons.end()) {
+					commons.push_back(id);
+					if (const CommonEvent *ce = GetCommonEvent(id)) scan(ce->list);
+				}
+				break;
+			}
+			default: break;
+			}
+		}
+	};
+	for (auto &e : eventFile->events)
+		for (auto &p : e.pages) {
+			sprite(p.graphic.character_name);
+			route(p.move_route);
+			scan(p.list);
+		}
+	for (auto &n : names) gm::prefetch(n.c_str());
+	sys::log("map %d: prefetching up to %d textures (%.1f ms to list)\n", GetMapID(), (int)names.size(), (sys::time_us() - t0) / 1000.0);
 }
 
 bool TileMap::DebugTeleport(int mapId, float x, float y, Direction facing) {
