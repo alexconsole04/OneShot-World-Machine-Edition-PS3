@@ -2,7 +2,7 @@
 #include "gm.h"
 #include "overlay.h"
 #include "../platform/sys.h"
-#include "../xnb.h"
+#include "xnb.h"
 
 #include <math.h>
 #include <stdlib.h>

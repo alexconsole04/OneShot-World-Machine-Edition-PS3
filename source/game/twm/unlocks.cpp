@@ -1,7 +1,7 @@
 #include "unlocks.h"
 #include "wm_internal.h"
-#include "../loc.h"
-#include "../json_file.h"
+#include "../core/loc.h"
+#include "../core/json_file.h"
 #include "../../engine/gm.h"
 #include "../../platform/sys.h"
 #include <algorithm>

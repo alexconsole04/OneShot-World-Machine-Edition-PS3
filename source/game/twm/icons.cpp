@@ -1,8 +1,8 @@
 #include "icons.h"
 #include "wm_internal.h"
-#include "custom_wallpapers.h"
-#include "../loc.h"
-#include "../json_file.h"
+#include "apps/custom_wallpapers.h"
+#include "../core/loc.h"
+#include "../core/json_file.h"
 #include "../../engine/gm.h"
 #include "../../platform/sys.h"
 #include <algorithm>

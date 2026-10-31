@@ -15,6 +15,7 @@ This port does not properly render graphics on RPCS3 due to emulation bugs. Plea
 
 # Building
 See [BUILDING.md](BUILDING.md). Requires the [PS3 Custom Toolchain v0.22.0](https://github.com/FirebirdTA01/PS3DK/releases), CMake and Ninja.
+How the code is organised is described in [docs/DEV_NOTES.md](docs/DEV_NOTES.md).
 
 # License
 All rights reserved; this is not an open-source project. OneShot belongs to its respective owners (Future Cat LLC, Degica and Komodo). See [LICENSE](LICENSE) for details and for the third-party licenses.

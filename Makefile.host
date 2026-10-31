@@ -3,11 +3,11 @@ CXX ?= g++
 CC ?= gcc
 CXXFLAGS = -std=c++17 -O2 -g -Wall -Wextra -Wno-unused-parameter -Ithird_party -Isource -MMD -MP
 CFLAGS = -O2 -g -Ithird_party -MMD -MP
-SRC_CPP = source/main.cpp source/engine/gm.cpp source/engine/xml.cpp source/engine/overlay.cpp source/engine/util.cpp source/engine/audio.cpp source/engine/mixer.cpp source/engine/ui.cpp source/engine/font.cpp \
-          source/game/event_data.cpp source/game/entity.cpp source/game/player.cpp source/game/tilemap.cpp \
-          source/game/event_runner.cpp source/game/message_box.cpp source/game/message_boxes.cpp source/game/settings.cpp source/game/save.cpp source/game/loc.cpp source/game/follower.cpp source/game/special_entities.cpp source/game/fast_travel_menu.cpp source/game/boot_sequence.cpp source/game/twm/twm.cpp source/game/twm/widgets.cpp source/game/twm/window.cpp source/game/twm/fs.cpp source/game/twm/icons.cpp source/game/twm/unlocks.cpp source/game/twm/apps.cpp source/game/twm/customize.cpp source/game/twm/apps2.cpp source/game/twm/hintbox.cpp source/game/twm/custom_wallpapers.cpp source/platform/user_files.cpp source/game/twm/wm.cpp source/game/title_screen.cpp source/game/oneshot_window.cpp source/game/debug_map_menu.cpp source/game/mouse_cursor.cpp source/game/pictures.cpp source/game/script_parser.cpp source/game/menus.cpp source/game/modal.cpp source/game/panorama.cpp source/game/name_input.cpp \
-          source/platform/host/gfx_soft.cpp source/platform/host/sys_host.cpp source/platform/host/input_host.cpp source/platform/host/audio_out_host.cpp source/platform/input_common.cpp source/platform/fs_case.cpp source/platform/log_file.cpp source/platform/save_io.cpp source/platform/loader.cpp source/platform/host/thread_host.cpp
-SRC_C = source/xnb.c third_party/cJSON.c
+# Everything but the PS3 platform code, plus the host stand-ins for it.
+SRC_CPP = source/main.cpp $(wildcard source/engine/*.cpp source/game/core/*.cpp source/game/world/*.cpp source/game/ui/*.cpp \
+          source/game/twm/*.cpp source/game/twm/apps/*.cpp) \
+          $(wildcard source/platform/*.cpp source/platform/host/*.cpp)
+SRC_C = source/engine/xnb.c third_party/cJSON.c
 OBJ = $(patsubst %,build-host/%.o,$(SRC_CPP) $(SRC_C))
 
 build-host/oneshot-host: $(OBJ)

@@ -8,7 +8,7 @@
 #include "../../engine/types.h"
 #include "../../engine/font.h"
 #include "../../platform/gfx.h"
-#include "../mouse_cursor.h"
+#include "../ui/mouse_cursor.h"
 #include <functional>
 #include <string>
 #include <vector>

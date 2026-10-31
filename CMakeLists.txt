@@ -4,66 +4,75 @@ project(oneshot-ps3 C CXX ASM)
 
 include(ps3-self)
 
-add_executable(oneshot-ps3
+set(SOURCES
     source/main.cpp
-    source/xnb.c
-    source/engine/gm.cpp
-    source/engine/xml.cpp
-    source/engine/overlay.cpp
-    source/engine/util.cpp
+    # Engine: drawing, text, sound, file formats
+    source/engine/xnb.c
     source/engine/audio.cpp
-    source/engine/mixer.cpp
-    source/engine/ui.cpp
     source/engine/font.cpp
-    source/game/event_data.cpp
-    source/game/entity.cpp
-    source/game/player.cpp
-    source/game/tilemap.cpp
-    source/game/debug_map_menu.cpp
-    source/game/mouse_cursor.cpp
-    source/game/event_runner.cpp
-    source/game/message_box.cpp
-    source/game/message_boxes.cpp
-    source/game/settings.cpp
-    source/game/save.cpp
-    source/game/loc.cpp
-    source/game/follower.cpp
-    source/game/special_entities.cpp
-    source/game/fast_travel_menu.cpp
+    source/engine/gm.cpp
+    source/engine/mixer.cpp
+    source/engine/overlay.cpp
+    source/engine/ui.cpp
+    source/engine/util.cpp
+    source/engine/xml.cpp
+    # Game: state, saves, settings, languages, scripts, the game window
+    source/game/core/loc.cpp
+    source/game/core/oneshot_window.cpp
+    source/game/core/save.cpp
+    source/game/core/script_parser.cpp
+    source/game/core/settings.cpp
+    # Game: maps, characters, events
+    source/game/world/entity.cpp
+    source/game/world/event_data.cpp
+    source/game/world/event_runner.cpp
+    source/game/world/follower.cpp
+    source/game/world/panorama.cpp
+    source/game/world/pictures.cpp
+    source/game/world/player.cpp
+    source/game/world/special_entities.cpp
+    source/game/world/tilemap.cpp
+    # Game: boot, title, menus, text boxes
+    source/game/ui/boot_sequence.cpp
+    source/game/ui/debug_map_menu.cpp
+    source/game/ui/fast_travel_menu.cpp
+    source/game/ui/menus.cpp
+    source/game/ui/message_box.cpp
+    source/game/ui/message_boxes.cpp
+    source/game/ui/modal.cpp
+    source/game/ui/mouse_cursor.cpp
+    source/game/ui/name_input.cpp
+    source/game/ui/title_screen.cpp
+    # The World Machine desktop
+    source/game/twm/fs.cpp
+    source/game/twm/hintbox.cpp
+    source/game/twm/icons.cpp
     source/game/twm/twm.cpp
+    source/game/twm/unlocks.cpp
     source/game/twm/widgets.cpp
     source/game/twm/window.cpp
-    source/game/twm/fs.cpp
-    source/game/twm/icons.cpp
-    source/game/twm/unlocks.cpp
-    source/game/twm/apps.cpp
-    source/game/twm/customize.cpp
-    source/game/twm/apps2.cpp
-    source/game/twm/hintbox.cpp
-    source/game/twm/custom_wallpapers.cpp
-    source/platform/user_files.cpp
     source/game/twm/wm.cpp
-    source/game/boot_sequence.cpp
-    source/game/title_screen.cpp
-    source/game/oneshot_window.cpp
-    source/game/pictures.cpp
-    source/game/script_parser.cpp
-    source/game/menus.cpp
-    source/game/modal.cpp
-    source/game/panorama.cpp
-    source/game/name_input.cpp
-    source/platform/input_common.cpp
+    # The desktop's apps
+    source/game/twm/apps/collection_apps.cpp
+    source/game/twm/apps/custom_wallpapers.cpp
+    source/game/twm/apps/customize.cpp
+    source/game/twm/apps/story_apps.cpp
+    # Platform: shared
     source/platform/fs_case.cpp
-    source/platform/save_io.cpp
-    source/platform/log_file.cpp
+    source/platform/input_common.cpp
     source/platform/loader.cpp
-    source/platform/ps3/thread_ps3.cpp
-    source/platform/ps3/gfx_gcm.cpp
-    source/platform/ps3/sys_ps3.cpp
-    source/platform/ps3/input_ps3.cpp
+    source/platform/log_file.cpp
+    source/platform/save_io.cpp
+    source/platform/user_files.cpp
+    # Platform: PS3
     source/platform/ps3/audio_out_ps3.cpp
+    source/platform/ps3/gfx_gcm.cpp
+    source/platform/ps3/input_ps3.cpp
+    source/platform/ps3/sys_ps3.cpp
+    source/platform/ps3/thread_ps3.cpp
     third_party/cJSON.c
 )
+add_executable(oneshot-ps3 ${SOURCES})
 target_include_directories(oneshot-ps3 PRIVATE source third_party)
 target_compile_features(oneshot-ps3 PRIVATE cxx_std_17 c_std_11)
 # -fno-store-merging -fno-tree-slp-vectorize: GCC 12 for the PPU (32-bit pointers in
@@ -81,9 +90,10 @@ ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/dither_fp.fcg)
 
 ps3_add_self(oneshot-ps3)
 # XMB extras (PIC1.PNG background, SND0.AT3 looping ambience) are copied
-# from pkg_files/. SND0.AT3 is made by dev/mk_snd0.py with atracdenc.
+# from pkg_files/ (with the port's own files under USRDIR/port). SND0.AT3 is
+# made by tools/assets/mk_snd0.py with atracdenc.
 ps3_add_pkg(oneshot-ps3
     TITLE     "OneShot: World Machine Edition"
-    ICON      "${CMAKE_CURRENT_SOURCE_DIR}/assets/ICON0.PNG"
+    ICON      "${CMAKE_CURRENT_SOURCE_DIR}/pkg_files/ICON0.PNG"
     APPID     "OSWM00001"
     CONTENTID "UP0001-OSWM00001_00-ONESHOTPS3PORT00")
