@@ -5,6 +5,13 @@ This repository does not contain game files, those must be supplied from your ow
 
 DISCLAIMER: This port was made with the assistance of Claude Opus 5.5, but all testing and debugging was done by me and tested on both RPCS3 and real PS3. If you do not want to use this port, that is perfectly fine and reasonable. The port has been verified to be beatable from start to finish on both normal and Solstice.
 
+# What isn't implemented
+* Controller vibration (the setting exists; DS3 actuators via ioPadSetActDirect).
+* Map transitions (SpecialTransition is a crossfade).
+* Fast travel minimap solstice glitch effect. (PC uses GlitchEffect on each piece).
+PS3 START/SELECT/trigger glyphs (currently still using PS4 buttons).
+The game's own wallpapers load on the main thread (a hitch when switching).
+Performance: dialogue hitches reported; look at the log's "slow frame" lines.
 
 # How to Install
 You need to build the PKG yourself or use the provided PKG release. Either way should be fine.
