@@ -1,51 +1,45 @@
-// main.cpp - OneShot WME PS3 port, milestone 2: maps, Niko, event interpreter.
+// main.cpp - OneShot: World Machine Edition, PS3 port: start-up and the main loop.
 //
-// Controls (PS3):  d-pad / left stick = walk,  Square (hold) = run,
-//                  Cross = OK / interact,  Circle = cancel,
-//                  SELECT = toggle debug overlay (hold 1 s: mark the log).
-//                  While the overlay is shown:
-//                  L1 = map switcher, R1 = texture viewer. In the texture
-//                  viewer: R2/L2/R3/L3 = renderer diagnostics, Circle =
-//                  plain shader.
-// Host build: env OSPS3_DATA (data dir), OSPS3_MAP, OSPS3_SPAWN="x,y",
-//             OSPS3_INPUT (scripted buttons), OSPS3_SHOTS="frame:file.png,...".
+// Debug controls (PS3): SELECT = toggle the debug overlay (hold 1 s: mark the
+// log). While the overlay is shown: L1 = map switcher, R1 = texture viewer.
+// In the texture viewer: R2/L2/R3/L3 = renderer diagnostics, Circle = plain
+// shader.
+// Host test switches (OSPS3_*) are read in test_hooks.cpp.
+#include "test_hooks.h"
+#include "engine/audio.h"
+#include "engine/gm.h"
+#include "engine/overlay.h"
+#include "engine/util.h"
+#include "game/core/game_state.h"
+#include "game/core/loc.h"
+#include "game/core/oneshot_window.h"
+#include "game/core/settings.h"
+#include "game/twm/desktop.h"
+#include "game/twm/wm.h"
+#include "game/ui/boot_sequence.h"
+#include "game/ui/debug_map_menu.h"
+#include "game/ui/menus.h"
+#include "game/ui/modal.h"
+#include "game/world/pictures.h"
+#include "game/world/player.h"
+#include "game/world/tilemap.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
 #include "platform/sys.h"
-#include "engine/gm.h"
-#include "engine/font.h"
-#include "engine/util.h"
-#include "engine/overlay.h"
-#include "game/core/game_state.h"
-#include "game/world/tilemap.h"
-#include "game/world/player.h"
-#include "game/world/pictures.h"
-#include "game/ui/menus.h"
-#include "game/ui/modal.h"
-#include "game/core/oneshot_window.h"
-#include "game/ui/debug_map_menu.h"
-#include "game/core/settings.h"
-#include "game/ui/mouse_cursor.h"
-#include "game/ui/boot_sequence.h"
-#include "game/twm/desktop.h"
-#include "game/twm/wm.h"
-#include "game/core/loc.h"
-namespace script_trace { void dump(); }
-static void script_trace_dump() { script_trace::dump(); }
-#include "engine/audio.h"
-
-#include <stdio.h>
-#include <new>
 #include <exception>
-#define OSPS3_VERSION "m27"
+#include <new>
 #include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
 #include <string>
-#include <vector>
 
 #ifdef __PPU__
 #include <sys/process.h>
+#endif
+
+#define OSPS3_VERSION "m27"
+
+namespace script_trace { void dump(); }   // event_runner.cpp: the last script commands run
+
+#ifdef __PPU__
 SYS_PROCESS_PARAM(1001, 0x100000);
 // The toolchain's malloc arena defaults to 64 MB, which the game outgrows
 // (decoded sound effects, music files, the GPU upload area, large tilesets
@@ -76,7 +70,7 @@ static void fatal_screen(const char *msg) {
 	}
 }
 
-// Diagnostics (m14b): say so in the log when the C++ library gives up.
+// Say so in the log when the C++ library gives up.
 static void on_out_of_memory() {
 	sys::log("FATAL: out of memory (heap %d KB in use)\n", sys::heap_used_kb());
 	sys::log_flush();
@@ -106,21 +100,20 @@ int main(int argc, const char **argv) {
 	{
 		// The PC seeds System.Random from the clock: every boot plays out
 		// differently (George's personality, NPC wandering, glitches).
-		// OSPS3_SEED pins it for reproducible host tests.
+		// Host tests can pin it (OSPS3_SEED).
 		int h, m, s, yd;
 		sys::local_time(&h, &m, &s, &yd);
-		uint32_t seed = (uint32_t)sys::time_us() ^ (uint32_t)(((yd * 24 + h) * 60 + m) * 60 + s) * 2654435761u;
-		if (const char *e = getenv("OSPS3_SEED")) seed = (uint32_t)strtoul(e, nullptr, 0);
+		uint32_t seed = test_hooks::seed((uint32_t)sys::time_us() ^ (uint32_t)(((yd * 24 + h) * 60 + m) * 60 + s) * 2654435761u);
 		util::seed(seed);
 		sys::log("random seed %08x\n", (unsigned)seed);
 	}
 	loc::init();
 	settings().Load();   // the desktop's cursor uses the Controls settings from the start
 	audio::init();
-	// Debug starts (OSPS3_MAP) skip the boot sequence and start inside a
-	// maximized OneShot window; OSPS3_SKIP_BOOT starts on the desktop.
-	const char *debugMap = getenv("OSPS3_MAP");
-	bool bootSequence = debugMap == nullptr && getenv("OSPS3_SKIP_BOOT") == nullptr;
+	// Test starts on a given map skip the boot sequence and start inside a
+	// maximized OneShot window; "skip boot" starts on the desktop.
+	const int debugMap = test_hooks::start_map();
+	const bool bootSequence = !test_hooks::skip_boot();
 	if (!bootSequence) {
 		audio::preload_sfx();   // the boot console loads them otherwise
 		sys::log("heap: %d MB in use after loading sound effects\n", sys::heap_used_kb() / 1024);
@@ -130,48 +123,20 @@ int main(int argc, const char **argv) {
 	if (bootSequence) boot::start();
 	else {
 		desktop::init();
-		if (debugMap) desktop::ensure_game_window(true);
-		else if (getenv("OSPS3_LAUNCH")) desktop::ensure_game_window(false);   // host testing
-		if (getenv("OSPS3_LAUNCH") && !debugMap) {
+		if (debugMap >= 0) desktop::ensure_game_window(true);
+		else if (test_hooks::launch()) {
+			desktop::ensure_game_window(false);
 			window().Launch(true);
 			if (settings().fullscreen) twm::set_game_maximized(true);
 		}
 	}
-	audio::set_verbose(getenv("OSPS3_AUDIO_LOG") != nullptr);
-	{
-		GameState &state = window().State();
-		if (const char *f = getenv("OSPS3_FLAGS"))   // host testing: "178,160"
-			for (const char *p = f; *p; ) { state.set_flag(atoi(p), true); while (*p && *p != ',') p++; if (*p) p++; }
-		if (const char *v = getenv("OSPS3_VARS"))    // host testing: "3=2,4=1"
-			for (const char *p = v; *p; ) {
-				int id = atoi(p);
-				while (*p && *p != '=') p++;
-				if (*p) p++;
-				state.set_var(id, atoi(p));
-				while (*p && *p != ',') p++;
-				if (*p) p++;
-			}
-		if (const char *it = getenv("OSPS3_ITEMS"))  // host testing: "3,4"
-			for (const char *p = it; *p; ) { state.add_item(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
-		if (const char *tr = getenv("OSPS3_TRAVEL"))  // host testing: "zone:map:x:y,..." unlocked fast travel
-			for (const char *p = tr; *p; ) {
-				GameState::TravelLocation l;
-				if (sscanf(p, "%d:%d:%d:%d", &l.zone, &l.mapId, &l.x, &l.y) == 4) {
-					state.travel_locations.push_back(l);
-					state.travel_enabled = true;
-					state.travel_zone = l.zone;
-				}
-				while (*p && *p != ',') p++;
-				if (*p) p++;
-			}
-		if (const char *fo = getenv("OSPS3_FOLLOWERS"))  // host testing: "2,3" (FollowerType)
-			for (const char *p = fo; *p; ) { state.followers.push_back(atoi(p)); while (*p && *p != ',') p++; if (*p) p++; }
-	}
+	audio::set_verbose(test_hooks::audio_log());
+	test_hooks::apply_game_state(window().State());
 	int mapId = 0;
-	if (debugMap) {
+	if (debugMap >= 0) {
 		float sx = NEW_GAME_X, sy = NEW_GAME_Y;
-		mapId = atoi(debugMap);
-		if (const char *s = getenv("OSPS3_SPAWN")) sscanf(s, "%f,%f", &sx, &sy);
+		mapId = debugMap;
+		test_hooks::start_position(sx, sy);
 		TileMap &map = window().Map();
 		if (!map.LoadMap(mapId, sx, sy, Direction::Down)) { fatal_screen("Could not load the start map."); return 0; }
 		// The player starts without a sprite; the intro's "change party member"
@@ -179,39 +144,11 @@ int main(int argc, const char **argv) {
 		if (mapId != NEW_GAME_MAP) map.GetPlayer()->SetNPCSheet("niko", 0);
 	}
 
-	// Host testing: OSPS3_TEXTS="text1|text2" runs Show Text commands.
-	if (const char *tx = getenv("OSPS3_TEXTS")) {
-		std::vector<std::string> v;
-		std::string all(tx);
-		size_t p = 0;
-		while (true) {
-			size_t e = all.find('|', p);
-			v.push_back(all.substr(p, e == std::string::npos ? std::string::npos : e - p));
-			if (e == std::string::npos) break;
-			p = e + 1;
-		}
-		window().Map().DebugRunTexts(v);
-	}
+	test_hooks::run_texts();
 
-	// Host screenshot schedule.
-	struct Shot { int frame; std::string file; };
-	std::vector<Shot> shots;
-	if (const char *s = getenv("OSPS3_SHOTS")) {
-		std::string all(s);
-		size_t p = 0;
-		while (p < all.size()) {
-			size_t c = all.find(',', p);
-			std::string item = all.substr(p, c == std::string::npos ? std::string::npos : c - p);
-			size_t colon = item.find(':');
-			if (colon != std::string::npos) shots.push_back({ atoi(item.c_str()), item.substr(colon + 1) });
-			if (c == std::string::npos) break;
-			p = c + 1;
-		}
-	}
-
-	bool show_overlay = getenv("OSPS3_OVERLAY") != nullptr;
-	bool tex_view = getenv("OSPS3_TEXVIEW") != nullptr;
-	int tex_view_idx = getenv("OSPS3_TEXVIEW") ? atoi(getenv("OSPS3_TEXVIEW")) : 0;
+	bool show_overlay = test_hooks::overlay();
+	int tex_view_idx = 0;
+	bool tex_view = test_hooks::texture_viewer(tex_view_idx);
 	uint64_t last = sys::time_us();
 	float frame_ms = 16.7f, update_ms = 0, draw_ms = 0, wait_ms = 0;
 	int frame = 0;
@@ -223,7 +160,7 @@ int main(int argc, const char **argv) {
 		prof::mark("input");
 		// XMB open (or another system overlay): pause the game's logic. Frames
 		// keep being drawn and flipped - the XMB is drawn through the game's
-		// flips, so stopping them froze the XMB itself (m10h).
+		// flips, so stopping them froze the XMB itself.
 		bool systemPause = input::system_drawing();
 		{
 			static bool was;
@@ -250,7 +187,7 @@ int main(int argc, const char **argv) {
 				         tn.r, tn.g, tn.b, m.FramesSinceToneChange(), pictures().Count());
 				sys::log("  flags 11=%d 22=%d; vars 6=%d 7=%d 8=%d 10=%d 22=%d 23=%d\n", st.flag(11), st.flag(22), st.var(6), st.var(7),
 				         st.var(8), st.var(10), st.var(22), st.var(23));
-				script_trace_dump();
+				script_trace::dump();
 				sys::log("=== end of mark %d ===\n", marks);
 			}
 		} else {
@@ -432,8 +369,7 @@ int main(int argc, const char **argv) {
 		wait_ms = wait_ms * 0.9f + ((tb - t1) / 1000.0f) * 0.1f;
 		last = now;
 		frame++;
-		for (auto &s : shots)
-			if (s.frame == frame) gfx::screenshot(s.file.c_str());
+		test_hooks::screenshots(frame);
 	}
 	sys::log("exit after %d frames\n", frame);
 	sys::save_flush();

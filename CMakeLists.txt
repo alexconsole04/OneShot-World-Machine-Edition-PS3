@@ -6,6 +6,7 @@ include(ps3-self)
 
 set(SOURCES
     source/main.cpp
+    source/test_hooks.cpp
     # Engine: drawing, text, sound, file formats
     source/engine/xnb.c
     source/engine/audio.cpp
@@ -31,7 +32,11 @@ set(SOURCES
     source/game/world/pictures.cpp
     source/game/world/player.cpp
     source/game/world/special_entities.cpp
+    source/game/world/tile_layers.cpp
     source/game/world/tilemap.cpp
+    source/game/world/tilemap_collision.cpp
+    source/game/world/tilemap_events.cpp
+    source/game/world/tilemap_load.cpp
     # Game: boot, title, menus, text boxes
     source/game/ui/boot_sequence.cpp
     source/game/ui/debug_map_menu.cpp
@@ -51,6 +56,13 @@ set(SOURCES
     source/game/twm/unlocks.cpp
     source/game/twm/widgets.cpp
     source/game/twm/window.cpp
+    source/game/twm/appearance.cpp
+    source/game/twm/desktop_saves.cpp
+    source/game/twm/desktop_test_hooks.cpp
+    source/game/twm/game_window.cpp
+    source/game/twm/run_file.cpp
+    source/game/twm/taskbar.cpp
+    source/game/twm/tutorial.cpp
     source/game/twm/wm.cpp
     # The desktop's apps
     source/game/twm/apps/collection_apps.cpp

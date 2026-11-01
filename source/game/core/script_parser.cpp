@@ -3,7 +3,8 @@
 //
 // Desktop (TWM) side effects - files written into the World Machine's file
 // system, wallpapers, profiles, badges, the window - go through twm/wm.h.
-// Particles and lights are stubs for now (logged once).
+// The light commands are no-ops in the PC game too. A snippet with no
+// match is logged once.
 #include "script_parser.h"
 #include "../world/event_runner.h"
 #include "../world/entity.h"

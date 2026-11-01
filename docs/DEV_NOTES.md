@@ -16,7 +16,8 @@ tools/assets/         make_tex_xnb.py, make_font_xnb.py (test .xnb files), mk_sn
 tools/checks/         asmscan_ld_base.py / scan_ld_base.py (GCC 12 miscompile scan),
                       clrmeta.py (.NET metadata / IL reader for the PC executable)
 source/
-  main.cpp            start-up, main loop, test hooks
+  main.cpp            start-up and the main loop
+  test_hooks.cpp      the OSPS3_* switches for host tests (no-ops on the PS3)
   engine/             drawing (gm), fonts, audio + mixer, XNB/XML readers, overlay, util
   platform/           sys/gfx/input/audio/thread interfaces and the shared code;
     ps3/              the PS3 versions (RSX via gcm, pad, audio, PPU threads)
@@ -24,12 +25,18 @@ source/
   game/
     core/             game state, saves, settings, languages (loc), script commands,
                       the game window (oneshot_window)
-    world/            maps (tilemap), entities, player, followers, events, panoramas, pictures
+    world/            maps, entities, player, followers, events, panoramas, pictures.
+                      The map is TileMap, split by job: tilemap.cpp (core, update, draw),
+                      tilemap_load.cpp, tilemap_collision.cpp, tilemap_events.cpp
+                      (puzzles, followers, fireflies, event runners), tile_layers.cpp
     ui/               boot sequence, title screen, menus, fast travel, text boxes, dialogs,
                       name input, the in-game cursor, the debug map menu
-    twm/              the World Machine desktop: window manager (wm), windows, widgets,
-                      file system, icons, unlocks, tutorial hint box; desktop.h is its
-                      interface for main.cpp
+    twm/              the World Machine desktop: windows, widgets, file system, icons,
+                      unlocks, tutorial hint box; desktop.h is its interface for main.cpp.
+                      The window manager is wm.cpp (windows, update, draw) with
+                      appearance.cpp (themes, wallpapers, brightness/volume),
+                      game_window.cpp, desktop_saves.cpp, run_file.cpp, taskbar.cpp,
+                      tutorial.cpp and desktop_test_hooks.cpp; wm_state.h is their shared state
       apps/           story_apps (folders, documents, photos, journal), collection_apps
                       (Badges, Friends, Gallery, Music Box, Timer, Controls), customize,
                       custom_wallpapers
@@ -56,13 +63,14 @@ Build outputs (build/, build-host/, *.elf, *.self, *.pkg in the root) are ignore
   std::function copies (64-bit ld then the low word used as a pointer). Check changed files:
   take the file's compile command from `ninja -C build -t commands`, swap `-c` for `-S`, drop
   `-MD -MT/-MF`, then `python3 tools/checks/asmscan_ld_base.py file.s` (0 = fine). Known harmless
-  hits: gfx_gcm (1) and tilemap's TileCollision (4: a register spilled with std and reloaded
-  with ld, not a merged pointer pair).
+  hit: gfx_gcm (1). (tilemap's TileCollision used to show 4, a register spilled with std and
+  reloaded with ld; after the split into tilemap_collision.cpp it shows none.)
 - -fno-rtti: use Window::Kind() / virtual queries instead of dynamic_cast.
 - Background threads get 64 KB of stack unless thread_start is given more (keep big buffers off it).
 
 ## Host tests
-`tools/test/flow.sh "<input>" "f1,f2,..." ENV=...` (TIMEOUT, TAILN, WORK, GAME_DATA). Input letters:
+The switches are read in source/test_hooks.cpp and source/game/twm/desktop_test_hooks.cpp
+(platform ones in platform/). `tools/test/flow.sh "<input>" "f1,f2,..." ENV=...` (TIMEOUT, TAILN, WORK, GAME_DATA). Input letters:
 U D L R x o s i m e l k c(R2) v z, H/J/Y/N = right stick L/R/U/D; "cH 46" = hold for 46 frames.
 Envs: OSPS3_SKIP_BOOT=1, OSPS3_LAUNCH=1, OSPS3_MAP=N, OSPS3_SPAWN=x,y, OSPS3_FLAGS/VARS/ITEMS,
 OSPS3_FOLLOWERS="2,3", OSPS3_TRAVEL="zone:map:x:y,...", OSPS3_SEED,

@@ -4,7 +4,7 @@ CC ?= gcc
 CXXFLAGS = -std=c++17 -O2 -g -Wall -Wextra -Wno-unused-parameter -Ithird_party -Isource -MMD -MP
 CFLAGS = -O2 -g -Ithird_party -MMD -MP
 # Everything but the PS3 platform code, plus the host stand-ins for it.
-SRC_CPP = source/main.cpp $(wildcard source/engine/*.cpp source/game/core/*.cpp source/game/world/*.cpp source/game/ui/*.cpp \
+SRC_CPP = source/main.cpp source/test_hooks.cpp $(wildcard source/engine/*.cpp source/game/core/*.cpp source/game/world/*.cpp source/game/ui/*.cpp \
           source/game/twm/*.cpp source/game/twm/apps/*.cpp) \
           $(wildcard source/platform/*.cpp source/platform/host/*.cpp)
 SRC_C = source/engine/xnb.c third_party/cJSON.c

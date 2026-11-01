@@ -3,8 +3,7 @@
 // and windows you can drag, minimize, maximize and close with the cursor
 // (right stick + R2).
 //
-// Stage 1: the OneShot window and the Shut Down icon. The other apps
-// (folders, documents, customization, ...) come later.
+// The apps themselves are in apps/; wm.cpp says which file does what.
 //
 // Coordinates are desktop pixels (640x360 on a 16:9 TV), drawn at 2x into
 // the 1280x720 desktop draw space, which is fitted to the TV.
