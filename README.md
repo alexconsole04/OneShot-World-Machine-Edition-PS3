@@ -4,6 +4,7 @@ An experimental PlayStation 3 port of OneShot World Machine Edition, running nat
 This repository does not contain game files, those must be supplied from your own copy of the game. This was tested with the Steam release of the game, PS4 and Switch remain untested.
 
 DISCLAIMER: This port was made with the assistance of Claude Opus 5.5, but all testing and debugging was done by me and tested on both RPCS3 and real PS3. If you do not want to use this port, that is perfectly fine and reasonable. The port has been verified to be beatable from start to finish on both normal and Solstice.
+TLDR: this is vibecoded slop for experimental purposes.
 
 # What isn't implemented
 * Controller vibration (the setting exists; DS3 actuators via ioPadSetActDirect).
