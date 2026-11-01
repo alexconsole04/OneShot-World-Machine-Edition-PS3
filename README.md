@@ -1,5 +1,5 @@
 # OneShot-World-Machine-Edition-PS3
-An experimental PlayStation 3 port of OneShot World Machine Edition, running natively on PS3 hardware. Implementing everything from the original PC release including event scripts, dialogue, world machine desktop, music, audio, etc. This port aims to research on what Claude can do with the right tools and resources to properly port a game. Game uses original decompiled C# code rewritten to C++ using ILSpy and the game's .exe.
+An experimental PlayStation 3 port of OneShot World Machine Edition, running natively on PS3 hardware. Implementing everything from the original PC release including event scripts, dialogue, world machine desktop, music, audio, etc. This port aims to research on what Claude can do with the right tools and resources to properly port a game. The port uses original decompiled C# code from the executable using ILSpy and rewritten to C++.
 
 This repository does not contain game files, those must be supplied from your own copy of the game. This was tested with the Steam release of the game, PS4 and Switch remain untested.
 
