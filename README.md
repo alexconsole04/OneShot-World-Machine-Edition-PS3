@@ -6,23 +6,24 @@ This repository does not contain game files, those must be supplied from your ow
 DISCLAIMER: This port was made with the assistance of Claude Opus 5.5, but all testing and debugging was done by me and tested on both RPCS3 and real PS3. If you do not want to use this port, that is perfectly fine and reasonable. The port has been verified to be beatable from start to finish on both normal and Solstice.
 TLDR: this is vibecoded slop for experimental purposes.
 
-# What isn't implemented
-* Controller vibration (the setting exists; DS3 actuators via ioPadSetActDirect).
-* Map transitions (SpecialTransition is a crossfade).
-* Fast travel minimap solstice glitch effect. (PC uses GlitchEffect on each piece).
-PS3 START/SELECT/trigger glyphs (currently still using PS4 buttons).
-The game's own wallpapers load on the main thread (a hitch when switching).
-Performance: dialogue hitches reported; look at the log's "slow frame" lines.
+# What New?
+* Some small quality of life features made such as using the d-pad to scroll through menus on the desktop.
+* Custom wallpapers. Use a USB device or FTP to import your own wallpapers. Guide can be found in the Help app on the desktop (wallpapers.txt)
+* Erase All Data. You have the option to erase your entire save data to revert back to a clean new save from the Customization app or through the PS3's save data utility.
 
 # How to Install
 You need to build the PKG yourself or use the provided PKG release. Either way should be fine.
 * Install the PKG onto your PS3 using FTP or USB.
 * Using a file manager or FTP, place the game files inside dev_hdd0/game/OSWM00001/USRDIR (both gamedata and content)
+* Missing files will be logged in the log found in the game folder upon launch. 
 
 # Known Issues
 * This port does not properly render graphics on RPCS3 due to emulation bugs. Please do not create issues if playing on RPCS3, it is the limitation of the emulator, not the port.
 
-* Some minor hitches and stutters occur during dialogue and items are obtained. This will be fixed at a later date.
+* The game has some slightly increased loading times due to PS3 read speeds on the HDD as opposed to the original release on PC and consoles. They can be sped up with an SSD.
+
+# Reporting Bugs
+If there are any bugs you run into playing the port, please make a bug report, following the guidelines.
 
 # Building
 See [BUILDING.md](BUILDING.md). Requires the [PS3 Custom Toolchain v0.22.0](https://github.com/FirebirdTA01/PS3DK/releases), CMake and Ninja.
