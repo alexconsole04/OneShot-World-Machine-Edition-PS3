@@ -79,7 +79,7 @@ OSPS3_CURSOR=x,y, OSPS3_WARP="frame:x,y ..." (moves the cursor mid-run),
 OSPS3_USB=<dir> (stand-in USB stick), OSPS3_WALLPAPERS=<dir>, OSPS3_PORT_DIR=<dir>.
 
 ## Versions and packaging
-1.00 is the first official release; updates go 1.01, 1.02, ... The version is in
+1.00 is the first official release (the builds tested as 1.00-1.04 before it were renumbered); updates go 1.01, 1.02, ...
 source/version.h only: the boot screen and log show it, and CMake writes it into PARAM.SFO
 (cmake/sfo.xml.in, APP_VER / VERSION "01.00"). A release is out/<version>/README.txt + pkg +
 fake.self, zipped.
