@@ -1,4 +1,5 @@
 #include "oneshot_window.h"
+#include "data_check.h"
 #include "loc.h"
 #include "../ui/modal.h"
 #include "../world/pictures.h"
@@ -51,16 +52,6 @@ bool OneshotWindow::NewSession() {
 
 bool OneshotWindow::Boot(bool showTitle) {
 	if (!NewSession()) return false;
-	// A quick check for an incomplete copy of the game files, so the title
-	// screen can say so before anything fails later.
-	static const char *needed[] = { "gamedata/maps/map1.tmx", "gamedata/maps/map2.tmx", "gamedata/music/MyBurdenIsLight.ogg",
-	                                "gamedata/sfx/menu_cursor.wav", "content/titles/normal.xnb", "content/npc/niko.xnb" };
-	int missing = 0;
-	for (const char *f : needed)
-		if (!sys::file_exists(f)) { sys::log("WARNING: missing %s\n", f); missing++; }
-	std::vector<std::string> maps;
-	if (sys::list_dir("gamedata/maps", maps)) sys::log("gamedata/maps holds %d files\n", (int)maps.size());
-	if (missing) dataWarning = "Some game files are missing - see oneshot_log.txt";
 	title.onChosen = [this](int choice) {
 		if (choice == TitleScreen::Exit) {
 			if (desktopMode) ExitGame();   // closes the window, back to the desktop
@@ -214,7 +205,11 @@ void OneshotWindow::Draw() {
 		title.Draw();
 		s.menus.Draw();
 		prof::mark("title draw");
-		if (!dataWarning.empty()) font::draw(font::Game, Vec2(16, 448), dataWarning, 0xff8080, 1.0f, 1);
+		if (int n = data_check::missing_count()) {   // an incomplete copy of the game files (data_check.cpp)
+			char msg[96];
+			snprintf(msg, sizeof(msg), "%d game files are missing - see oneshot_log.txt", n);
+			font::draw(font::Game, Vec2(16, 448), msg, 0xff8080, 1.0f, 1);
+		}
 	}
 }
 

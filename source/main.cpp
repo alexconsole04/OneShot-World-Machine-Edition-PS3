@@ -12,6 +12,7 @@
 #include "engine/overlay.h"
 #include "engine/util.h"
 #include "game/core/game_state.h"
+#include "game/core/data_check.h"
 #include "game/core/loc.h"
 #include "game/core/oneshot_window.h"
 #include "game/core/settings.h"
@@ -96,6 +97,7 @@ int main(int argc, const char **argv) {
 		gfx::shutdown();
 		return 0;
 	}
+	data_check::start();
 
 	{
 		// The PC seeds System.Random from the clock: every boot plays out

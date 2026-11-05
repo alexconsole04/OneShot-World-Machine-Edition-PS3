@@ -88,6 +88,11 @@ fake.self, zipped.
 - glyphs/pad_ps3_*.png: PS3 button art (START, SELECT, L1, R1, L2, R2), 32 px wide frames
   stacked vertically; drawn for the @MAINMENU/@MASHTEXT/@CLICK text tokens (font.cpp), loaded
   by gm as "port/glyphs/<name>". The other buttons use the game's PlayStation set.
+- game_files.txt: the paths of every file in a complete copy of the PC game (no contents),
+  made by tools/assets/make_game_file_list.py. data_check.cpp checks the player's copy against
+  it at start-up (background thread, one folder listing each) and logs each missing file; the
+  title screen and a desktop dialog say how many. Remake it if the port moves to a newer
+  version of the game.
 - wallpapers/: wallpapers that come with the port ("We Ride at Dawn"). A renamed one goes in
   RENAMED in custom_wallpapers.cpp, so old installs and saves follow it.
 

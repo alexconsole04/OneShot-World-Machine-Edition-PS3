@@ -5,6 +5,7 @@
 // and desktop_test_hooks.cpp (shared state in wm_state.h). The desktop::
 // calls (desktop.h) at the end are what main.cpp uses.
 #include "wm_state.h"
+#include "../core/data_check.h"
 #include "desktop.h"
 #include "apps/collection_apps.h"
 #include "apps/custom_wallpapers.h"
@@ -169,6 +170,20 @@ bool unminimize_enabled() {
 	for (auto &w : g_windows)
 		if (!w->Minimized()) return false;
 	return g_hasPreviousActive;
+}
+
+// Once per session, when the start-up check (data_check.cpp) found files
+// of the game missing: say so on the desktop.
+static void tell_missing_files() {
+	static bool told;
+	if (told || !data_check::done() || g_systemModal || g_fading) return;
+	told = true;
+	int n = data_check::missing_count();
+	if (!n) return;
+	char msg[200];
+	snprintf(msg, sizeof(msg), "%d of the game's %d files are missing.\nThe game may not work properly.\noneshot_log.txt lists them.", n,
+	         data_check::checked_count());
+	show_system_modal(MODAL_ERROR, msg);
 }
 
 void show_system_modal(int type, const std::string &msg, std::function<void(int)> callback, bool sound, bool canAutomash) {
@@ -376,6 +391,7 @@ static void update() {
 	bool dropping = g_drag && !cursor().Held();
 	bool anyMax = false;
 	for (auto &w : g_windows) anyMax |= w->Maximized();
+	tell_missing_files();
 	if (g_systemModal) g_systemModal->Update(false);
 	if (g_fading) {
 		g_fadeTimer++;

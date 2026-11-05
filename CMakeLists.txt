@@ -19,6 +19,7 @@ set(SOURCES
     source/engine/util.cpp
     source/engine/xml.cpp
     # Game: state, saves, settings, languages, scripts, the game window
+    source/game/core/data_check.cpp
     source/game/core/loc.cpp
     source/game/core/oneshot_window.cpp
     source/game/core/save.cpp

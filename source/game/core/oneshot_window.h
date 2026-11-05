@@ -89,7 +89,6 @@ private:
 	} border;
 	void UpdateBorder();
 	void UpdateWindowEffects();   // film puzzle and window shake
-	std::string dataWarning;
 };
 
 OneshotWindow &window();
