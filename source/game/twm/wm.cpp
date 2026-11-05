@@ -541,6 +541,11 @@ void close_all() {
 	g_niko.reset();
 	DocumentWindow::ClearRandomLetters();
 	flush_deletes();
+	// The restart faded the desktop to black: clear that, or the desktop the
+	// boot sequence brings back stays covered (only the cursor showed).
+	g_fadeOpacity = 0;
+	g_fading = false;
+	g_onFadeDone = nullptr;
 }
 
 } // namespace desktop
