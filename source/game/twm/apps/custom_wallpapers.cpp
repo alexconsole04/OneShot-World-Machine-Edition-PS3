@@ -255,10 +255,30 @@ bool custom_wallpaper_ready(const std::string &id) {
 	return g_done.count(key) != 0;
 }
 
+// The port's own wallpapers that were renamed (old file, new file). A pkg
+// update adds the new file but leaves the old one on the drive.
+static const char *const RENAMED[][2] = {
+	{ "Ride Until Dawn.png", "We Ride at Dawn.png" },   // 1.00: named after the achievement
+};
+
+std::string renamed_wallpaper_id(const std::string &id) {
+	for (auto &r : RENAMED)
+		if (id == std::string("custom:@") + r[0]) return std::string("custom:@") + r[1];
+	return id;
+}
+
+static void remove_renamed_files() {
+	for (auto &r : RENAMED) {
+		sys::remove_abs(sys::port_dir() + "/wallpapers/" + r[0]);
+		sys::remove_abs(sys::wallpaper_dir() + "/.thumbs/@" + r[0] + ".thumb");
+	}
+}
+
 void scan_custom_wallpapers() {
 	static bool installed;
 	if (!installed) {
 		gm::set_texture_source(make_texture);
+		remove_renamed_files();
 		installed = true;
 	}
 	g_list.clear();

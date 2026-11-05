@@ -15,7 +15,8 @@ namespace gfx {
 // Dither: the PC's DitherShader wipe (see set_dither); always opaque where drawn.
 // Multiply: dst *= src.rgb. Brighten: dst += dst * src.rgb (the desktop's
 // Brightness setting, the PC's HueShader "gamma" factor, as a final pass).
-enum class Blend : uint8_t { Normal, Additive, Dither, Multiply, Brighten };
+// Transition: the PC's TransitionShader (see set_transition_pattern).
+enum class Blend : uint8_t { Normal, Additive, Dither, Multiply, Brighten, Transition };
 
 struct Texture {
 	uint32_t w = 0, h = 0;
@@ -85,6 +86,10 @@ void set_plain_shader(bool on);
 // boot screen's top-left, TV pixels per dither cell, the wipe line (in
 // cells) and the 8x8 Bayer threshold texture (its red channel).
 void set_dither(float originX, float originY, float pxPerCell, float line, const Texture *bayer);
+// The pattern for Blend::Transition draws (its red channel), stretched over
+// the drawn texture: shader/transition_fp.fcg says how it fades. Blended like
+// Normal; without a pattern a Transition draw is a Normal one.
+void set_transition_pattern(const Texture *pattern);
 bool plain_shader();
 // Debug: wait for the RSX to finish every frame (no CPU/GPU overlap).
 void set_full_sync(bool on);

@@ -25,6 +25,29 @@ bool auto_trigger_raw(uint32_t b, int first, int interval) {
 	return n >= first && n % interval == 0;
 }
 
+// ------------------------------------------------------------------ vibration
+static bool vibrationOn = true;
+static float shakeStrength;
+static int shakeFrameTotal, shakeFrameTimer;
+
+void set_vibration_enabled(bool on) { vibrationOn = on; }
+
+void vibrate(float strength, int frames) {
+	if (!vibrationOn) return;
+	shakeFrameTotal = frames;
+	shakeFrameTimer = 0;
+	shakeStrength = strength;
+}
+
+float vibration_tick() {   // ControllerVibrationUpdate
+	float now = shakeStrength;
+	if (shakeFrameTotal > 0 && ++shakeFrameTimer >= shakeFrameTotal) {
+		shakeFrameTotal = shakeFrameTimer = 0;
+		shakeStrength = 0;
+	}
+	return now;
+}
+
 bool auto_trigger(uint32_t b, int first, int interval) {
 	if (b & suppress) return false;
 	return auto_trigger_raw(b, first, interval);

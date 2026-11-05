@@ -129,7 +129,7 @@ void CustomizeWindow::OnImportWallpapers() {
 	refresh_custom_wallpapers();
 	std::string msg;
 	if (r.devices == 0) {
-		msg = "No USB device was detected, please insert a USB device.";
+		msg = "No USB device was detected, please insert a USB device.\nUSB devices must be formatted as FAT32.";
 	} else if (r.sticks == 0) {
 		msg = "No OneShot/wallpapers folder was found on the USB device.\nSee Wallpapers.txt in the Help folder.";
 	} else {

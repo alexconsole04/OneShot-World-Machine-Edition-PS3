@@ -410,9 +410,17 @@ void IconGrid::OnDragDropped(DraggedItem *item, Vec2 pos) {
 
 // ===================================================================== wallpapers
 
+bool WallpaperInfo::Ready() const {
+	if (imageFile.empty()) return true;
+	if (is_custom_wallpaper(imageFile)) return custom_wallpaper_ready(imageFile);
+	bool missing;
+	return gm::texture_async(TextureName().c_str(), gm::DesktopWallpaper, &missing) || missing;
+}
+
 void WallpaperInfo::Draw(Rect area, Rect hole) const {
 	// area in desktop pixels; textures in draw-space pixels.
-	std::string name = "the_world_machine/wallpaper/" + imageFile;
+	if (imageFile.empty()) { box(area, bg); return; }
+	std::string name = TextureName();
 	const gfx::Texture *t = gm::texture(name.c_str(), gm::DesktopWallpaper);
 	Vec2 sp = space();
 	if (!t) { box(area, bg); return; }
@@ -503,12 +511,10 @@ void DesktopGrid::SetWallpaper(const std::string &id) {
 		if (metadata.empty()) { wallpaper.imageFile = "default"; return; }
 		return;
 	}
-	gm::clear_cache(gm::DesktopWallpaper);
 	wallpaper = *m;
 }
 
 void DesktopGrid::OverrideWallpaper(const WallpaperInfo &w) {
-	gm::clear_cache(gm::DesktopWallpaper);
 	if (!hasRemembered) remembered = wallpaper;
 	hasRemembered = true;
 	wallpaper = w;
@@ -516,13 +522,19 @@ void DesktopGrid::OverrideWallpaper(const WallpaperInfo &w) {
 
 void DesktopGrid::RestoreWallpaper() {
 	if (!hasRemembered) return;
-	gm::clear_cache(gm::DesktopWallpaper);
 	wallpaper = remembered;
 	hasRemembered = false;
 }
 
 void DesktopGrid::DrawDesktop(const Theme &th, Rect hole, bool drawIcons) {
-	wallpaper.Draw(Rect(0, 0, screen().x, screen().y), hole);
+	// A new wallpaper is read in the background (a 1080p one took a
+	// noticeable hitch on the PS3); the old one stays up until it's ready,
+	// then the old one's texture is let go.
+	if (wallpaper.Ready()) {
+		if (shown.imageFile != wallpaper.imageFile) gm::clear_cache_except(gm::DesktopWallpaper, wallpaper.TextureName());
+		shown = wallpaper;
+	}
+	shown.Draw(Rect(0, 0, screen().x, screen().y), hole);
 	if (drawIcons) IconGrid::Draw(th, Vec2(0, 0), 255);
 }
 

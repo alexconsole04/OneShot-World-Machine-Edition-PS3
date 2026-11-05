@@ -72,6 +72,9 @@ void set_dither(float ox, float oy, float cell, float line, const Texture *bayer
 	d_ox = ox; d_oy = oy; d_cell = cell != 0 ? cell : 1; d_line = line; d_bayer = bayer;
 }
 
+static const Texture *t_pattern;
+void set_transition_pattern(const Texture *pattern) { t_pattern = pattern; }
+
 void draw(const Texture *t, float dx, float dy, float dw, float dh,
           int sx, int sy, int sw, int sh, const Shade &s, Blend blend) {
 	if (!t || dw <= 0 || dh <= 0) return;
@@ -132,6 +135,15 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 				k = k < -1.1f ? -1.1f : k > 0.1f ? 0.1f : k;
 				if (k + b < 0.0f) continue;
 				c.r *= s.r; c.g *= s.g; c.b *= s.b; c.a = 1.0f;
+			} else if (blend == Blend::Transition && t_pattern) {
+				// transition_fp.fcg
+				int mx = (int)((sx + u * sw) / t->w * t_pattern->w), my = (int)((sy + v * sh) / t->h * t_pattern->h);
+				mx = clampi(mx, 0, t_pattern->w - 1);
+				my = clampi(my, 0, t_pattern->h - 1);
+				float pt = ((((const uint32_t *)t_pattern->mem)[my * t_pattern->w + mx] >> 16) & 255) / 255.0f;
+				float lo = 1.15625f * s.a - 0.15625f, hi = 1.15625f * s.a;
+				float k = (pt < lo ? lo : pt > hi ? hi : pt) - lo;
+				c.r *= s.r; c.g *= s.g; c.b *= s.b; c.a = 1.0f - k * 6.4f;
 			} else {
 				c = shade::apply(c, s.r, s.g, s.b, s.a, tr, tg, tb, hue);
 			}

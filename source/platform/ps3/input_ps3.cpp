@@ -70,6 +70,32 @@ static void stick(const padData &d, int &ox, int &oy) {
 	oy = (int)(y / mag * scaled * 100.0f);
 }
 
+// The DS3's motors: the large one runs at a speed (1-255), the small one is
+// on or off. XInput's two motors get the same strength on PC; here the
+// strength drives the large motor and a strong shake adds the small one.
+static void rumble(int pad, float strength) {
+	static int lastPad = -1;
+	static uint8_t lastLarge, lastSmall;
+	if (strength < 0) strength = 0;
+	if (strength > 1) strength = 1;
+	uint8_t large = (uint8_t)(strength * 255.0f + 0.5f), small = strength >= 0.5f ? 1 : 0;
+	if (pad != lastPad && lastPad >= 0 && (lastLarge || lastSmall)) {   // the pad changed: stop the old one
+		padActParam off;
+		memset(&off, 0, sizeof(off));
+		ioPadSetActDirect(lastPad, &off);
+		lastLarge = lastSmall = 0;
+	}
+	lastPad = pad;
+	if (pad < 0 || (large == lastLarge && small == lastSmall)) return;
+	padActParam p;
+	memset(&p, 0, sizeof(p));
+	p.small_motor = small;
+	p.large_motor = large;
+	ioPadSetActDirect(pad, &p);
+	lastLarge = large;
+	lastSmall = small;
+}
+
 void update() {
 	cellSysutilCheckCallback();
 	prev = cur;
@@ -84,8 +110,10 @@ void update() {
 		ioPadGetData(i, &pd);
 		if (pd.len > 0) { raw[i].d = pd; raw[i].valid = true; }
 	}
+	int active = -1;
 	for (int i = 0; i < MAX_PADS; i++) {
 		if (!raw[i].valid) continue;
+		active = i;
 		const padData &pd = raw[i].d;
 		if (pd.BTN_DOWN) cur |= BTN_DOWN;
 		if (pd.BTN_LEFT) cur |= BTN_LEFT;
@@ -111,6 +139,7 @@ void update() {
 		break;   // first connected pad drives the game
 	}
 	tick_hold_counters(cur);
+	rumble(active, vibration_tick());
 }
 
 bool held_raw(uint32_t b) { return (cur & b) != 0; }

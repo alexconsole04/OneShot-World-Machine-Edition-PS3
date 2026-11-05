@@ -8,6 +8,7 @@
 #include "event_runner.h"
 #include "player.h"
 #include "../../engine/gm.h"
+#include "../../platform/input.h"
 #include "../../platform/sys.h"
 #include "../core/game_state.h"
 #include "cJSON.h"
@@ -241,7 +242,8 @@ void TileMap::DrawEventRunners() {
 void TileMap::DrawMapTransition() {
 	if (totalChangeMapTime > 0) {
 		float alpha = (float)(totalChangeMapTime - changeMapTimer) / (float)totalChangeMapTime;
-		gm::draw_captured_window(alpha);
+		const gfx::Texture *pattern = transitionPattern.empty() ? nullptr : gm::texture(transitionPattern.c_str(), gm::Game);
+		gm::draw_captured_window(alpha, pattern);
 	}
 }
 
@@ -249,15 +251,17 @@ void TileMap::ChangeMap(int mapId, float x, float y, float time, Direction dir) 
 	Direction prev = player->GetDirection();
 	changeMapTimer = 0;
 	totalChangeMapTime = (int)(time * 60.0f);
+	transitionPattern.clear();   // a plain crossfade unless ExecuteMapTransition follows
 	gm::capture_window();   // SetUpMapTransitionFrame: the last presented frame
 	LoadMap(mapId, x, y, dir == Direction::None ? prev : dir);
 	UpdateCamera();
 }
 
 void TileMap::ExecuteMapTransition(const std::string &name) {
-	// SpecialTransition (transition-pattern wipe) is approximated by a crossfade.
-	static bool warned;
-	if (!warned) { warned = true; sys::log("map transition '%s': using crossfade\n", name.c_str()); }
+	// The frame captured by the last ChangeMap fades out through the pattern
+	// (GraphicsManager.BlendMode.SpecialTransition).
+	transitionPattern = "transitions/" + name;
+	gm::texture(transitionPattern.c_str(), gm::Game);   // read now, before the first frame draws it
 	changeMapTimer = 0;
 	totalChangeMapTime = 40;
 }
@@ -283,11 +287,11 @@ void TileMap::SetScreenTone(GameTone tone, int shiftTime) {
 	}
 }
 
-void TileMap::ScreenShake(int power, int speed, int duration, bool) {
+void TileMap::ScreenShake(int power, int speed, int duration, bool vibrate) {
 	shakePower = power;
 	shakeSpeed = speed;
 	shakeDuration = duration;
-	// Controller vibration: later (DS3 actuators via ioPadSetActDirect).
+	if (vibrate) input::vibrate(std::min(1.0f, sqrtf((float)(power * speed)) / 5.0f), duration);
 }
 
 void TileMap::SetPanorama(const std::string &name) {

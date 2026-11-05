@@ -225,6 +225,8 @@ static const char *const WALLPAPERS_HELP =
 	"You can use your own pictures as wallpapers.\n"
 	"\n"
 	"FROM A USB STICK\n"
+	"The stick must be formatted as FAT32, the only format the PS3 can read. Sticks formatted as exFAT or NTFS "
+	"are not detected.\n"
 	"1. On a USB stick, make a folder named OneShot, and inside it a folder named wallpapers.\n"
 	"2. Put your pictures in OneShot/wallpapers.\n"
 	"3. Plug the stick into the PS3, open Customize and press Import Wallpapers.\n"

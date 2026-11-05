@@ -1,7 +1,8 @@
-#include <stdio.h>
 #include "util.h"
 #include <algorithm>
 #include <ctype.h>
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 namespace util {
@@ -17,6 +18,19 @@ int random(int min, int max) {
 	x ^= x << 13; x ^= x >> 17; x ^= x << 5;
 	rng_state = x;
 	return min + (int)(x % (uint32_t)(max - min + 1));
+}
+
+float frandom(float min, float max) { return min + (max - min) * (random(0, 1000000) / 1000000.0f); }
+
+void apply_hue(float c[3], float h) {
+	const float k = 0.57735f;
+	float cs = cosf(h), sn = sinf(h), d = k * (c[0] + c[1] + c[2]) * (1 - cs);
+	float x = c[0], y = c[1], z = c[2];
+	float cx = k * z - k * y, cy = k * x - k * z, cz = k * y - k * x;   // cross((k,k,k), c)
+	c[0] = x * cs + cx * sn + k * d;
+	c[1] = y * cs + cy * sn + k * d;
+	c[2] = z * cs + cz * sn + k * d;
+	for (int i = 0; i < 3; i++) c[i] = c[i] < 0 ? 0 : c[i] > 1 ? 1 : c[i];
 }
 
 float lerp(float a, float b, float t) { return a + (b - a) * t; }

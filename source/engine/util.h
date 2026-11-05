@@ -6,7 +6,11 @@
 namespace util {
 // MathHelper.Random(min, max): inclusive on both ends.
 int random(int min, int max);
+float frandom(float min, float max);   // MathHelper.FRandom
 void seed(uint32_t s);
+// MathHelper.ApplyHue: rotates an RGB colour (0..1, clamped after) about
+// the grey axis by `hue` radians.
+void apply_hue(float rgb[3], float hue);
 float lerp(float a, float b, float t);
 std::string lower(std::string s);
 bool starts_with(const std::string &s, const char *prefix);

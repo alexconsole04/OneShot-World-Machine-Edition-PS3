@@ -22,6 +22,7 @@ const gfx::Texture *texture(const char *name, CacheType cache = Game);
 Vec2 texture_size(const char *name, CacheType cache = Game);
 bool texture_exists(const char *name, CacheType cache = Game);
 void clear_cache(CacheType cache);
+void clear_cache_except(CacheType cache, const std::string &keep);
 // IsPixelSolid: that texel's alpha is over 128 (false outside the texture).
 bool pixel_solid(const char *name, Vec2 texel, CacheType cache = Game);
 // Maps a texture name to the current language's version of it (set by the
@@ -33,6 +34,11 @@ void set_texture_source(gfx::Texture *(*fn)(const std::string &name));
 // Read a texture in the background ahead of use (content/<name>.xnb); the
 // next texture() call for it finds it ready, or waits for that read.
 void prefetch(const char *name, CacheType cache = Game);
+// The texture if it's ready; otherwise starts reading it in the background
+// (ahead of prefetches) and returns null. *missing: there's no such file.
+// Names the texture source makes, or a language has its own version of, are
+// loaded the usual way.
+const gfx::Texture *texture_async(const char *name, CacheType cache, bool *missing = nullptr);
 // Each frame: turns finished background reads into textures.
 void pump_prefetch();
 // Forget that a name was missing (its source can make it now).
@@ -72,9 +78,10 @@ void color_box(Rect r, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha,
 
 // Map-transition snapshot (GraphicsManager.SetUpMapTransitionFrame /
 // DrawMapTransitionFrame): grab the last presented 640x480 window, then draw
-// it over the new map with fading alpha.
+// it over the new map with fading alpha, or (with a pattern texture from
+// content/transitions, BlendMode.SpecialTransition) fading out through it.
 void capture_window();
-void draw_captured_window(float alpha);
+void draw_captured_window(float alpha, const gfx::Texture *pattern = nullptr);
 
 // Scaling of the 640x480 window to the TV (1080p is 2.25x, 720p 1.5x):
 //  SHARP   draw at a whole-number scale (2x at both 1080p and 720p), then

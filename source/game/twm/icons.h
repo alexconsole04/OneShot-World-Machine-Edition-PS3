@@ -92,6 +92,10 @@ struct WallpaperInfo {
 	int mode = STRETCH;
 	Color bg = Color(0, 0, 0);
 	void Draw(Rect area, Rect hole) const;   // hole: skip what the game's picture will cover
+	std::string TextureName() const { return "the_world_machine/wallpaper/" + imageFile; }
+	// The picture can be drawn now. If not, it's being read (or decoded, for
+	// the player's own) in the background.
+	bool Ready() const;
 };
 
 // TWMDesktopManager: the desktop's icon grid and wallpaper.
@@ -124,6 +128,8 @@ private:
 	std::vector<WallpaperInfo> metadata;
 	WallpaperInfo wallpaper, remembered;
 	bool hasRemembered = false;
+	// The wallpaper last drawn: it stays up while a new one is being read.
+	WallpaperInfo shown;
 };
 
 } // namespace twm

@@ -5,6 +5,7 @@
 // + right, x=OK, o=Cancel, s=Run, i=Triangle, m=Start,
 // e=SELECT, l=L1, k=R1, '.' = idle. Script end => quit.
 #include "../input.h"
+#include "../sys.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,6 +69,10 @@ void update() {
 	cur = steps[step_i].buttons;
 	cur_rs = steps[step_i].rs;
 	tick_hold_counters(cur);
+	static float lastRumble;
+	float r = vibration_tick();
+	if (r != lastRumble) sys::log("vibration: %.2f\n", r);   // host tests check this
+	lastRumble = r;
 	if (--step_left <= 0) {
 		step_i++;
 		if (step_i < steps.size()) step_left = steps[step_i].frames;

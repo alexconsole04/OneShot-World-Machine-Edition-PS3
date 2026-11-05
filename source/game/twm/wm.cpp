@@ -479,8 +479,7 @@ bool ready() { return twm::g_ready; }
 bool wallpaper_ready() {
 	using namespace twm;
 	if (!g_ready || !g_desktop) return true;
-	const std::string &id = g_desktop->Showing().imageFile;
-	return !is_custom_wallpaper(id) || custom_wallpaper_ready(id);
+	return g_desktop->Showing().Ready();
 }
 void update() {
 	twm::update();

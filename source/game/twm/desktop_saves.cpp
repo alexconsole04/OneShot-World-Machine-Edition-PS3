@@ -1,6 +1,7 @@
 // desktop_saves.cpp - desktop.dat and fs.dat: writing them (only once the
 // tutorial is complete) and reading desktop.dat back.
 #include "wm_state.h"
+#include "apps/custom_wallpapers.h"
 #include "../../engine/audio.h"
 #include "../../engine/gm.h"
 #include "../../platform/sys.h"
@@ -69,7 +70,8 @@ bool load_desktop(bool *tutorialCompleted) {
 		                                                      (int)cJSON_GetNumberValue(cJSON_GetObjectItemCaseSensitive(it, "Y"))) });
 	g_desktop->SetLayout(layout);
 	const cJSON *wp = cJSON_GetObjectItemCaseSensitive(o, "currentWallpaper");
-	g_desktop->SetWallpaper(cJSON_IsString(wp) && g_desktop->WallpaperMeta(wp->valuestring) ? wp->valuestring : "default");
+	std::string wallpaper = cJSON_IsString(wp) ? renamed_wallpaper_id(wp->valuestring) : "";
+	g_desktop->SetWallpaper(g_desktop->WallpaperMeta(wallpaper) ? wallpaper : "default");
 	g_desktop->inSolstice = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "inSolstice"));
 	if (tutorialCompleted) {
 		const cJSON *tc = cJSON_GetObjectItemCaseSensitive(o, "tutorialCompleted");

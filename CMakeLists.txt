@@ -15,6 +15,7 @@ set(SOURCES
     source/engine/mixer.cpp
     source/engine/overlay.cpp
     source/engine/ui.cpp
+    source/engine/glitch_effect.cpp
     source/engine/util.cpp
     source/engine/xml.cpp
     # Game: state, saves, settings, languages, scripts, the game window
@@ -99,13 +100,31 @@ ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_vp.vcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/sprite_fp.fcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/plain_fp.fcg)
 ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/dither_fp.fcg)
+ps3_add_cg_shader_rsxcgc(oneshot-ps3 shaders/transition_fp.fcg)
 
 ps3_add_self(oneshot-ps3)
 # XMB extras (PIC1.PNG background, SND0.AT3 looping ambience) are copied
 # from pkg_files/ (with the port's own files under USRDIR/port). SND0.AT3 is
 # made by tools/assets/mk_snd0.py with atracdenc.
+# PARAM.SFO (cmake/sfo.xml.in): APP_VER / VERSION come from source/version.h
+# ("1.00" -> "01.00").
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS source/version.h)
+file(STRINGS source/version.h _ver_line REGEX "define OSPS3_VERSION")
+string(REGEX MATCH "\"([0-9]+)\\.([0-9]+)\"" _ver_match "${_ver_line}")
+if(NOT _ver_match)
+    message(FATAL_ERROR "source/version.h: OSPS3_VERSION is not \"<major>.<minor>\"")
+endif()
+set(_ver_major "${CMAKE_MATCH_1}")
+set(_ver_minor "${CMAKE_MATCH_2}")
+string(LENGTH "${_ver_major}" _len)
+if(_len LESS 2)
+    set(_ver_major "0${_ver_major}")
+endif()
+set(OSPS3_SFO_VERSION "${_ver_major}.${_ver_minor}")
+configure_file(cmake/sfo.xml.in ${CMAKE_CURRENT_BINARY_DIR}/sfo.xml @ONLY)
 ps3_add_pkg(oneshot-ps3
     TITLE     "OneShot: World Machine Edition"
+    SFOXML    "${CMAKE_CURRENT_BINARY_DIR}/sfo.xml"
     ICON      "${CMAKE_CURRENT_SOURCE_DIR}/pkg_files/ICON0.PNG"
     APPID     "OSWM00001"
     CONTENTID "UP0001-OSWM00001_00-ONESHOTPS3PORT00")

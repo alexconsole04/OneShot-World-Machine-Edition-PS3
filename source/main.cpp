@@ -1,11 +1,12 @@
 // main.cpp - OneShot: World Machine Edition, PS3 port: start-up and the main loop.
 //
-// Debug controls (PS3): SELECT = toggle the debug overlay (hold 1 s: mark the
-// log). While the overlay is shown: L1 = map switcher, R1 = texture viewer.
-// In the texture viewer: R2/L2/R3/L3 = renderer diagnostics, Circle = plain
-// shader.
+// Debug controls (PS3): L1 + R1 + SELECT = debug overlay, SELECT = close it;
+// hold SELECT for a second to mark the log. While the overlay is shown:
+// L1 = map switcher, R1 = texture viewer. In the texture viewer:
+// R2/L2/R3/L3 = renderer diagnostics, Circle = plain shader.
 // Host test switches (OSPS3_*) are read in test_hooks.cpp.
 #include "test_hooks.h"
+#include "version.h"
 #include "engine/audio.h"
 #include "engine/gm.h"
 #include "engine/overlay.h"
@@ -35,7 +36,6 @@
 #include <sys/process.h>
 #endif
 
-#define OSPS3_VERSION "m27"
 
 namespace script_trace { void dump(); }   // event_runner.cpp: the last script commands run
 
@@ -86,7 +86,7 @@ int main(int argc, const char **argv) {
 	sys::init_log();
 	std::set_new_handler(on_out_of_memory);
 	std::set_terminate(on_terminate);
-	sys::log("OneShot PS3 port %s (built %s %s)\n", OSPS3_VERSION, __DATE__, __TIME__);
+	sys::log("OneShot PS3 port v%s (built %s %s)\n", OSPS3_VERSION, __DATE__, __TIME__);
 	if (!gfx::init()) return 1;
 	gm::init();
 	input::init();
@@ -119,7 +119,7 @@ int main(int argc, const char **argv) {
 		sys::log("heap: %d MB in use after loading sound effects\n", sys::heap_used_kb() / 1024);
 	}
 	if (!window().Boot(false)) { fatal_screen("Could not read gamedata/oneshot_tilesets.json"); return 0; }
-	boot::set_version("OneShot PS3 port " OSPS3_VERSION);
+	boot::set_version("OneShot PS3 port v" OSPS3_VERSION);
 	if (bootSequence) boot::start();
 	else {
 		desktop::init();
@@ -169,11 +169,22 @@ int main(int argc, const char **argv) {
 		}
 		TileMap *mp = &window().Map();
 		bool mapMenu = debug_map_menu::is_open();
-		// SELECT: tap = debug overlay, hold one second = mark the log (a bug
-		// report bookmark with the game state and the last script commands).
+		// The debug overlay is hidden: L1 + R1 + SELECT (in any order) opens it,
+		// a tap of SELECT closes it (and the texture viewer). Holding SELECT for
+		// a second marks the log at any time (a bug report bookmark with the
+		// game state and the last script commands).
 		static int selHeld;
+		static bool comboWasHeld;
+		bool comboHeld = input::held_raw(input::BTN_L1) && input::held_raw(input::BTN_R1) && input::held_raw(input::BTN_SELECT);
+		bool justOpened = comboHeld && !comboWasHeld && !show_overlay && !tex_view && !mapMenu;
+		if (justOpened) {
+			show_overlay = true;
+			selHeld = 1000;   // letting go of SELECT now neither closes it nor marks the log
+			sys::log("debug overlay opened\n");
+		}
+		comboWasHeld = comboHeld;
 		if (input::held(input::BTN_SELECT)) {
-			if (mapMenu && selHeld == 0) selHeld = 1000;   // closing the map switcher: neither toggle nor mark
+			if (mapMenu && selHeld == 0) selHeld = 1000;   // closing the map switcher: neither close nor mark
 			if (++selHeld == 60) {
 				static int marks;
 				TileMap &m = window().Map();
@@ -191,11 +202,12 @@ int main(int argc, const char **argv) {
 				sys::log("=== end of mark %d ===\n", marks);
 			}
 		} else {
-			if (selHeld > 0 && selHeld < 60 && !mapMenu) show_overlay = !show_overlay;
+			if (selHeld > 0 && selHeld < 60 && !mapMenu) show_overlay = tex_view = false;
 			selHeld = 0;
 		}
 		// Diagnostics only while the overlay is up: the face buttons belong to the game.
-		bool dbg = (show_overlay || tex_view) && !mapMenu;
+		// (Not on the frame it opens: L1 or R1 was part of the shortcut.)
+		bool dbg = (show_overlay || tex_view) && !mapMenu && !justOpened;
 		// Renderer diagnostics only in the texture viewer, where the game is
 		// paused: on the overlay, Circle / L2 / L3 are also game buttons, and
 		// Circle once switched the shader that draws screen tones (fades) off.
@@ -329,7 +341,7 @@ int main(int argc, const char **argv) {
 			              layer_names[map.debugLayers]);
 			overlay::text(16, 196, 2, 0xff90ff, "shader: %s   R1: texture viewer (renderer switches are in there)",
 			              gfx::plain_shader() ? "PLAIN" : "full");
-			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: hide   hold SELECT: mark the log");
+			overlay::text(16, 226, 2, 0xa0a0a0, "L1: map switcher   SELECT: close   hold SELECT: mark the log");
 			overlay::text(16, 256, 2, 0xffc080, "script: %s  parallel %d  common %d  pictures %d",
 			              map.IsInScript() ? "RUNNING" : "idle", map.ParallelRunnerCount(), map.CommonEventCount(),
 			              pictures().Count());

@@ -1,9 +1,5 @@
 // fast_travel_menu.cpp - port of OneShotMG.src.Menus.FastTravelMenu and the
 // data half of FastTravelManager (minimap pieces, edges, zone names).
-//
-// Not ported: during the solstice glitch the PC draws the minimap pieces
-// through GlitchEffect; here they're drawn plainly (the chromatic
-// aberration still runs, twice as strong, like the PC's).
 #include "menus.h"
 #include "../core/game_state.h"
 #include "../core/json_file.h"
@@ -167,6 +163,11 @@ void FastTravelMenu::Open() {
 	static const std::vector<Piece> none;
 	auto z = zones.find(zone);
 	pieces = z != zones.end() ? &z->second : &none;
+	glitches.clear();
+	for (const Piece &p : *pieces) {
+		Vec2 size = p.mapId > 0 ? gm::texture_size(("ui/minimap/" + p.image).c_str()) : Vec2(16, 16);
+		glitches.emplace_back(size, 50, 60, 180, 20);
+	}
 	current = map->GetMapID();
 	if (!IsOption(current) && !options.empty()) current = options[0];
 	edges.clear();
@@ -260,6 +261,8 @@ void FastTravelMenu::Update() {
 		shake = Vec2();
 	}
 	if (++arrowAnimTimer >= 40) arrowAnimTimer = 0;
+	if (state->solstice_glitch_time())
+		for (auto &g : glitches) g.Update();
 }
 
 void FastTravelMenu::DrawMinimap(float a) {
@@ -268,15 +271,26 @@ void FastTravelMenu::DrawMinimap(float a) {
 	float tr = 0.33f, tg = 0.3f, tb = 0.82f;
 	if (zone == 1) { tr = 0.2f; tg = 0.66f; tb = 0.45f; }
 	else if (zone >= 2) { tr = 0.84f; tg = 0.13f; tb = 0.4f; }
+	bool glitching = state->solstice_glitch_time();
 	for (int pass = chroma ? 0 : 1; pass < 2; pass++) {
-		for (const Piece &p : *pieces) {
+		for (size_t i = 0; i < pieces->size(); i++) {
+			const Piece &p = (*pieces)[i];
 			if (!IsOption(p.mapId)) continue;
 			const gfx::Texture *t = gm::texture(("ui/minimap/" + p.image).c_str());
 			if (!t) continue;
 			bool sel = !options.empty() && current == p.mapId;
 			float r = sel ? 1 : tr, g = sel ? 1 : tg, b = sel ? 1 : tb;
 			Rect src(0, 0, (int)t->w, (int)t->h);
-			if (pass == 0) {
+			if (glitching && i < glitches.size()) {
+				const GlitchEffect &ge = glitches[i];
+				if (pass == 0) {
+					ge.Draw(t, p.offset + aberr[0], a / 2, r, 0, 0, gfx::Blend::Additive);
+					ge.Draw(t, p.offset + aberr[1], a / 2, 0, g, 0, gfx::Blend::Additive);
+					ge.Draw(t, p.offset + aberr[2], a / 2, 0, 0, b, gfx::Blend::Additive);
+				} else {
+					ge.Draw(t, sel ? p.offset + shake : p.offset, a, r, g, b);
+				}
+			} else if (pass == 0) {
 				gm::blit(t, p.offset + aberr[0], src, a / 2, 0, gfx::Blend::Additive, 2, GameTone(), r, 0, 0);
 				gm::blit(t, p.offset + aberr[1], src, a / 2, 0, gfx::Blend::Additive, 2, GameTone(), 0, g, 0);
 				gm::blit(t, p.offset + aberr[2], src, a / 2, 0, gfx::Blend::Additive, 2, GameTone(), 0, 0, b);

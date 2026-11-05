@@ -1,0 +1,21 @@
+// transition_fp.fcg - the PC build's TransitionShader (map transitions with
+// a pattern, e.g. "mosaic"). The old frame is drawn over the new map; the
+// vertex alpha runs 1 -> 0 over the transition and in_tone.xy is the
+// position in the pattern (0..1 across the window). A pixel fades out as the
+// alpha falls past the pattern's brightness there, over a band 0.15625 wide:
+//   lo = 1.15625 a - 0.15625,  out alpha = 1 - (clamp(t, lo, lo + 0.15625) - lo) * 6.4
+void main(
+	float2 in_texcoord        : TEXCOORD0,
+	float4 in_color           : TEXCOORD1,
+	float4 in_tone            : TEXCOORD2,
+	uniform sampler2D tex     : TEXUNIT0,
+	uniform sampler2D pattern : TEXUNIT1,
+	out float4 out_color      : COLOR)
+{
+	float t = tex2D(pattern, in_tone.xy).r;
+	float a = in_color.a;
+	float lo = 1.15625f * a - 0.15625f;
+	float x = min(max(t, lo), 1.15625f * a) - lo;
+	float4 c = tex2D(tex, in_texcoord);
+	out_color = float4(c.rgb * in_color.rgb, 1.0f - x * 6.4f);
+}

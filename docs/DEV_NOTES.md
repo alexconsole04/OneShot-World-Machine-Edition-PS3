@@ -78,13 +78,23 @@ OSPS3_OPEN=customize|badges|friends|gallery|musicbox|timer|controls|folder:<path
 OSPS3_CURSOR=x,y, OSPS3_WARP="frame:x,y ..." (moves the cursor mid-run),
 OSPS3_USB=<dir> (stand-in USB stick), OSPS3_WALLPAPERS=<dir>, OSPS3_PORT_DIR=<dir>.
 
-## Packaging
-out/mNN/README.txt + pkg + fake.self, zipped. Version string is in source/main.cpp.
+## Versions and packaging
+1.00 is the first official release; updates go 1.01, 1.02, ... The version is in
+source/version.h only: the boot screen and log show it, and CMake writes it into PARAM.SFO
+(cmake/sfo.xml.in, APP_VER / VERSION "01.00"). A release is out/<version>/README.txt + pkg +
+fake.self, zipped.
 
-## Not ported yet / ideas
-- Controller vibration (the setting exists; DS3 actuators via ioPadSetActDirect).
-- Map transitions (SpecialTransition is a crossfade).
-- Fast travel minimap during the solstice glitch draws plainly (PC uses GlitchEffect on each piece).
-- PS3 START/SELECT/trigger glyphs (the user is drawing them; PS4 OPTIONS stands in for START).
-- The game's own wallpapers load on the main thread (a hitch when switching).
-- Performance: dialogue hitches reported; look at the log's "slow frame" lines.
+## Port-only files (pkg_files/USRDIR/port)
+- glyphs/pad_ps3_*.png: PS3 button art (START, SELECT, L1, R1, L2, R2), 32 px wide frames
+  stacked vertically; drawn for the @MAINMENU/@MASHTEXT/@CLICK text tokens (font.cpp), loaded
+  by gm as "port/glyphs/<name>". The other buttons use the game's PlayStation set.
+- wallpapers/: wallpapers that come with the port ("We Ride at Dawn"). A renamed one goes in
+  RENAMED in custom_wallpapers.cpp, so old installs and saves follow it.
+
+## Debug overlay (hidden)
+L1 + R1 + SELECT opens it, SELECT closes it; holding SELECT for a second marks the log at any
+time. While it's up: L1 = map switcher, R1 = texture viewer. Host input: "lke 5" opens it.
+
+## Open questions / ideas
+- Dragging the clover window sometimes stutters (reported once, not diagnosed).
+- Performance: check the log's "slow frame" lines in players' logs.

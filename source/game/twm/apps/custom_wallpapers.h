@@ -24,6 +24,8 @@ static inline bool is_builtin_custom_wallpaper(const std::string &id) { return i
 // Reads the wallpapers folder again. Also installs the texture source that
 // draws them (once).
 void scan_custom_wallpapers();
+// A saved wallpaper id, updated for wallpapers the port has renamed since.
+std::string renamed_wallpaper_id(const std::string &id);
 const std::vector<CustomWallpaper> &custom_wallpapers();
 std::string custom_wallpaper_name(const std::string &id);
 

@@ -2,6 +2,8 @@
 #include "../platform/sys.h"
 #include "xnb.h"
 #include "../platform/loader.h"
+#include "../platform/user_files.h"
+#include "stb_image.h"   // the implementation is in custom_wallpapers.cpp
 
 #include <math.h>
 #include <stdio.h>
@@ -56,7 +58,28 @@ static gfx::Texture *from_xnb(const std::string &rel, uint8_t *data, size_t size
 	return t;
 }
 
+// The port's own art (button glyphs): "port/<path>" is <port dir>/<path>.png.
+static const char PORT_PREFIX[] = "port/";
+
+static bool is_port_art(const std::string &name) { return name.compare(0, sizeof(PORT_PREFIX) - 1, PORT_PREFIX) == 0; }
+
+static gfx::Texture *load_port_art(const std::string &name) {
+	std::vector<uint8_t> file;
+	if (!sys::read_abs(sys::port_dir() + "/" + name.substr(sizeof(PORT_PREFIX) - 1) + ".png", file)) return nullptr;
+	int w, h, n;
+	unsigned char *rgba = stbi_load_from_memory(file.data(), (int)file.size(), &w, &h, &n, 4);
+	if (!rgba) return nullptr;
+	std::vector<uint32_t> argb((size_t)w * h);
+	for (size_t i = 0; i < argb.size(); i++) {
+		const unsigned char *p = rgba + i * 4;
+		argb[i] = p[3] ? (uint32_t)p[3] << 24 | p[0] << 16 | p[1] << 8 | p[2] : 0;
+	}
+	stbi_image_free(rgba);
+	return gfx::create_texture((uint32_t)w, (uint32_t)h, argb.data());
+}
+
 static gfx::Texture *load(const std::string &name) {
+	if (is_port_art(name)) return load_port_art(name);
 	std::string rel = "content/" + name + ".xnb";
 	uint8_t *data;
 	size_t size;
@@ -129,13 +152,37 @@ const gfx::Texture *texture(const char *name, CacheType cache) {
 	return t;
 }
 
-void prefetch(const char *name, CacheType cache) {
-	std::string key(name);
-	if (caches[cache].count(key) || missing.count(key) || pending.count(key)) return;
-	if (strstr(name, "custom:")) return;                       // made by the texture source, not read
-	if (g_redirect && g_redirect(key) != key) return;          // a language's own version: loaded the usual way
+// Names that are read from content/<name>.xnb (so can be read ahead).
+static bool readable_ahead(const std::string &key) {
+	if (strstr(key.c_str(), "custom:")) return false;            // made by the texture source, not read
+	if (is_port_art(key)) return false;                          // the port's own PNGs: small, read when drawn
+	if (g_redirect && g_redirect(key) != key) return false;      // a language's own version: loaded the usual way
+	return true;
+}
+
+static void read_ahead(const std::string &key, CacheType cache, bool lowPriority) {
+	if (caches[cache].count(key) || missing.count(key) || pending.count(key) || !readable_ahead(key)) return;
 	std::string rel = "content/" + key + ".xnb";   // not checked here: a missing file just fails on the loader thread
-	pending.emplace(key, Pending{ sys::load_async(rel.c_str(), true), cache });
+	pending.emplace(key, Pending{ sys::load_async(rel.c_str(), lowPriority), cache });
+}
+
+void prefetch(const char *name, CacheType cache) { read_ahead(name, cache, true); }
+
+const gfx::Texture *texture_async(const char *name, CacheType cache, bool *isMissing) {
+	std::string key(name);
+	if (isMissing) *isMissing = false;
+	auto it = caches[cache].find(key);
+	if (it != caches[cache].end()) {
+		it->second.gen = generation[cache];
+		return it->second.t;
+	}
+	if (!readable_ahead(key)) return texture(name, cache);
+	if (missing.count(key)) {
+		if (isMissing) *isMissing = true;
+		return nullptr;
+	}
+	read_ahead(key, cache, false);
+	return nullptr;
 }
 
 void pump_prefetch() {
@@ -184,6 +231,15 @@ int cache_list(CacheType cache, const char **names, const gfx::Texture **texs, i
 void clear_cache(CacheType cache) {
 	for (auto &kv : caches[cache]) gfx::destroy_texture(kv.second.t);
 	caches[cache].clear();
+}
+
+void clear_cache_except(CacheType cache, const std::string &keep) {
+	auto &c = caches[cache];
+	for (auto it = c.begin(); it != c.end();) {
+		if (it->first == keep) { ++it; continue; }
+		gfx::destroy_texture(it->second.t);
+		it = c.erase(it);
+	}
 }
 
 void new_generation(CacheType cache, int keep) {
@@ -378,11 +434,13 @@ void end_window() {
 	g_glitch = nullptr;
 }
 
-void draw_captured_window(float alpha) {
+void draw_captured_window(float alpha, const gfx::Texture *pattern) {
 	if (!captured) return;
 	gfx::Shade s;
 	s.a = alpha;
-	gfx::draw(captured, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)captured->w, (int)captured->h, s, gfx::Blend::Normal);
+	gfx::set_transition_pattern(pattern);
+	gfx::draw(captured, OX, OY, 640.0f * S, 480.0f * S, 0, 0, (int)captured->w, (int)captured->h, s,
+	          pattern ? gfx::Blend::Transition : gfx::Blend::Normal);
 }
 
 void blit_screen(const gfx::Texture *t, float x, float y, float w, float h, Rect src,

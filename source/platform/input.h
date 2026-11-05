@@ -55,4 +55,12 @@ bool auto_trigger_raw(uint32_t b, int first, int interval);   // ignores the gam
 // Backends call this at the end of update() with the new button state.
 void tick_hold_counters(uint32_t cur);         // PS button > Quit Game, or host script end
 
+// Controller vibration (InputManager.VibrateController): strength 0..1 for
+// `frames` frames. Nothing happens while it's turned off in the settings.
+void vibrate(float strength, int frames);
+void set_vibration_enabled(bool on);
+// Backends call this once per update(): the strength to run the motors at
+// this frame (it counts the frames down).
+float vibration_tick();
+
 } // namespace input

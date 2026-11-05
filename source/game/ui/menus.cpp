@@ -6,6 +6,7 @@
 #include "../../engine/ui.h"
 #include "../../engine/font.h"
 #include "../core/loc.h"
+#include "../core/oneshot_window.h"
 #include "modal.h"
 #include "boot_sequence.h"
 #include "../core/settings.h"
@@ -471,8 +472,15 @@ void SettingsMenu::Update() {
 			case Border: s.fullscreenBorder = !s.fullscreenBorder; break;
 			case Movement: s.defaultMovementRun = !s.defaultMovementRun; break;
 			case Colorblind: s.colorblindMode = !s.colorblindMode; break;
-			case Vibration: s.vibration = !s.vibration; break;
-			case ScreenTear: s.screenTear = !s.screenTear; break;
+			case Vibration:
+				s.vibration = !s.vibration;
+				s.ApplyInput();
+				if (s.vibration) input::vibrate(0.3f, 20);   // so you feel it's on
+				break;
+			case ScreenTear:
+				s.screenTear = !s.screenTear;
+				if (s.screenTear) window().StartGlitch(20, 0.05f, false);   // so you see it's on
+				break;
 			case ChromaAberration: s.chromaAberration = !s.chromaAberration; break;
 			case Automash: s.automash = !s.automash; break;
 			}

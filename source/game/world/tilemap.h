@@ -202,6 +202,7 @@ private:
 	Direction scrollDirection = Direction::None;
 	int scrollSpeed = 0, scrollDistanceRemaining = 0;
 	int changeMapTimer = 0, totalChangeMapTime = 0;
+	std::string transitionPattern;   // content/transitions/<name> while one runs, else ""
 	bool wasMapChangedDuringUpdate = false;
 	std::map<int, CommonEvent> commonEvents;
 	std::unique_ptr<EventRunner> mainEventRunner;

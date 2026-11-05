@@ -178,18 +178,24 @@ static int char_width(Type t, uint32_t c) {
 }
 
 // ------------------------------------------------------------------ button glyphs
-struct Token { const char *token; const char *art; const char *fallback; };
-// PS3 pad: the PlayStation glyph set the PC build ships (glyph_map_playstation).
+// The art is the port's PS3 drawings (pkg_files/USRDIR/port/glyphs) where it
+// has one, otherwise the PlayStation set the PC build ships
+// (glyph_map_playstation) in the game's content/glyphs.
+struct Token { const char *token; const char *art; const char *gameArt; const char *fallback; };
 static const Token tokens[] = {
-	{ "@MOVEMOUSE", "glyphs/pad_rstick", "(R-stick)" },
-	{ "@MAINMENU", "glyphs/pad_ps4_options", "(START)" },
-	{ "@MASHTEXT", "glyphs/pad_l2", "(L2)" },
-	{ "@INVENTORY", "glyphs/pad_triangle", "(Triangle)" },
-	{ "@CANCEL", "glyphs/pad_circle", "(Circle)" },
-	{ "@CLICK", "glyphs/pad_r2", "(R2)" },
-	{ "@MOVE", "glyphs/pad_lstick", "(D-pad)" },
-	{ "@RUN", "glyphs/pad_square", "(Square)" },
-	{ "@OK", "glyphs/pad_x", "(Cross)" },
+	{ "@MOVEMOUSE", nullptr, "glyphs/pad_rstick", "(R-stick)" },
+	{ "@MAINMENU", "port/glyphs/pad_ps3_start", "glyphs/pad_ps4_options", "(START)" },
+	{ "@MASHTEXT", "port/glyphs/pad_ps3_l2", "glyphs/pad_l2", "(L2)" },
+	{ "@INVENTORY", nullptr, "glyphs/pad_triangle", "(Triangle)" },
+	{ "@CANCEL", nullptr, "glyphs/pad_circle", "(Circle)" },
+	{ "@CLICK", "port/glyphs/pad_ps3_r2", "glyphs/pad_r2", "(R2)" },
+	{ "@MOVE", nullptr, "glyphs/pad_lstick", "(D-pad)" },
+	{ "@RUN", nullptr, "glyphs/pad_square", "(Square)" },
+	{ "@OK", nullptr, "glyphs/pad_x", "(Cross)" },
+	// The port's own buttons (not in the game's text).
+	{ "@PS3_L1", "port/glyphs/pad_ps3_l1", "glyphs/pad_l1", "(L1)" },
+	{ "@PS3_R1", "port/glyphs/pad_ps3_r1", "glyphs/pad_r1", "(R1)" },
+	{ "@PS3_SELECT", "port/glyphs/pad_ps3_select", "glyphs/pad_ps4_share", "(SELECT)" },
 };
 
 int glyph_token_at(const std::string &s, size_t i) {
@@ -214,7 +220,9 @@ const char *glyph_fallback(const std::string &token) {
 }
 
 static const gfx::Texture *glyph_art(const Token *t) {
-	return t ? gm::texture(t->art, gm::TheWorldMachine) : nullptr;
+	if (!t) return nullptr;
+	const gfx::Texture *art = t->art ? gm::texture(t->art, gm::TheWorldMachine) : nullptr;
+	return art ? art : gm::texture(t->gameArt, gm::TheWorldMachine);
 }
 
 void tick() { frameCounter++; }

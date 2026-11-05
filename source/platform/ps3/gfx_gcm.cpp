@@ -30,6 +30,7 @@
 #include "sprite_fp_fpo.h"
 #include "plain_fp_fpo.h"
 #include "dither_fp_fpo.h"
+#include "transition_fp_fpo.h"
 
 namespace gfx {
 
@@ -85,9 +86,12 @@ static volatile u32 g_buffer_on_display, g_buffer_flipped, g_on_flip;
 static u32 g_frame_index;
 
 static CGprogram vpo, fpo, fpo_plain;
-static u32 fp_plain_offset, fp_dither_offset;
-static CGprogram fpo_dither;
-static bool g_fp_dither;           // the dither program is bound
+static u32 fp_plain_offset, fp_dither_offset, fp_transition_offset;
+static CGprogram fpo_dither, fpo_transition;
+// The fragment program bound: the sprite (or plain) one, dither or transition.
+enum class Fp : u8 { Sprite, Dither, Transition };
+static Fp g_fp = Fp::Sprite;
+static const Texture *g_transition_pattern;
 static float g_dither_ox, g_dither_oy, g_dither_cell = 4, g_dither_line;
 static const Texture *g_dither_bayer;
 static bool g_plain_fp;
@@ -335,7 +339,7 @@ static void set_draw_env() {
 	cellGcmSetVertexProgram(ctx, vpo, vp_ucode);
 	if (g_plain_fp) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
 	else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
-	g_fp_dither = false;
+	g_fp = Fp::Sprite;
 }
 
 static void bind_vertex_arrays(int i) {
@@ -385,14 +389,18 @@ static void flush_batch() {
 		cellGcmSetInvalidateTextureCache(ctx, CELL_GCM_INVALIDATE_TEXTURE);
 		tex_cache_dirty = false;
 	}
-	bool dither = batch_blend == Blend::Dither && g_dither_bayer;
-	if (dither != g_fp_dither) {
-		g_fp_dither = dither;
-		if (dither) cellGcmSetFragmentProgram(ctx, fpo_dither, fp_dither_offset);
+	Fp fp = batch_blend == Blend::Dither && g_dither_bayer                 ? Fp::Dither
+	        : batch_blend == Blend::Transition && g_transition_pattern ? Fp::Transition
+	                                                                   : Fp::Sprite;
+	if (fp != g_fp) {
+		g_fp = fp;
+		if (fp == Fp::Dither) cellGcmSetFragmentProgram(ctx, fpo_dither, fp_dither_offset);
+		else if (fp == Fp::Transition) cellGcmSetFragmentProgram(ctx, fpo_transition, fp_transition_offset);
 		else if (g_plain_fp) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
 		else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
 	}
-	if (dither) bind_texture(g_dither_bayer, 1, true);
+	if (fp == Fp::Dither) bind_texture(g_dither_bayer, 1, true);
+	if (fp == Fp::Transition) bind_texture(g_transition_pattern, 1, true);
 	bind_texture(batch_tex);
 	// The vertex ring is reused every VB_COUNT frames: without this the
 	// RSX's vertex cache can hand back vertices from an earlier frame,
@@ -512,6 +520,15 @@ bool init() {
 		void *uc = bump_alloc(sz, 64);
 		memcpy(uc, blob, sz);
 		cellGcmAddressToOffset(uc, &fp_dither_offset);
+	}
+	{
+		fpo_transition = (CGprogram)transition_fp_fpo;
+		cellGcmCgInitProgram(fpo_transition);
+		void *blob; u32 sz = 0;
+		cellGcmCgGetUCode(fpo_transition, &blob, &sz);
+		void *uc = bump_alloc(sz, 64);
+		memcpy(uc, blob, sz);
+		cellGcmAddressToOffset(uc, &fp_transition_offset);
 	}
 	auto attr = [](const char *name, int fallback) {
 		CGparameter p = cellGcmCgGetNamedParameter(vpo, name);
@@ -713,6 +730,16 @@ void draw(const Texture *t, float dx, float dy, float dw, float dh,
 		v[1] = { r, tp, u1, v0, cr, cg, cb, ca, cx1, cy0, ln, 0 };
 		v[2] = { r, bt, u1, v1, cr, cg, cb, ca, cx1, cy1, ln, 0 };
 		v[3] = { l, bt, u0, v1, cr, cg, cb, ca, cx0, cy1, ln, 0 };
+		vb_used += 4;
+		return;
+	}
+	if (blend == Blend::Transition) {
+		// The pattern position per corner: the texture's own, normalized.
+		float pu0 = u0f / t->w, pu1 = u1f / t->w, pv0 = v0f / t->h, pv1 = v1f / t->h;
+		v[0] = { l, tp, u0, v0, cr, cg, cb, ca, pu0, pv0, 0, 0 };
+		v[1] = { r, tp, u1, v0, cr, cg, cb, ca, pu1, pv0, 0, 0 };
+		v[2] = { r, bt, u1, v1, cr, cg, cb, ca, pu1, pv1, 0, 0 };
+		v[3] = { l, bt, u0, v1, cr, cg, cb, ca, pu0, pv1, 0, 0 };
 		vb_used += 4;
 		return;
 	}
@@ -987,13 +1014,18 @@ const char *draw_mode_name() {
 
 void set_plain_shader(bool on) {
 	flush_batch();
-	flush_batch();
 	g_plain_fp = on;
-	g_fp_dither = false;
+	g_fp = Fp::Sprite;
 	if (on) cellGcmSetFragmentProgram(ctx, fpo_plain, fp_plain_offset);
 	else cellGcmSetFragmentProgram(ctx, fpo, fp_offset);
 }
 bool plain_shader() { return g_plain_fp; }
+
+void set_transition_pattern(const Texture *pattern) {
+	if (pattern == g_transition_pattern) return;
+	flush_batch();
+	g_transition_pattern = pattern;
+}
 
 void set_dither(float ox, float oy, float cell, float line, const Texture *bayer) {
 	if (ox == g_dither_ox && oy == g_dither_oy && cell == g_dither_cell && line == g_dither_line && bayer == g_dither_bayer) return;

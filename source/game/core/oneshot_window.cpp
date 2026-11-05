@@ -257,21 +257,8 @@ void OneshotWindow::UpdateWindowEffects() {
 	}
 }
 
-static float frand(float a, float b) { return a + (b - a) * (util::random(0, 1000000) / 1000000.0f); }
-
-// MathHelper.ApplyHue
-static void apply_hue(float c[3], float h) {
-	const float k = 0.57735f;
-	float cs = cosf(h), sn = sinf(h), d = k * (c[0] + c[1] + c[2]) * (1 - cs);
-	float x = c[0], y = c[1], z = c[2];
-	float cx = k * z - k * y, cy = k * x - k * z, cz = k * y - k * x;   // cross((k,k,k), c)
-	c[0] = x * cs + cx * sn + k * d;
-	c[1] = y * cs + cy * sn + k * d;
-	c[2] = z * cs + cz * sn + k * d;
-	for (int i = 0; i < 3; i++) c[i] = c[i] < 0 ? 0 : c[i] > 1 ? 1 : c[i];
-}
-
-void OneshotWindow::StartGlitch(int frames, float strength) {
+void OneshotWindow::StartGlitch(int frames, float strength, bool vibrate) {
+	if (vibrate) input::vibrate(strength, frames);
 	if (!settings().screenTear) return;
 	glitchTimer = frames;
 	glitchCycle = 0;
@@ -286,8 +273,8 @@ void OneshotWindow::GenerateGlitch() {
 		g.shift = (int)((util::random(-160, 160) * 2) * glitchStrength);
 		if (g.shift < 0) g.shift += 640;
 		g.height = std::min(util::random(15, 120) * 2, left);
-		float c[3] = { 1.0f, frand(1.0f - 0.5f * glitchStrength, 1.0f), 1.0f };
-		apply_hue(c, frand(0, 6.2831853f));
+		float c[3] = { 1.0f, util::frandom(1.0f - 0.5f * glitchStrength, 1.0f), 1.0f };
+		util::apply_hue(c, util::frandom(0, 6.2831853f));
 		g.r = (uint8_t)(c[0] * 255);
 		g.g = (uint8_t)(c[1] * 255);
 		g.b = (uint8_t)(c[2] * 255);

@@ -1,4 +1,6 @@
 #include "settings.h"
+#include "../twm/twm.h"
+#include "../../platform/input.h"
 #include "../../platform/sys.h"
 #include "cJSON.h"
 #include <string>
@@ -69,14 +71,11 @@ void Settings::Save() const {
 	cJSON_Delete(root);
 }
 
-#include "../../platform/input.h"
 bool auto_mashing() { return settings().automash && input::held(input::BTN_MASHTEXT); }
-
-#include "../twm/twm.h"
-#include "../../platform/input.h"
 
 void Settings::ApplyInput() const {
 	input::set_move_dead_zone(moveDeadZone);
+	input::set_vibration_enabled(vibration);
 	twm::cursor().deadZone = mouseDeadZone;
 	twm::cursor().speed = cursorSpeed;
 }

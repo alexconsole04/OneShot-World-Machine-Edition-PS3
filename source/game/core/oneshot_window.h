@@ -49,7 +49,9 @@ public:
 	void FilmPuzzleBegin();                      // FilmPuzzleManager
 	void FilmPuzzleEnd() { film.active = false; }
 	bool FilmPuzzleCleared() const;
-	void StartGlitch(int frames, float strength = 1.0f);   // GlitchEffectManager
+	// GlitchEffectManager.StartGlitch: the screen tear (if that setting is on)
+	// and a matching controller vibration.
+	void StartGlitch(int frames, float strength = 1.0f, bool vibrate = true);
 	// The glitch bands for this frame's picture, or nullptr.
 	const std::vector<gm::GlitchSegment> *GlitchSegments() const { return glitchTimer > 0 ? &glitch : nullptr; }
 	uint32_t BorderColor() const { return border.current; }   // FullscreenBorderManager (0xRRGGBB)

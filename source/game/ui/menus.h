@@ -1,6 +1,7 @@
 // menus.h - MenuManager, ItemManager (inventory), MainMenu and SettingsMenu
 // and FastTravelMenu from OneShotMG.src.Menus.
 #pragma once
+#include "../../engine/glitch_effect.h"
 #include "../../engine/types.h"
 #include <functional>
 #include <map>
@@ -111,6 +112,7 @@ private:
 	std::vector<std::string> zoneNames;
 	std::vector<int> options;          // unlocked map ids in the current zone
 	const std::vector<Piece> *pieces = nullptr;
+	std::vector<GlitchEffect> glitches;   // one per piece: the minimap tears during the solstice glitch
 	std::vector<Edge> edges;           // from the selected map to other options
 	int zone = 0, current = 0, selected = -1;
 	int opacity = 0, fadeTimer = 0, arrowAnimTimer = 0;
