@@ -233,7 +233,7 @@ static const char *const WALLPAPERS_HELP =
 	"The pictures are copied into the game, so the stick can be removed afterwards.\n"
 	"\n"
 	"BY FTP\n"
-	"Copy pictures into /dev_hdd0/game/OSWM00001/USRDIR/wallpapers. They show up when the game next starts, "
+	"Copy pictures into /dev_hdd0/OneShot/wallpapers. They show up when the game next starts, "
 	"or straight away if you press Import Wallpapers.\n"
 	"\n"
 	"USING THEM\n"

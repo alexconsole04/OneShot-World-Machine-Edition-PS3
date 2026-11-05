@@ -50,13 +50,13 @@ void local_time(int *hour, int *minute, int *second, int *day_of_year);
 // Bytes currently allocated from the malloc arena, in KB.
 int heap_used_kb();
 
-// Save files (save_io.cpp): <save_dir>/<name>, written atomically, in the background.
-const char *save_dir();
+// Save files (save_io.cpp; save_store.h says where they're kept). Read into
+// memory on first use; writes happen in the background.
 bool save_exists(const char *name);
 bool save_read(const char *name, std::string &out);
 bool save_write(const char *name, const std::string &data);
 bool save_delete(const char *name);
-// Saves are written on a background thread: wait for every queued write.
+// Wait until every change so far has been written.
 void save_flush();
 
 } // namespace sys

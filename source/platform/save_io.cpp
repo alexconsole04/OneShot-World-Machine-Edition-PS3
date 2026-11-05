@@ -1,175 +1,119 @@
-// save_io.cpp - save files (save.dat, p-settings.dat, settings.conf) in a
-// "saves" folder next to the game data. Writes go to a temporary file that
-// is then renamed over the old one, so a crash mid-write never leaves a
-// half-written save behind. The writing happens on a background thread (on
-// the PS3 a save took the game thread 300+ ms); reads see what's queued.
+// save_io.cpp - the save files (save.dat, p-settings.dat, settings.conf,
+// desktop.dat, fs.dat, language.dat). They're all read into memory the
+// first time one is asked for; after that reads and checks are answered from
+// memory, and changes are written by a background thread (on the PS3 a save
+// took the game thread 300+ ms). save_store.h says where they're kept.
+#include "save_store.h"
 #include "sys.h"
 #include "thread.h"
-#include <deque>
-#include <utility>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-
-#ifdef __PPU__
-#include <cell/cell_fs.h>
-#else
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
+#include <set>
 
 namespace sys {
 
-static std::string g_save_dir;
+static Monitor *g_mon;
+static save_store::Files g_files;              // as the game sees them
+static std::set<std::string> g_dirty, g_gone;  // changed / deleted since the last write
+static bool g_loaded, g_threadTried, g_threadOk, g_busy;
 
-const char *save_dir() {
-	if (g_save_dir.empty()) {
-#ifdef __PPU__
-		g_save_dir = "/dev_hdd0/game/OSWM00001/USRDIR/saves";
-		cellFsMkdir(g_save_dir.c_str(), CELL_FS_DEFAULT_CREATE_MODE_1);
-#else
-		const char *env = getenv("OSPS3_SAVEDIR");
-		g_save_dir = env ? env : std::string(data_dir()) + "/saves";
-		mkdir(g_save_dir.c_str(), 0755);
-#endif
-		log("save folder: %s\n", g_save_dir.c_str());
+// The writing thread: everything changed so far, in one store operation.
+static void write_changes() {
+	save_store::Files writes;
+	std::vector<std::string> deletes;
+	{
+		MonitorLock l(g_mon);
+		for (auto &n : g_dirty) writes[n] = g_files[n];
+		deletes.assign(g_gone.begin(), g_gone.end());
+		g_dirty.clear();
+		g_gone.clear();
+		g_busy = true;
 	}
-	return g_save_dir.c_str();
+	if (!save_store::commit(writes, deletes)) log("save: writing to %s failed\n", save_store::where());
+	MonitorLock l(g_mon);
+	g_busy = false;
+	monitor_notify(g_mon);
 }
-
-static std::string path_of(const char *name) { return std::string(save_dir()) + "/" + name; }
-
-static bool remove_path(const std::string &p) {
-#ifdef __PPU__
-	return cellFsUnlink(p.c_str()) == CELL_FS_SUCCEEDED;
-#else
-	return unlink(p.c_str()) == 0;
-#endif
-}
-
-static bool rename_path(const std::string &from, const std::string &to) {
-#ifdef __PPU__
-	return cellFsRename(from.c_str(), to.c_str()) == CELL_FS_SUCCEEDED;
-#else
-	return rename(from.c_str(), to.c_str()) == 0;
-#endif
-}
-
-// ------------------------------------------------------------------ the writing thread
-static Monitor *g_wmon;
-static std::deque<std::pair<std::string, std::string>> g_wqueue;   // waiting: (name, data)
-static std::pair<std::string, std::string> g_writing;               // being written now
-static bool g_busy, g_wtried, g_wok;
-static bool write_now(const char *name, const std::string &data);
 
 static void writer(void *) {
 	for (;;) {
 		{
-			MonitorLock l(g_wmon);
-			while (g_wqueue.empty()) monitor_wait(g_wmon, 0);
-			g_writing = std::move(g_wqueue.front());
-			g_wqueue.pop_front();
-			g_busy = true;
+			MonitorLock l(g_mon);
+			while (g_dirty.empty() && g_gone.empty()) monitor_wait(g_mon, 0);
 		}
-		if (!write_now(g_writing.first.c_str(), g_writing.second)) log("save: writing %s failed\n", g_writing.first.c_str());
-		MonitorLock l(g_wmon);
-		g_busy = false;
-		g_writing = {};
-		monitor_notify(g_wmon);
+		write_changes();
 	}
 }
 
-// The newest data queued (or being written) for name.
-static bool pending_data(const char *name, std::string *out) {
-	if (!g_wok) return false;
-	MonitorLock l(g_wmon);
-	for (auto it = g_wqueue.rbegin(); it != g_wqueue.rend(); ++it)
-		if (it->first == name) { if (out) *out = it->second; return true; }
-	if (g_busy && g_writing.first == name) { if (out) *out = g_writing.second; return true; }
-	return false;
+static void ensure_loaded() {
+	if (g_loaded) return;
+	g_loaded = true;
+	g_mon = monitor_create("saves");
+	uint64_t t0 = time_us();
+	if (!save_store::load_all(g_files)) log("save: %s can't be read; starting without saves\n", save_store::where());
+	log("save: %d files in %s (%.0f ms)\n", (int)g_files.size(), save_store::where(), (time_us() - t0) / 1000.0);
+}
+
+// After a change: wake the writer (started on the first change), or write
+// now if there is no writer.
+static void changed() {
+	if (!g_threadTried) {
+		g_threadTried = true;
+		// The PS3's save utility runs on the calling thread's stack: give it room.
+		g_threadOk = g_mon && thread_start(writer, nullptr, "save writer", -1, 256 * 1024);
+		if (!g_threadOk) log("save: no writer thread, saving on the game thread\n");
+	}
+	if (g_threadOk) monitor_notify(g_mon);
+	else write_changes();
 }
 
 void save_flush() {
-	if (!g_wok) return;
-	MonitorLock l(g_wmon);
-	while (!g_wqueue.empty() || g_busy) monitor_wait(g_wmon, 5000);
-}
-
-bool save_write(const char *name, const std::string &data) {
-	if (!g_wtried) {
-		g_wtried = true;
-		save_dir();   // made (and logged) on this thread
-		g_wmon = monitor_create("save writer");
-		g_wok = g_wmon && thread_start(writer, nullptr, "save writer", -1);
-		if (!g_wok) log("save: no writer thread, saving on the game thread\n");
+	if (!g_loaded || !g_threadOk) return;
+	for (;;) {
+		{
+			MonitorLock l(g_mon);
+			if (g_dirty.empty() && g_gone.empty() && !g_busy) return;
+			monitor_wait(g_mon, 5000);
+		}
+		save_store::pump();
 	}
-	if (!g_wok) return write_now(name, data);
-	MonitorLock l(g_wmon);
-	for (auto &q : g_wqueue)
-		if (q.first == name) { q.second = data; return true; }   // only the newest gets written
-	g_wqueue.emplace_back(name, data);
-	monitor_notify(g_wmon);
-	return true;
 }
 
 bool save_exists(const char *name) {
-	if (pending_data(name, nullptr)) return true;
-	// A stat, not fopen/fclose: no stdio involved just to look.
-#ifdef __PPU__
-	CellFsStat st;
-	return cellFsStat(path_of(name).c_str(), &st) == CELL_FS_SUCCEEDED;
-#else
-	struct stat st;
-	return stat(path_of(name).c_str(), &st) == 0;
-#endif
+	ensure_loaded();
+	MonitorLock l(g_mon);
+	return g_files.count(name) != 0;
 }
 
 bool save_read(const char *name, std::string &out) {
-	if (pending_data(name, &out)) return true;
-	FILE *f = fopen(path_of(name).c_str(), "rb");
-	if (!f) return false;
-	out.clear();
-	char buf[4096];
-	size_t n;
-	while ((n = fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
-	fclose(f);
+	ensure_loaded();
+	MonitorLock l(g_mon);
+	auto it = g_files.find(name);
+	if (it == g_files.end()) return false;
+	out = it->second;
 	return true;
 }
 
-static bool write_now(const char *name, const std::string &data) {
-	std::string dst = path_of(name), tmp = dst + ".tmp";
-	FILE *f = fopen(tmp.c_str(), "wb");
-	if (!f) {
-		log("save: cannot create %s\n", tmp.c_str());
-		return false;
+bool save_write(const char *name, const std::string &data) {
+	ensure_loaded();
+	{
+		MonitorLock l(g_mon);
+		g_files[name] = data;
+		g_dirty.insert(name);
+		g_gone.erase(name);
 	}
-	bool ok = fwrite(data.data(), 1, data.size(), f) == data.size();
-	ok = fflush(f) == 0 && ok;
-	ok = fclose(f) == 0 && ok;
-	if (!ok) {
-		log("save: write to %s failed\n", tmp.c_str());
-		remove_path(tmp);
-		return false;
-	}
-	remove_path(dst);
-	if (!rename_path(tmp, dst)) {
-		// Rename refused: write in place instead (still better than no save).
-		log("save: rename %s failed, writing directly\n", tmp.c_str());
-		FILE *g = fopen(dst.c_str(), "wb");
-		if (!g) return false;
-		ok = fwrite(data.data(), 1, data.size(), g) == data.size();
-		ok = fclose(g) == 0 && ok;
-		remove_path(tmp);
-		return ok;
-	}
+	changed();
 	return true;
 }
 
 bool save_delete(const char *name) {
-	save_flush();   // a queued write mustn't bring it back
-	if (!save_exists(name)) return true;
-	return remove_path(path_of(name));
+	ensure_loaded();
+	{
+		MonitorLock l(g_mon);
+		if (!g_files.erase(name)) return true;
+		g_dirty.erase(name);
+		g_gone.insert(name);
+	}
+	changed();
+	return true;
 }
 
 } // namespace sys

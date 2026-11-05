@@ -91,6 +91,14 @@ fake.self, zipped.
 - wallpapers/: wallpapers that come with the port ("We Ride at Dawn"). A renamed one goes in
   RENAMED in custom_wallpapers.cpp, so old installs and saves follow it.
 
+## Where the player's files go (PS3)
+- Saves: the system's saved data, one save OSWM00001-SAVEDATA (platform/ps3/save_data_ps3.cpp;
+  file names mapped to 8.3 there). save_io.cpp keeps every save file in memory and writes
+  changes on a background thread. Saves from before 1.01 (USRDIR/saves) are copied in once,
+  then that folder becomes saves.old. If the save utility fails, USRDIR/saves is used as before.
+- Imported wallpapers: /dev_hdd0/OneShot/wallpapers (moved from USRDIR/wallpapers once).
+- Host: OSPS3_SAVEDIR (a plain folder, save_folder.cpp) and OSPS3_WALLPAPERS.
+
 ## Debug overlay (hidden)
 L1 + R1 + SELECT opens it, SELECT closes it; holding SELECT for a second marks the log at any
 time. While it's up: L1 = map switcher, R1 = texture viewer. Host input: "lke 5" opens it.

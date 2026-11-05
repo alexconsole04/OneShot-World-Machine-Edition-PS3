@@ -35,21 +35,65 @@ bool make_dir(const std::string &p) {
 #endif
 }
 
+bool make_dirs(const std::string &p) {
+	if (p.empty() || is_dir(p)) return true;
+	size_t k = p.find_last_of('/');
+	if (k != std::string::npos && k > 0 && !make_dirs(p.substr(0, k))) return false;
+	return make_dir(p);
+}
+
+bool rename_abs(const std::string &from, const std::string &to) {
+#ifdef __PPU__
+	return cellFsRename(from.c_str(), to.c_str()) == CELL_FS_SUCCEEDED;
+#else
+	return rename(from.c_str(), to.c_str()) == 0;
+#endif
+}
+
+static std::vector<std::string> entries(const std::string &dir);
+
+#ifdef __PPU__
+// Wallpapers imported before 1.01 were in the game's own folder: move them
+// (and their thumbnail cache) over, then drop the old folder.
+static void move_old_wallpapers(const std::string &dir) {
+	const std::string old = "/dev_hdd0/game/OSWM00001/USRDIR/wallpapers";
+	if (!is_dir(old)) return;
+	if (!is_dir(dir) && make_dirs(dir.substr(0, dir.find_last_of('/'))) && rename_abs(old, dir)) {
+		log("wallpapers: moved %s to %s\n", old.c_str(), dir.c_str());
+		return;
+	}
+	make_dirs(dir + "/.thumbs");
+	int n = 0;
+	for (const char *sub : { "", "/.thumbs" }) {
+		for (auto &f : entries(old + sub)) {
+			std::string from = old + sub + "/" + f, to = dir + sub + "/" + f;
+			if (is_dir(from)) continue;
+			if (file_size(to) < 0 && rename_abs(from, to)) n++;
+			else remove_abs(from);   // already there
+		}
+		cellFsRmdir((old + sub).c_str());
+	}
+	cellFsRmdir(old.c_str());
+	log("wallpapers: moved %d files from %s to %s\n", n, old.c_str(), dir.c_str());
+}
+#endif
+
 const std::string &wallpaper_dir() {
 	static std::string dir;
 	if (dir.empty()) {
 #ifdef __PPU__
-		dir = "/dev_hdd0/game/OSWM00001/USRDIR/wallpapers";
+		dir = "/dev_hdd0/OneShot/wallpapers";
+		move_old_wallpapers(dir);
+		if (!make_dirs(dir)) dir = "/dev_hdd0/game/OSWM00001/USRDIR/wallpapers";   // the root not writable: as before
 #else
+		// OSPS3_WALLPAPERS, or "wallpapers" next to the saves folder.
 		const char *env = getenv("OSPS3_WALLPAPERS");
-		if (env) dir = env;
-		else {
-			std::string s = save_dir();
-			size_t k = s.find_last_of('/');
-			dir = (k == std::string::npos ? std::string(".") : s.substr(0, k)) + "/wallpapers";
-		}
+		const char *saves = getenv("OSPS3_SAVEDIR");
+		std::string base = saves ? saves : std::string(data_dir()) + "/saves";
+		size_t k = base.find_last_of('/');
+		dir = env ? env : (k == std::string::npos ? std::string(".") : base.substr(0, k)) + "/wallpapers";
 #endif
-		make_dir(dir);
+		if (!make_dirs(dir)) log("wallpapers: can't make %s\n", dir.c_str());
 	}
 	return dir;
 }

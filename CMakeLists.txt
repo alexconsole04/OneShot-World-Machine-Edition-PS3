@@ -75,12 +75,14 @@ set(SOURCES
     source/platform/input_common.cpp
     source/platform/loader.cpp
     source/platform/log_file.cpp
+    source/platform/save_folder.cpp
     source/platform/save_io.cpp
     source/platform/user_files.cpp
     # Platform: PS3
     source/platform/ps3/audio_out_ps3.cpp
     source/platform/ps3/gfx_gcm.cpp
     source/platform/ps3/input_ps3.cpp
+    source/platform/ps3/save_data_ps3.cpp
     source/platform/ps3/sys_ps3.cpp
     source/platform/ps3/thread_ps3.cpp
     third_party/cJSON.c
