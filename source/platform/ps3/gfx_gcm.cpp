@@ -60,7 +60,12 @@ static_assert(sizeof(Vertex) == 48, "vertex layout");
 
 // ---------------------------------------------------------------- state
 static u32 display_width, display_height, color_pitch, depth_pitch;
-static u32 tgt_w, tgt_h;
+// The current target: tgt_w x tgt_h in drawing coordinates, tgt_px_w pixels
+// wide. They differ only on the screen in SD (480p/576p), whose 720 pixels
+// across aren't square: the game draws in square coordinates (640 across at
+// 4:3) and the viewport stretches them onto the pixels.
+static u32 tgt_w, tgt_h, tgt_px_w;
+static u32 screen_coord_w;   // the screen's width in drawing coordinates
 static uint8_t *color_mem[COLOR_BUFFER_NUM];   // CPU view of the screen buffers (debug reads)
 static Texture *last_rt;
 // After the XMB closes, the PS3 sometimes stops showing anything the 3D
@@ -292,9 +297,11 @@ static void apply_blend(Blend b) {
 	cellGcmSetBlendEquation(ctx, CELL_GCM_FUNC_ADD, CELL_GCM_FUNC_ADD);
 }
 
-static void set_viewport(u32 w, u32 h) {
-	tgt_w = w;
+// w x h pixels, coordW drawing coordinates across (= w unless the screen in SD).
+static void set_viewport(u32 w, u32 h, u32 coordW = 0) {
+	tgt_w = coordW ? coordW : w;
 	tgt_h = h;
+	tgt_px_w = w;
 	float scale[4] = { w * 0.5f, h * -0.5f, 0.5f, 0.0f };
 	float offset[4] = { w * 0.5f, h * 0.5f, 0.5f, 0.0f };
 	cellGcmSetViewport(ctx, 0, 0, (u16)w, (u16)h, 0.0f, 1.0f, scale, offset);
@@ -304,7 +311,7 @@ static void set_viewport(u32 w, u32 h) {
 static void set_draw_env() {
 	cellGcmSetColorMask(ctx, GCM_COLOR_MASK_R | GCM_COLOR_MASK_G | GCM_COLOR_MASK_B | GCM_COLOR_MASK_A);
 	cellGcmSetColorMaskMrt(ctx, 0);
-	set_viewport(display_width, display_height);
+	set_viewport(display_width, display_height, screen_coord_w);
 	cellGcmSetDepthTestEnable(ctx, GCM_FALSE);
 	cellGcmSetCullFaceEnable(ctx, GCM_FALSE);
 	// Everything else a 2D sprite renderer relies on, set explicitly every
@@ -443,8 +450,13 @@ bool init() {
 	if (videoGetResolution(state.displayMode.resolution, &res) != 0) return false;
 	display_width = res.width;
 	display_height = res.height;
-	color_pitch = display_width * 4;
-	depth_pitch = display_width * 2;
+	// Surface pitches must be multiples of 64 bytes: at 720 pixels across
+	// (480p/576p) the depth buffer's 1440 isn't, and the RSX hung.
+	color_pitch = (display_width * 4 + 63) & ~63u;
+	depth_pitch = (display_width * 2 + 63) & ~63u;
+	screen_coord_w = display_width;
+	if (display_height <= 576)   // SD: the picture is 4:3 (or 16:9 on a widescreen TV), not 720:480
+		screen_coord_w = state.displayMode.aspect == VIDEO_ASPECT_16_9 ? (display_height * 16 + 4) / 9 : display_height * 4 / 3;
 	memset(&vcfg, 0, sizeof(vcfg));
 	vcfg.resolution = state.displayMode.resolution;
 	vcfg.format = VIDEO_BUFFER_FORMAT_XRGB;
@@ -572,7 +584,7 @@ void shutdown() {
 	while (g_buffer_on_display != last) usleep(1000);
 }
 
-int screen_w() { return (int)display_width; }
+int screen_w() { return (int)screen_coord_w; }
 int screen_h() { return (int)display_height; }
 
 Texture *create_texture(uint32_t w, uint32_t h, const uint32_t *argb) {
@@ -884,7 +896,7 @@ Texture *create_render_target(uint32_t w, uint32_t h) {
 	return t;
 }
 
-static void bind_rt_surface(Texture *rt) {
+static void bind_rt_surface(Texture *rt, u32 coordW = 0) {
 	CellGcmSurface sf;
 	memset(&sf, 0, sizeof(sf));
 	sf.colorFormat = GCM_SURFACE_X8R8G8B8;
@@ -904,17 +916,17 @@ static void bind_rt_surface(Texture *rt) {
 	sf.width = rt->w;
 	sf.height = rt->h;
 	cellGcmSetSurface(ctx, &sf);
-	set_viewport(rt->w, rt->h);
+	set_viewport(rt->w, rt->h, coordW);
 }
 
 // "The screen": normally the colour buffer being drawn this frame. In copy
 // presentation, a full-screen render target that end_frame copies into the
 // colour buffer with the copy engine instead (see present_copy below).
 static void bind_screen() {
-	if (g_present_copy && frame_rt) bind_rt_surface(frame_rt);
+	if (g_present_copy && frame_rt) bind_rt_surface(frame_rt, screen_coord_w);
 	else {
 		bind_color_buffer(g_frame_index);
-		set_viewport(display_width, display_height);
+		set_viewport(display_width, display_height, screen_coord_w);
 	}
 }
 
@@ -973,6 +985,10 @@ const Texture *capture_texture(const Texture *rt) {
 }
 
 const Texture *capture_screen(int x, int y, int w, int h) {
+	// Drawing coordinates to pixels (they differ across in SD).
+	int x1 = (int)((long long)(x + w) * display_width / screen_coord_w);
+	x = (int)((long long)x * display_width / screen_coord_w);
+	w = x1 - x;
 	if (x < 0) { w += x; x = 0; }
 	if (y < 0) { h += y; y = 0; }
 	if (x + w > (int)display_width) w = (int)display_width - x;
@@ -996,12 +1012,14 @@ void set_clip(int x, int y, int w, int h) {
 	if (y < 0) { h += y; y = 0; }
 	if (w < 0) w = 0;
 	if (h < 0) h = 0;
-	rsxSetScissor(ctx, (u16)x, (u16)y, (u16)w, (u16)h);
+	// The scissor is in pixels, the clip rectangle in drawing coordinates.
+	u32 px0 = (u32)((u64)x * tgt_px_w / tgt_w), px1 = (u32)((u64)(x + w) * tgt_px_w / tgt_w);
+	rsxSetScissor(ctx, (u16)px0, (u16)y, (u16)(px1 - px0), (u16)h);
 	clip_x0 = (float)x; clip_y0 = (float)y; clip_x1 = (float)(x + w); clip_y1 = (float)(y + h);
 }
 void clip_off() {
 	flush_batch();
-	rsxSetScissor(ctx, 0, 0, (u16)tgt_w, (u16)tgt_h);
+	rsxSetScissor(ctx, 0, 0, (u16)tgt_px_w, (u16)tgt_h);
 	clip_x0 = clip_y0 = 0; clip_x1 = clip_y1 = 1e9f;
 }
 
