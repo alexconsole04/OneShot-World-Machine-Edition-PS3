@@ -13,6 +13,9 @@ A clear and concise description of what the bug is. Provide screenshots and vide
 **To Reproduce**
 Describe the steps needed to reproduce the issue. Please do not be vague or give unclear instructions on how to reproduce the issue.
 
+# What to Do?
+When reporting bugs, please provide the log found inside the game folder (dev_hdd0/game/OSWM00001/oneshot_log.txt)
+
 **Expected behavior**
 Provide screenshots/video on expected behavior.
 
